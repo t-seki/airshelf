@@ -1,0 +1,43 @@
+# --- .NET ---
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+.vs/
+project.lock.json
+artifacts/
+publish/
+*.nupkg
+
+# --- Rider / VS Code ---
+.idea/
+.vscode/
+
+# --- ローカル設定・秘密情報 ---
+appsettings.*.local.json
+appsettings.Local.json
+secrets.json
+*.secret
+config.local.*
+
+# --- 実行時データ ---
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+ledger*.db
+*.log
+logs/
+
+# --- 音声データ・サンプル(コミットしない) ---
+RADIO/
+records/
+*.m4a
+*.mp3
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
