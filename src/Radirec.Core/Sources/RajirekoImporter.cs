@@ -70,38 +70,26 @@ public sealed class RajirekoImporter : ISourceImporter
         }
         else
         {
-            // C 形状: 局プレフィックス無し → フォルダを権威にする。
+            // 局プレフィックス無し → フォルダを権威にする。
             rawStation = file.StationFolder;
             programPart = stem;
             stationFromFolder = true;
         }
 
+        // 録音種別マーカーはファイル名の番組部末尾から採る(番組名の識別には使わない)。
         var kind = StripTrailingRecordingKind(ref programPart);
-        programPart = programPart.Trim();
 
-        // 局がフォルダ由来(C)か、剥がした結果番組部が空なら、番組名もフォルダを権威にする。
-        string rawProgram;
-        bool programFromFolder;
-        if (stationFromFolder || programPart.Length == 0)
-        {
-            rawProgram = file.ProgramFolder;
-            programFromFolder = true;
-        }
-        else
-        {
-            rawProgram = programPart;
-            programFromFolder = false;
-        }
-
+        // 番組の同一性はフォルダ名を拠り所にする(ADR-0001)。ファイル名は週替わりゲスト等で
+        // 変動するため、識別には使わない。
         return new ParsedSource
         {
             RawStation = rawStation.Trim(),
-            RawProgram = rawProgram.Trim(),
+            RawProgram = file.ProgramFolder.Trim(),
             BroadcastDate = date,
             BroadcastTime = time,
             RecordingKind = kind,
             StationFromFolder = stationFromFolder,
-            ProgramFromFolder = programFromFolder,
+            ProgramFromFolder = true,
         };
     }
 

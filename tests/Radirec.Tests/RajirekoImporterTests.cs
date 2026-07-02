@@ -30,30 +30,51 @@ public sealed class RajirekoImporterTests
         var r = _sut.Parse(file);
 
         Assert.Equal("J-WAVE", r.RawStation);
-        Assert.Equal("LOGISTEED RADIONOMICS", r.RawProgram);
+        Assert.Equal("LOGISTEEDRADIONOMICS", r.RawProgram);   // 番組はフォルダ名(ADR-0001)
         Assert.Equal("TimeFree", r.RecordingKind);
         Assert.Equal(new DateOnly(2026, 6, 12), r.BroadcastDate);
         Assert.Equal(new TimeOnly(22, 30, 0), r.BroadcastTime);
         Assert.False(r.StationFromFolder);
-        Assert.False(r.ProgramFromFolder);
+        Assert.True(r.ProgramFromFolder);
     }
 
     // ---- 形状 B: [局]番組_ts(マーカー無し)----
 
     [Fact]
-    public void ClassB_NoMarker_ProgramFromFilename_KindNull()
+    public void ClassB_NoMarker_ProgramFromFolder_KindNull()
     {
         var file = Make(
             "[TBSラジオ]アルコ＆ピース D.C_20250528000000.m4a",
-            stationFolder: "TBSラジオ", programFolder: "アルコ＆ピース D.C");
+            stationFolder: "TBSラジオ", programFolder: "アルコ＆ピースDCGARAGE");
 
         var r = _sut.Parse(file);
 
         Assert.Equal("TBSラジオ", r.RawStation);
-        Assert.Equal("アルコ＆ピース D.C", r.RawProgram);
+        Assert.Equal("アルコ＆ピースDCGARAGE", r.RawProgram);   // フォルダ名
         Assert.Null(r.RecordingKind);
         Assert.Equal(new DateOnly(2025, 5, 28), r.BroadcastDate);
-        Assert.False(r.ProgramFromFolder);
+        Assert.True(r.ProgramFromFolder);
+    }
+
+    // ---- 週替わりゲスト: ファイル名は違ってもフォルダが同じなら同じ番組 ----
+
+    [Fact]
+    public void RotatingGuest_DifferentFilenames_SameFolder_YieldSameProgram()
+    {
+        var folder = "オールナイトニッポン0(ZERO)";
+        var a = _sut.Parse(Make(
+            "[ニッポン放送]Awesome City Clubのオールナイトニッポン0(ZERO)(TimeFree)_20251207030000.m4a",
+            stationFolder: "ニッポン放送", programFolder: folder));
+        var b = _sut.Parse(Make(
+            "[ニッポン放送]のオールナイトニッポン0(ZERO)(TimeFree)_20241006030000.m4a",
+            stationFolder: "ニッポン放送", programFolder: folder));
+        var c = _sut.Parse(Make(
+            "[ニッポン放送]IMP_20251221030000.m4a",   // マーカー無し・別ゲスト名
+            stationFolder: "ニッポン放送", programFolder: folder));
+
+        Assert.Equal(folder, a.RawProgram);
+        Assert.Equal(folder, b.RawProgram);
+        Assert.Equal(folder, c.RawProgram);   // 3 回とも同じ番組に集約される
     }
 
     // ---- 形状 C: 局プレフィックス無し → フォルダを権威に ----
@@ -77,28 +98,28 @@ public sealed class RajirekoImporterTests
         Assert.True(r.ProgramFromFolder);
     }
 
-    // ---- 番組名が括弧を含むケース(誤って剥がさない)----
+    // ---- 録音種別マーカー: 既知マーカーだけ剥がす(番組名の括弧は種別に誤認しない)----
 
     [Fact]
-    public void ProgramNameWithParens_NotAKnownMarker_IsKept()
+    public void TrailingParens_NotAKnownMarker_IsNotTreatedAsKind()
     {
-        var file = Make("[X局]番組(特別編)_20240101000000.m4a");
+        var file = Make("[X局]番組(特別編)_20240101000000.m4a", programFolder: "番組フォルダ");
 
         var r = _sut.Parse(file);
 
-        Assert.Equal("番組(特別編)", r.RawProgram);
-        Assert.Null(r.RecordingKind);
+        Assert.Null(r.RecordingKind);            // 「(特別編)」は録音種別ではない
+        Assert.Equal("番組フォルダ", r.RawProgram); // 番組はフォルダ名
     }
 
     [Fact]
-    public void ProgramNameWithParens_PlusTrailingMarker_StripsOnlyMarker()
+    public void TrailingKnownMarker_IsExtractedAsKind()
     {
-        var file = Make("[X局]番組(特別編)(TimeFree)_20240101000000.m4a");
+        var file = Make("[X局]番組(特別編)(TimeFree)_20240101000000.m4a", programFolder: "番組フォルダ");
 
         var r = _sut.Parse(file);
 
-        Assert.Equal("番組(特別編)", r.RawProgram);
         Assert.Equal("TimeFree", r.RecordingKind);
+        Assert.Equal("番組フォルダ", r.RawProgram);
     }
 
     // ---- 日時の境界・不正 ----

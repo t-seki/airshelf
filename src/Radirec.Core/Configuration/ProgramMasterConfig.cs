@@ -27,8 +27,8 @@ public sealed class ProgramMatch
     /// <summary>対象放送局(正規表示名)。</summary>
     public string Station { get; set; } = string.Empty;
 
-    /// <summary>照合する生番組名 / 正規化フォルダ名(複数可 = 手動マージ)。</summary>
-    public List<string> Keys { get; set; } = [];
+    /// <summary>照合する番組フォルダ名(複数可 = 複数フォルダを 1 アルバムへ統合)。</summary>
+    public List<string> Folders { get; set; } = [];
 }
 
 public sealed class ProgramCanonical
