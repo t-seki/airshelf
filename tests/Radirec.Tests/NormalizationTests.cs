@@ -50,7 +50,7 @@ public sealed class ProgramResolverTests
                 Match = new ProgramMatch
                 {
                     Station = "J-WAVE",
-                    Keys = ["SONYSONPOQUESTFORTHEFUTURE", "SONY SONPO QUEST FOR THE FUTURE"],
+                    Folders = ["SONYSONPOQUESTFORTHEFUTURE", "SONY SONPO QUEST FOR THE FUTURE"],
                 },
                 Canonical = new ProgramCanonical { Album = "SONY SONPO QUEST FOR THE FUTURE" },
             },
@@ -134,7 +134,7 @@ public sealed class EpisodeAssemblerTests
             [
                 new ProgramAlias
                 {
-                    Match = new ProgramMatch { Station = "ニッポン放送", Keys = ["ANN"] },
+                    Match = new ProgramMatch { Station = "ニッポン放送", Folders = ["ANN"] },
                     Canonical = new ProgramCanonical { Album = "オールナイトニッポン" },
                 },
             ],

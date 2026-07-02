@@ -73,12 +73,18 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 - **冪等(import-once)**: 同一放送回 = `(放送局, 番組, 放送日)` は 1 回だけ取り込み。台帳(`LedgerPath`)に
   記録し、再実行しても重複しません。何度でも安全に実行できます。
 
-## 5. 表記ゆれ・未知番組の整え方
+## 5. アルバムの束ね方・表示名の整え方
 
-- 新しい番組は alias 不要で、ファイル名/フォルダ由来の生名で取り込まれます(`(fallback)` 表示 + 警告)。
-- 放送局の表記ゆれ(`NHKラジオ第1(radiko)` → `NHKラジオ第1`、radikool の局コード等)は
-  `config/stations.json` に別名を追加して正規名へ寄せます。
-- 番組名の表記ゆれ・複数表記の統合は `config/programs.json` に追加します。
+**番組(アルバム)の同一性はフォルダ名で決まります**([ADR-0001](adr/0001-program-identity-anchored-to-folder.md))。
+らじれこはファイル名の頭に週替わりゲスト名を入れますが、フォルダは番組ごとに安定しているため、
+**同じフォルダの回は自動で 1 アルバムに集約**され、ゲストは各回の `artist` に残ります。例:
+`オールナイトニッポン0(ZERO)` フォルダの全回は、ゲストが違っても 1 アルバムに束ねられます(**設定不要**)。
+
+設定が要るのは次の 2 つだけです:
+
+- **放送局の表記ゆれ**(`NHKラジオ第1(radiko)` → `NHKラジオ第1`、radikool の局コード等)を
+  `config/stations.json` の別名で正規名へ寄せる。
+- **表示名の整形 / 複数フォルダの統合**を `config/programs.json` で行う(任意)。
 
 ```jsonc
 // config/stations.json
@@ -88,14 +94,19 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 // config/programs.json
 {
   "Programs": [
-    { "Match": { "Station": "J-WAVE", "Keys": ["SONYSONPO...", "SONY SONPO ..."] },
-      "Canonical": { "Album": "SONY SONPO QUEST FOR THE FUTURE" } }
+    // ラテン名の空白除去フォルダを綺麗な表示名に
+    { "Match": { "Station": "J-WAVE", "Folders": ["LOGISTEEDRADIONOMICS"] },
+      "Canonical": { "Album": "LOGISTEED RADIONOMICS" } },
+    // 複数フォルダを 1 アルバムに統合
+    { "Match": { "Station": "TBSラジオ", "Folders": ["パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"] },
+      "Canonical": { "Album": "パンサー向井のふらっと" } }
   ]
 }
 ```
+`Match.Folders` は番組**フォルダ名**で照合します(表記ゆれは大文字化・空白除去で吸収)。
 
-> 既に取り込み済みの回のアルバム名を後から alias で直す一括再適用は **M4** で提供予定です
-> (M1 時点では新規取り込み分にのみ効きます)。
+> 既に取り込み済みの回へ後から alias を効かせる一括再適用は **M4** で提供予定です
+> (現時点では新規取り込み分にのみ効きます)。
 
 ## 6. 配布用 exe(任意)
 

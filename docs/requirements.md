@@ -153,14 +153,18 @@ NAS 転送が 30 秒を超えうる/コピー中に割り込まれる)。「30 �
 フォルダ名 `SONYSONPOQUESTFORTHEFUTURE`(空白除去)は空白ゆれには安定。→ 手動マージ可能な
 alias 設計が必要(§9)。
 
-**ファイル名の 3 形状(実データ 2176 件で検証・M1 実装済み)**:
+**ファイル名の 3 形状(実データ 2176 件で検証)**:
 唯一の普遍アンカーは末尾 `_{YYYYMMDDHHMMSS}.m4a`。これを起点に解析する。
 - A `[局]番組(TimeFree)_ts`(2077 件): 標準。
-- B `[局]番組_ts`(56 件): 録音種別マーカー無し。マーカーは既知許可リストの末尾一致のみ剥がす
-  (番組名やフォルダ名が含む括弧 `(...)` を守る)。
-- C `番組_ts`(43 件): `[局]` プレフィックス無し。**局・番組はフォルダ名を権威**にする
-  (ファイル名は全角日付「１１／１１」等を含み破綻的)。全 43 件が `NHKラジオ第1(radiko)/…` 配下。
-- ジャンク録音(NHK 非提供アナウンス等)は config のスキップパターンで除外。
+- B `[局]番組_ts`(56 件): 録音種別マーカー無し。マーカーは既知許可リストの末尾一致のみ剥がす。
+- C `番組_ts`(43 件): `[局]` プレフィックス無し。局はフォルダ名を権威にする。
+
+**ファイル名から採るのは 放送局(`[..]`)・録音種別マーカー・放送日時 のみ**。
+**番組の同一性(アルバム)はフォルダ名を拠り所にする**([ADR-0001](adr/0001-program-identity-anchored-to-folder.md))。
+らじれこはファイル名の頭に週替わりゲスト名を入れる(例 `Awesome City Clubのオールナイトニッポン0(ZERO)`)ため、
+ファイル名由来の番組名は回ごとに変動する。フォルダは安定なので、それを番組の識別に使う。ゲストは各回の
+`artist`(元タグ由来)に残る。ラテン番組のフォルダ名(空白除去形)を整えたい場合は `programs.json` の
+`Canonical.Album` で表示名を指定する(§9)。ジャンク録音は config のスキップパターンで除外。
 
 ### 5.2 radikool(観測済み / MP3・ID3)
 
@@ -278,27 +282,23 @@ stations:
     aliases: ["J-WAVE"]
 ```
 
-### 9.2 番組 alias(programs.yml)
-正規化キー(空白除去・大文字化など)から番組の正規名・追加タグを引く。複数フォルダ →
-1 正規番組の**手動マージ**を許可(ソース跨ぎ・表記ゆれの統合)。
-```yaml
-# programs.yml(例)
-defaults:
-  genre: "ラジオ"
-
-programs:
-  - match:
-      station: "J-WAVE"
-      keys: ["LOGISTEEDRADIONOMICS"]   # 正規化フォルダ名/番組名
-    canonical:
-      album: "LOGISTEED RADIONOMICS"
-  - match:
-      station: "J-WAVE"
-      keys: ["SONYSONPOQUESTFORTHEFUTURE"]  # 綴りゆれは同一フォルダに集約済み
-    canonical:
-      album: "SONY SONPO QUEST FOR THE FUTURE"
+### 9.2 番組 alias(programs.json)
+番組の同一性はフォルダ名([ADR-0001](adr/0001-program-identity-anchored-to-folder.md))。
+**フォルダ名**(`Folders`)から表示アルバム名(`Canonical.Album`)を引く。複数フォルダ →
+1 アルバムの**手動マージ**も可(照合キーは空白除去・大文字化で吸収)。
+```jsonc
+{
+  "Defaults": { "Genre": "ラジオ" },
+  "Programs": [
+    { "Match": { "Station": "J-WAVE", "Folders": ["LOGISTEEDRADIONOMICS"] },
+      "Canonical": { "Album": "LOGISTEED RADIONOMICS" } },
+    { "Match": { "Station": "TBSラジオ", "Folders": ["パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"] },
+      "Canonical": { "Album": "パンサー向井のふらっと" } }
+  ]
+}
 ```
 `albumartist` は放送局マスタで解決した正規局名を使う(番組 alias に重複記載しない)。
+未登録のフォルダはフォルダ名がそのままアルバム名になる(設定不要)。
 
 ### 9.3 環境設定(config)
 らじれこ RADIO ルート、radikool ルート、配信先ルート=`Z:\...`、Jellyfin API URL/トークン、

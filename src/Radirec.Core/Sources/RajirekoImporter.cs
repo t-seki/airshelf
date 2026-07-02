@@ -6,14 +6,16 @@ namespace Radirec.Core.Sources;
 
 /// <summary>
 /// らじれこ出力(M4A)の importer。<b>末尾タイムスタンプ <c>_{YYYYMMDDHHMMSS}</c> を唯一の
-/// 普遍アンカー</b>にして解析する(実データ 2176 件で検証した 3 形状に対応):
+/// 普遍アンカー</b>にして、ファイル名から <b>放送局・録音種別・放送日時のみ</b>を抽出する
+/// (実データ 2176 件で検証した 3 形状に対応):
 /// <list type="bullet">
 ///   <item>A: <c>[局]番組(TimeFree)_ts.m4a</c>(標準)</item>
 ///   <item>B: <c>[局]番組_ts.m4a</c>(録音種別マーカー無し)</item>
-///   <item>C: <c>番組_ts.m4a</c>(局プレフィックス無し。局・番組はフォルダを権威にする)</item>
+///   <item>C: <c>番組_ts.m4a</c>(局プレフィックス無し。局はフォルダ名を権威にする)</item>
 /// </list>
-/// 録音種別マーカーは既知許可リストに一致する末尾のものだけ剥がす(番組名やフォルダ名が
-/// 含む括弧を誤って切り落とさないため)。
+/// <b>番組の同一性(アルバム)は常にフォルダ名を拠り所にする</b>(ADR-0001)。ファイル名の
+/// 番組部は週替わりゲスト等で変動するため識別には使わない。録音種別マーカーは既知許可リストに
+/// 一致する末尾のものだけ剥がす(番組名やフォルダ名が含む括弧を誤って切り落とさないため)。
 /// </summary>
 public sealed class RajirekoImporter : ISourceImporter
 {
@@ -70,38 +72,25 @@ public sealed class RajirekoImporter : ISourceImporter
         }
         else
         {
-            // C 形状: 局プレフィックス無し → フォルダを権威にする。
+            // 局プレフィックス無し → フォルダを権威にする。
             rawStation = file.StationFolder;
             programPart = stem;
             stationFromFolder = true;
         }
 
+        // 録音種別マーカーはファイル名の番組部末尾から採る(番組名の識別には使わない)。
         var kind = StripTrailingRecordingKind(ref programPart);
-        programPart = programPart.Trim();
 
-        // 局がフォルダ由来(C)か、剥がした結果番組部が空なら、番組名もフォルダを権威にする。
-        string rawProgram;
-        bool programFromFolder;
-        if (stationFromFolder || programPart.Length == 0)
-        {
-            rawProgram = file.ProgramFolder;
-            programFromFolder = true;
-        }
-        else
-        {
-            rawProgram = programPart;
-            programFromFolder = false;
-        }
-
+        // 番組の同一性はフォルダ名を拠り所にする(ADR-0001)。ファイル名は週替わりゲスト等で
+        // 変動するため、識別には使わない。
         return new ParsedSource
         {
             RawStation = rawStation.Trim(),
-            RawProgram = rawProgram.Trim(),
+            RawProgram = file.ProgramFolder.Trim(),
             BroadcastDate = date,
             BroadcastTime = time,
             RecordingKind = kind,
             StationFromFolder = stationFromFolder,
-            ProgramFromFolder = programFromFolder,
         };
     }
 
