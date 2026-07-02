@@ -107,6 +107,28 @@ public sealed class SqliteLedgerTests : IDisposable
     }
 
     [Fact]
+    public void Migrates_OldSchemaWithoutBroadcastTime()
+    {
+        // 旧スキーマ(broadcast_time 列なし)の台帳を用意
+        using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "CREATE TABLE imports (identity_key TEXT PRIMARY KEY, station TEXT, program TEXT, " +
+                "broadcast_date TEXT, source_path TEXT, output_path TEXT, rule_version TEXT, " +
+                "used_fallback INTEGER, imported_at TEXT);";
+            cmd.ExecuteNonQuery();
+        }
+
+        // 新コードで開くと作り直され、例外なく使える
+        using var ledger = new SqliteLedger(DbPath);
+        ledger.Record(Entry(Key(), time: new TimeOnly(8, 30, 0)));
+
+        Assert.True(ledger.Contains(Key(), new TimeOnly(8, 30, 0)));
+    }
+
+    [Fact]
     public void MissingTime_IsWildcard_ForCrossSource()
     {
         using var ledger = new SqliteLedger(DbPath);

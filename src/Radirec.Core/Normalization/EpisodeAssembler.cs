@@ -22,6 +22,7 @@ public sealed class EpisodeAssembler(IStationResolver stationResolver, IProgramR
             Artist = artist,
             RecordingKind = source.RecordingKind,
             UsedFallback = station.UsedFallback || program.UsedFallback,
+            PartIndex = program.PartIndex,
         };
     }
 }

@@ -24,10 +24,11 @@ public sealed class LocalFolderTargetTests
         Extension = ".m4a",
     };
 
-    private static Episode Episode(TimeOnly? time = null) => new()
+    private static Episode Episode(TimeOnly? time = null, int? partIndex = null) => new()
     {
         Identity = new IdentityKey("J-WAVE", "LOGISTEED RADIONOMICS", new DateOnly(2026, 6, 12)),
         BroadcastTime = time,
+        PartIndex = partIndex,
     };
 
     private static NormalizedTags Tags() => new()
@@ -72,6 +73,23 @@ public sealed class LocalFolderTargetTests
         Assert.True(fs.File.Exists(SourcePath));               // 原本は非破壊
         Assert.Contains(partial, tagWriter.Written);           // タグはリネーム前(.partial)に書く
         Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12.m4a", final);
+    }
+
+    [Fact]
+    public async Task WriteAsync_WithPartIndex_AppendsPartSuffix()
+    {
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [SourcePath] = new MockFileData("audio-bytes"),
+        });
+        var sut = new LocalFolderTarget(fs, new FakeTagWriter(), Root);
+
+        // 同一アルバム・同一日でも由来フォルダのパート番号で別ファイルになる。
+        var p1 = await sut.WriteAsync(Source(), Episode(partIndex: 1), Tags());
+        var p2 = await sut.WriteAsync(Source(), Episode(partIndex: 2), Tags());
+
+        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12-1.m4a", p1);
+        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12-2.m4a", p2);
     }
 
     [Fact]

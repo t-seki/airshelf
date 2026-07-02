@@ -20,6 +20,9 @@ public sealed record Episode
     /// <summary>放送局または番組名を alias で解決できず生名にフォールバックしたか。</summary>
     public bool UsedFallback { get; init; }
 
+    /// <summary>複数フォルダ統合番組でのパート番号(1 始まり)。単一フォルダなら null。出力名の <c>-N</c> に使う。</summary>
+    public int? PartIndex { get; init; }
+
     public string Station => Identity.CanonicalStation;
     public string Program => Identity.CanonicalProgram;
     public DateOnly BroadcastDate => Identity.BroadcastDate;

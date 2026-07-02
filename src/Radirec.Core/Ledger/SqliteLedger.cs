@@ -40,6 +40,15 @@ public sealed class SqliteLedger : ILedger, IDisposable
 
     private void Initialize()
     {
+        // 台帳は再スキャンで再生成できる冪等性キャッシュ。旧スキーマ(broadcast_time 列なし)を
+        // 検知したら作り直す(複合 PK への変更は ALTER TABLE できないため)。
+        if (TableExists("imports") && !ColumnExists("imports", "broadcast_time"))
+        {
+            using var drop = _connection.CreateCommand();
+            drop.CommandText = "DROP TABLE imports;";
+            drop.ExecuteNonQuery();
+        }
+
         using var cmd = _connection.CreateCommand();
         cmd.CommandText =
             """
@@ -60,6 +69,22 @@ public sealed class SqliteLedger : ILedger, IDisposable
             CREATE INDEX IF NOT EXISTS ix_imports_source ON imports(source_path);
             """;
         cmd.ExecuteNonQuery();
+    }
+
+    private bool TableExists(string name)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=$n LIMIT 1;";
+        cmd.Parameters.AddWithValue("$n", name);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    private bool ColumnExists(string table, string column)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"SELECT 1 FROM pragma_table_info('{table}') WHERE name=$c LIMIT 1;";
+        cmd.Parameters.AddWithValue("$c", column);
+        return cmd.ExecuteScalar() is not null;
     }
 
     // 時刻を "HHmmss" で保持。時刻なし(radikool 等)は空文字 = ワイルドカード。

@@ -3,7 +3,11 @@ using Radirec.Core.Configuration;
 namespace Radirec.Core.Normalization;
 
 /// <summary>番組の生名 → 正規番組名の解決結果。</summary>
-public sealed record ProgramResolution(string Canonical, bool UsedFallback);
+/// <param name="PartIndex">
+/// 複数フォルダを統合した番組で、このフォルダが何番目のパートか(1 始まり)。統合でない場合 null。
+/// 出力ファイル名の <c>-N</c> サフィックスに使う。
+/// </param>
+public sealed record ProgramResolution(string Canonical, bool UsedFallback, int? PartIndex = null);
 
 public interface IProgramResolver
 {
@@ -17,17 +21,20 @@ public interface IProgramResolver
 /// </summary>
 public sealed class ProgramResolver : IProgramResolver
 {
-    private readonly Dictionary<(string Station, string Folder), string> _map = new();
+    private readonly Dictionary<(string Station, string Folder), (string Album, int? PartIndex)> _map = new();
 
     public ProgramResolver(ProgramMasterConfig config)
     {
         foreach (var entry in config.Programs)
         {
             var stationKey = TextNormalizer.ToMatchKey(entry.Match.Station);
-            foreach (var folder in entry.Match.Folders)
+            var folders = entry.Match.Folders;
+            for (var i = 0; i < folders.Count; i++)
             {
-                var key = (stationKey, TextNormalizer.ToMatchKey(folder));
-                _map[key] = entry.Canonical.Album;
+                var key = (stationKey, TextNormalizer.ToMatchKey(folders[i]));
+                // 複数フォルダを統合した番組のみパート番号(1 始まり)を持たせる。
+                var partIndex = folders.Count > 1 ? i + 1 : (int?)null;
+                _map[key] = (entry.Canonical.Album, partIndex);
             }
         }
     }
@@ -35,8 +42,8 @@ public sealed class ProgramResolver : IProgramResolver
     public ProgramResolution Resolve(string canonicalStation, string programFolder)
     {
         var key = (TextNormalizer.ToMatchKey(canonicalStation), TextNormalizer.ToMatchKey(programFolder));
-        return _map.TryGetValue(key, out var canonical)
-            ? new ProgramResolution(canonical, UsedFallback: false)
+        return _map.TryGetValue(key, out var hit)
+            ? new ProgramResolution(hit.Album, UsedFallback: false, PartIndex: hit.PartIndex)
             : new ProgramResolution(programFolder.Trim(), UsedFallback: true);
     }
 }
