@@ -23,7 +23,4 @@ public sealed record ParsedSource
 
     /// <summary>放送局をフォルダ名から採ったか(ファイル名に <c>[...]</c> が無い場合 true)。</summary>
     public bool StationFromFolder { get; init; }
-
-    /// <summary>番組名をフォルダ名から採ったか(ファイル名の構造が壊れている場合 true)。</summary>
-    public bool ProgramFromFolder { get; init; }
 }

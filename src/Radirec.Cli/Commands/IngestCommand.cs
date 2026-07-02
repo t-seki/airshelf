@@ -30,8 +30,19 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
             return 1;
         }
 
-        var config = ConfigLoader.LoadRequired<RadirecConfig>(settings.Config);
-        var (service, disposable) = CompositionRoot.Build(config, settings.DryRun);
+        RadirecConfig config;
+        IngestService service;
+        IDisposable? disposable;
+        try
+        {
+            config = ConfigLoader.LoadRequired<RadirecConfig>(settings.Config);
+            (service, disposable) = CompositionRoot.Build(config, settings.DryRun);
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[red]設定の読み込みに失敗しました:[/] {ex.Message}");
+            return 1;
+        }
 
         using (disposable)
         {

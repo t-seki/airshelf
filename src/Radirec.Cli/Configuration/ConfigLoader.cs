@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Radirec.Cli.Configuration;
 
@@ -10,6 +11,9 @@ public static class ConfigLoader
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         PropertyNameCaseInsensitive = true,
+        // 未知プロパティ(タイポや旧スキーマの Keys 等)を黙って無視せず失敗させる。
+        // サイレントに設定が失効するのを防ぐ。
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
     public static T LoadRequired<T>(string path)

@@ -282,27 +282,23 @@ stations:
     aliases: ["J-WAVE"]
 ```
 
-### 9.2 番組 alias(programs.yml)
-正規化キー(空白除去・大文字化など)から番組の正規名・追加タグを引く。複数フォルダ →
-1 正規番組の**手動マージ**を許可(ソース跨ぎ・表記ゆれの統合)。
-```yaml
-# programs.yml(例)
-defaults:
-  genre: "ラジオ"
-
-programs:
-  - match:
-      station: "J-WAVE"
-      keys: ["LOGISTEEDRADIONOMICS"]   # 正規化フォルダ名/番組名
-    canonical:
-      album: "LOGISTEED RADIONOMICS"
-  - match:
-      station: "J-WAVE"
-      keys: ["SONYSONPOQUESTFORTHEFUTURE"]  # 綴りゆれは同一フォルダに集約済み
-    canonical:
-      album: "SONY SONPO QUEST FOR THE FUTURE"
+### 9.2 番組 alias(programs.json)
+番組の同一性はフォルダ名([ADR-0001](adr/0001-program-identity-anchored-to-folder.md))。
+**フォルダ名**(`Folders`)から表示アルバム名(`Canonical.Album`)を引く。複数フォルダ →
+1 アルバムの**手動マージ**も可(照合キーは空白除去・大文字化で吸収)。
+```jsonc
+{
+  "Defaults": { "Genre": "ラジオ" },
+  "Programs": [
+    { "Match": { "Station": "J-WAVE", "Folders": ["LOGISTEEDRADIONOMICS"] },
+      "Canonical": { "Album": "LOGISTEED RADIONOMICS" } },
+    { "Match": { "Station": "TBSラジオ", "Folders": ["パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"] },
+      "Canonical": { "Album": "パンサー向井のふらっと" } }
+  ]
+}
 ```
 `albumartist` は放送局マスタで解決した正規局名を使う(番組 alias に重複記載しない)。
+未登録のフォルダはフォルダ名がそのままアルバム名になる(設定不要)。
 
 ### 9.3 環境設定(config)
 らじれこ RADIO ルート、radikool ルート、配信先ルート=`Z:\...`、Jellyfin API URL/トークン、

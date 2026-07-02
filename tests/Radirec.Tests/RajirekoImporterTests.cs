@@ -34,9 +34,7 @@ public sealed class RajirekoImporterTests
         Assert.Equal("TimeFree", r.RecordingKind);
         Assert.Equal(new DateOnly(2026, 6, 12), r.BroadcastDate);
         Assert.Equal(new TimeOnly(22, 30, 0), r.BroadcastTime);
-        Assert.False(r.StationFromFolder);
-        Assert.True(r.ProgramFromFolder);
-    }
+        Assert.False(r.StationFromFolder);    }
 
     // ---- 形状 B: [局]番組_ts(マーカー無し)----
 
@@ -52,9 +50,7 @@ public sealed class RajirekoImporterTests
         Assert.Equal("TBSラジオ", r.RawStation);
         Assert.Equal("アルコ＆ピースDCGARAGE", r.RawProgram);   // フォルダ名
         Assert.Null(r.RecordingKind);
-        Assert.Equal(new DateOnly(2025, 5, 28), r.BroadcastDate);
-        Assert.True(r.ProgramFromFolder);
-    }
+        Assert.Equal(new DateOnly(2025, 5, 28), r.BroadcastDate);    }
 
     // ---- 週替わりゲスト: ファイル名は違ってもフォルダが同じなら同じ番組 ----
 
@@ -94,9 +90,7 @@ public sealed class RajirekoImporterTests
         Assert.Null(r.RecordingKind);
         Assert.Equal(new DateOnly(2024, 11, 11), r.BroadcastDate);
         Assert.Equal(new TimeOnly(20, 9, 56), r.BroadcastTime);
-        Assert.True(r.StationFromFolder);
-        Assert.True(r.ProgramFromFolder);
-    }
+        Assert.True(r.StationFromFolder);    }
 
     // ---- 録音種別マーカー: 既知マーカーだけ剥がす(番組名の括弧は種別に誤認しない)----
 
