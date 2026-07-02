@@ -66,10 +66,11 @@ public sealed class LocalFolderTargetTests
 
         var final = await sut.WriteAsync(Source(), Episode(), Tags());
 
+        var partial = final[..^".m4a".Length] + ".partial.m4a"; // 拡張子を保った .partial 名
         Assert.True(fs.File.Exists(final));                    // 最終ファイルができる
-        Assert.False(fs.File.Exists(final + ".partial"));      // .partial は残らない
+        Assert.False(fs.File.Exists(partial));                 // .partial は残らない
         Assert.True(fs.File.Exists(SourcePath));               // 原本は非破壊
-        Assert.Contains(final + ".partial", tagWriter.Written); // タグはリネーム前(.partial)に書く
+        Assert.Contains(partial, tagWriter.Written);           // タグはリネーム前(.partial)に書く
         Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12.m4a", final);
     }
 

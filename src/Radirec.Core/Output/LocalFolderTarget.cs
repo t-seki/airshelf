@@ -27,7 +27,9 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
         fileSystem.Directory.CreateDirectory(dir);
 
         var finalPath = ResolveFinalPath(dir, episode, tags, source.Extension);
-        var partialPath = finalPath + ".partial";
+        // .partial は拡張子(.m4a)を保つ。TagLib は拡張子で形式判定するため
+        // "foo.m4a.partial" だと書き込めない。→ "foo.partial.m4a"。
+        var partialPath = PartialPathFor(finalPath);
 
         // 中断で残った .partial があれば掃除してからやり直す。
         if (fileSystem.File.Exists(partialPath))
@@ -48,6 +50,14 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
 
     private string DirectoryFor(NormalizedTags tags)
         => fileSystem.Path.Combine(outputRoot, Sanitize(tags.AlbumArtist), Sanitize(tags.Album));
+
+    private string PartialPathFor(string finalPath)
+    {
+        var dir = fileSystem.Path.GetDirectoryName(finalPath)!;
+        var name = fileSystem.Path.GetFileNameWithoutExtension(finalPath);
+        var ext = fileSystem.Path.GetExtension(finalPath);
+        return fileSystem.Path.Combine(dir, $"{name}.partial{ext}");
+    }
 
     private string ResolveFinalPath(string dir, Episode episode, NormalizedTags tags, string extension)
     {
