@@ -72,4 +72,17 @@ public sealed class SqliteLedgerTests : IDisposable
         using var reopened = new SqliteLedger(DbPath);
         Assert.True(reopened.Contains(key));
     }
+
+    [Fact]
+    public void Creates_MissingParentDirectory()
+    {
+        // 親ディレクトリが存在しないパスでも初回作成できる(サンプル設定の C:\ProgramData\radirec\... 相当)。
+        var nested = Path.Combine(_dir, "sub", "dir", "ledger.db");
+
+        using var ledger = new SqliteLedger(nested);
+        ledger.Record(Entry(Key()));
+
+        Assert.True(File.Exists(nested));
+        Assert.True(ledger.Contains(Key()));
+    }
 }

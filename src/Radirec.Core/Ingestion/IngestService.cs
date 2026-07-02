@@ -71,22 +71,30 @@ public sealed class IngestService(
             return Result(IngestOutcome.Planned, file, episode, plannedPath, episode.UsedFallback);
         }
 
-        var outputPath = await target.WriteAsync(file, episode, tags, cancellationToken);
-
-        ledger.Record(new LedgerEntry
+        try
         {
-            IdentityKey = episode.Identity.Value,
-            Station = episode.Station,
-            Program = episode.Program,
-            BroadcastDate = episode.BroadcastDate,
-            SourcePath = file.FilePath,
-            OutputPath = outputPath,
-            RuleVersion = NormalizationRuleVersion.Current,
-            UsedFallback = episode.UsedFallback,
-            ImportedAtUtc = clock.GetUtcNow(),
-        });
+            var outputPath = await target.WriteAsync(file, episode, tags, cancellationToken);
 
-        return Result(IngestOutcome.Imported, file, episode, outputPath, episode.UsedFallback);
+            ledger.Record(new LedgerEntry
+            {
+                IdentityKey = episode.Identity.Value,
+                Station = episode.Station,
+                Program = episode.Program,
+                BroadcastDate = episode.BroadcastDate,
+                SourcePath = file.FilePath,
+                OutputPath = outputPath,
+                RuleVersion = NormalizationRuleVersion.Current,
+                UsedFallback = episode.UsedFallback,
+                ImportedAtUtc = clock.GetUtcNow(),
+            });
+
+            return Result(IngestOutcome.Imported, file, episode, outputPath, episode.UsedFallback);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 1 ファイルの書き込み/タグ/台帳失敗で走査全体を止めない。当該ファイルのみ失敗扱い。
+            return Result(IngestOutcome.Failed, file, episode, message: ex.Message);
+        }
     }
 
     private string? SafeReadArtist(string filePath)

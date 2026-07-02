@@ -51,11 +51,19 @@ public sealed class IngestServiceTests
         public string? ReadArtist(string filePath) => artist;
     }
 
+    private sealed class ThrowingOutputTarget : IOutputTarget
+    {
+        public string PlanPath(RecordingFile s, Episode e, NormalizedTags t) => "/out/plan.m4a";
+        public Task<string> WriteAsync(RecordingFile s, Episode e, NormalizedTags t, CancellationToken ct = default)
+            => throw new IOException("NAS 書き込み失敗(テスト)");
+    }
+
     private readonly FakeLedger _ledger = new();
     private readonly FakeOutputTarget _target = new();
 
     private IngestService Build(
-        IEnumerable<RecordingFile> files, IEnumerable<string>? skipPatterns = null)
+        IEnumerable<RecordingFile> files, IEnumerable<string>? skipPatterns = null,
+        IOutputTarget? target = null)
         => new(
             new FakeRecordingSource(files.ToArray()),
             new RajirekoImporter(),
@@ -65,7 +73,7 @@ public sealed class IngestServiceTests
             new EpisodeAssembler(
                 new StationResolver(new StationMasterConfig()),
                 new ProgramResolver(new ProgramMasterConfig())),
-            _target,
+            target ?? _target,
             _ledger,
             new FixedClock(Now),
             genre: "ラジオ");
@@ -149,5 +157,22 @@ public sealed class IngestServiceTests
         var report = await Build([Rec(StandardName, ageSeconds: 5)]).RunOnceAsync(dryRun: false);
 
         Assert.Equal(1, report.Count(IngestOutcome.SkippedUnstable));
+    }
+
+    [Fact]
+    public async Task WriteFailure_IsReportedAsFailed_AndDoesNotAbortRun()
+    {
+        var files = new[]
+        {
+            Rec("[J-WAVE]番組A(TimeFree)_20260612223000.m4a", program: "AAA"),
+            Rec("[J-WAVE]番組B(TimeFree)_20260613223000.m4a", program: "BBB"),
+        };
+
+        var report = await Build(files, target: new ThrowingOutputTarget()).RunOnceAsync(dryRun: false);
+
+        // 1 件目が失敗しても 2 件目まで走査が続き、両方 Failed として報告される。
+        Assert.Equal(2, report.Items.Count);
+        Assert.Equal(2, report.Count(IngestOutcome.Failed));
+        Assert.Empty(_ledger.Keys); // 失敗は台帳に記録しない
     }
 }

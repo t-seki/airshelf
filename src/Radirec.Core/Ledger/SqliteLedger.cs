@@ -13,14 +13,29 @@ public sealed class SqliteLedger : ILedger, IDisposable
     private readonly SqliteConnection _connection;
 
     /// <param name="databasePath">台帳 DB のパス(ローカルディスク)。</param>
-    public SqliteLedger(string databasePath)
+    /// <param name="readOnly">
+    /// true の場合、既存 DB を読み取り専用で開き、ファイル/ディレクトリを作成しない(dry-run 用)。
+    /// 呼び出し側はファイル存在を保証すること。
+    /// </param>
+    public SqliteLedger(string databasePath, bool readOnly = false)
     {
+        if (!readOnly)
+        {
+            // 親ディレクトリが無ければ作る(Microsoft.Data.Sqlite はフォルダを作らない)。
+            var directory = Path.GetDirectoryName(databasePath);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
+        }
+
         _connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
+            Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWriteCreate,
         }.ToString());
         _connection.Open();
-        Initialize();
+
+        if (!readOnly)
+            Initialize();
     }
 
     private void Initialize()

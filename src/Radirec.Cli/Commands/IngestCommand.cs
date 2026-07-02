@@ -31,9 +31,9 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
         }
 
         var config = ConfigLoader.LoadRequired<RadirecConfig>(settings.Config);
-        var (service, ledger) = CompositionRoot.Build(config);
+        var (service, disposable) = CompositionRoot.Build(config, settings.DryRun);
 
-        using (ledger)
+        using (disposable)
         {
             var report = await service.RunOnceAsync(settings.DryRun, cancellationToken);
             Render(report);
