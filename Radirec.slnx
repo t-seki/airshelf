@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Radirec.Cli/Radirec.Cli.csproj" />
+    <Project Path="src/Radirec.Core/Radirec.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Radirec.Tests/Radirec.Tests.csproj" />
+  </Folder>
+</Solution>
