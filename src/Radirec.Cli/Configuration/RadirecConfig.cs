@@ -1,0 +1,32 @@
+namespace Radirec.Cli.Configuration;
+
+/// <summary>環境設定(radirec.json)。個人固有値はここに集約しコードにハードコードしない。</summary>
+public sealed class RadirecConfig
+{
+    /// <summary>らじれこ出力ルート(例 <c>I:\radio\tmp</c>)。</summary>
+    public string RadioRoot { get; set; } = string.Empty;
+
+    /// <summary>配信先ルート(ローカル or UNC。例 <c>\\host\share\media\radio</c>)。</summary>
+    public string OutputRoot { get; set; } = string.Empty;
+
+    /// <summary>台帳 DB パス(ローカルディスク。SMB には置かない)。</summary>
+    public string LedgerPath { get; set; } = "ledger.db";
+
+    /// <summary>安定判定の待機秒数。</summary>
+    public int StabilitySeconds { get; set; } = 15;
+
+    /// <summary>既定ジャンル(programs.json の Defaults.Genre が優先)。</summary>
+    public string Genre { get; set; } = "ラジオ";
+
+    /// <summary>ジャンク録音を除外するファイル名部分一致パターン。</summary>
+    public List<string> SkipPatterns { get; set; } = [];
+
+    /// <summary>剥がしてよい録音種別マーカーの許可リスト。</summary>
+    public List<string> KnownRecordingKinds { get; set; } = ["TimeFree"];
+
+    /// <summary>放送局マスタのパス。</summary>
+    public string StationsFile { get; set; } = "stations.json";
+
+    /// <summary>番組 alias のパス。</summary>
+    public string ProgramsFile { get; set; } = "programs.json";
+}

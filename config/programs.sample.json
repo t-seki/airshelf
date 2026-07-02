@@ -1,0 +1,12 @@
+{
+  "Defaults": { "Genre": "ラジオ" },
+  "Programs": [
+    {
+      "Match": {
+        "Station": "J-WAVE",
+        "Keys": [ "SONYSONPOQUESTFORTHEFUTURE", "SONY SONPO QUEST FOR THE FUTURE" ]
+      },
+      "Canonical": { "Album": "SONY SONPO QUEST FOR THE FUTURE" }
+    }
+  ]
+}

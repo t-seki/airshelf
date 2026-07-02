@@ -1,0 +1,9 @@
+{
+  "Stations": [
+    { "Canonical": "ニッポン放送", "Aliases": [ "LFR" ] },
+    { "Canonical": "文化放送", "Aliases": [ "QRR" ] },
+    { "Canonical": "TOKYO FM", "Aliases": [ "FMT", "fm_tokyo", "TOKYOFM" ] },
+    { "Canonical": "NHK-FM", "Aliases": [ "JOAK-FM" ] },
+    { "Canonical": "NHKラジオ第1", "Aliases": [ "NHKラジオ第1(radiko)" ] }
+  ]
+}

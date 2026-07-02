@@ -1,0 +1,127 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+using Radirec.Core.Model;
+
+namespace Radirec.Core.Sources;
+
+/// <summary>
+/// らじれこ出力(M4A)の importer。<b>末尾タイムスタンプ <c>_{YYYYMMDDHHMMSS}</c> を唯一の
+/// 普遍アンカー</b>にして解析する(実データ 2176 件で検証した 3 形状に対応):
+/// <list type="bullet">
+///   <item>A: <c>[局]番組(TimeFree)_ts.m4a</c>(標準)</item>
+///   <item>B: <c>[局]番組_ts.m4a</c>(録音種別マーカー無し)</item>
+///   <item>C: <c>番組_ts.m4a</c>(局プレフィックス無し。局・番組はフォルダを権威にする)</item>
+/// </list>
+/// 録音種別マーカーは既知許可リストに一致する末尾のものだけ剥がす(番組名やフォルダ名が
+/// 含む括弧を誤って切り落とさないため)。
+/// </summary>
+public sealed class RajirekoImporter : ISourceImporter
+{
+    private static readonly Regex TimestampSuffix =
+        new(@"_(?<ts>[0-9]{14})\.[^.]+$", RegexOptions.Compiled);
+
+    private readonly IReadOnlyList<string> _knownRecordingKinds;
+
+    /// <param name="knownRecordingKinds">
+    /// 剥がしてよい録音種別マーカーの許可リスト(既定 <c>TimeFree</c>)。config で拡張可能。
+    /// </param>
+    public RajirekoImporter(IEnumerable<string>? knownRecordingKinds = null)
+        => _knownRecordingKinds = (knownRecordingKinds ?? ["TimeFree"]).ToArray();
+
+    public bool CanHandle(RecordingFile file)
+        => file.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
+           && TimestampSuffix.IsMatch(file.FileName);
+
+    public ParsedSource Parse(RecordingFile file)
+    {
+        var name = file.FileName;
+
+        var match = TimestampSuffix.Match(name);
+        if (!match.Success)
+            throw new SourceParseException($"末尾タイムスタンプが見つかりません: {name}");
+
+        var ts = match.Groups["ts"].Value;
+        if (!DateTime.TryParseExact(
+                ts, "yyyyMMddHHmmss", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var broadcast))
+        {
+            throw new SourceParseException($"放送日時が不正です ({ts}): {name}");
+        }
+
+        var date = DateOnly.FromDateTime(broadcast);
+        var time = TimeOnly.FromDateTime(broadcast);
+
+        // ファイル名から末尾 "_{14桁}.ext" を除いた部分。
+        var stem = name[..match.Index];
+
+        string rawStation;
+        string programPart;
+        bool stationFromFolder;
+
+        if (stem.StartsWith('['))
+        {
+            var close = stem.IndexOf(']');
+            if (close < 0)
+                throw new SourceParseException($"放送局括弧 ']' が閉じていません: {name}");
+
+            rawStation = stem[1..close];
+            programPart = stem[(close + 1)..];
+            stationFromFolder = false;
+        }
+        else
+        {
+            // C 形状: 局プレフィックス無し → フォルダを権威にする。
+            rawStation = file.StationFolder;
+            programPart = stem;
+            stationFromFolder = true;
+        }
+
+        var kind = StripTrailingRecordingKind(ref programPart);
+        programPart = programPart.Trim();
+
+        // 局がフォルダ由来(C)か、剥がした結果番組部が空なら、番組名もフォルダを権威にする。
+        string rawProgram;
+        bool programFromFolder;
+        if (stationFromFolder || programPart.Length == 0)
+        {
+            rawProgram = file.ProgramFolder;
+            programFromFolder = true;
+        }
+        else
+        {
+            rawProgram = programPart;
+            programFromFolder = false;
+        }
+
+        return new ParsedSource
+        {
+            RawStation = rawStation.Trim(),
+            RawProgram = rawProgram.Trim(),
+            BroadcastDate = date,
+            BroadcastTime = time,
+            RecordingKind = kind,
+            StationFromFolder = stationFromFolder,
+            ProgramFromFolder = programFromFolder,
+        };
+    }
+
+    /// <summary>
+    /// 番組部の末尾が既知マーカー <c>(Kind)</c> なら剥がして種別を返す。無ければ null。
+    /// 任意の末尾括弧は剥がさない(番組名の括弧を守る)。
+    /// </summary>
+    private string? StripTrailingRecordingKind(ref string programPart)
+    {
+        var trimmed = programPart.TrimEnd();
+        foreach (var kind in _knownRecordingKinds)
+        {
+            var marker = $"({kind})";
+            if (trimmed.EndsWith(marker, StringComparison.Ordinal))
+            {
+                programPart = trimmed[..^marker.Length];
+                return kind;
+            }
+        }
+
+        return null;
+    }
+}
