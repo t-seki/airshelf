@@ -1,0 +1,15 @@
+{
+  "RadioRoot": "I:\\radio\\tmp",
+  "OutputRoot": "\\\\192.168.11.121\\share\\media\\radio",
+  "LedgerPath": "C:\\ProgramData\\radirec\\ledger.db",
+  "StabilitySeconds": 15,
+  "Genre": "ラジオ",
+  "SkipPatterns": [
+    "この時間はＮＨＫネットラジオでは"
+  ],
+  "KnownRecordingKinds": [
+    "TimeFree"
+  ],
+  "StationsFile": "config/stations.json",
+  "ProgramsFile": "config/programs.json"
+}

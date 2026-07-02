@@ -21,6 +21,11 @@ appsettings.Local.json
 secrets.json
 *.secret
 config.local.*
+# 個人の実設定(*.sample.json からコピーして作る)
+/radirec.json
+/config/radirec.json
+/config/stations.json
+/config/programs.json
 
 # --- 実行時データ ---
 *.db
