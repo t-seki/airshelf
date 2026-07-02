@@ -36,6 +36,9 @@ RADIO/
 records/
 *.m4a
 *.mp3
+# ただしテストフィクスチャ(著作権フリーの無音)は追跡する
+!tests/Radirec.Tests/Fixtures/
+!tests/Radirec.Tests/Fixtures/*.m4a
 
 # --- OS ---
 .DS_Store
