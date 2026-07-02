@@ -59,8 +59,9 @@ public sealed class IngestService(
         var artist = SafeReadArtist(file.FilePath);
         var episode = assembler.Assemble(parsed, artist);
 
-        // import-once: 同一性キー または 同一ソースパスが既にあればスキップ。
-        if (ledger.Contains(episode.Identity) || ledger.ContainsSource(file.FilePath))
+        // import-once: 同一性キー(+放送時刻)または 同一ソースパスが既にあればスキップ。
+        // 同日でも時刻が異なる別放送は取り込む(ADR-0002)。
+        if (ledger.Contains(episode.Identity, episode.BroadcastTime) || ledger.ContainsSource(file.FilePath))
             return Result(IngestOutcome.SkippedAlreadyImported, file, episode);
 
         var tags = TagMapper.Map(episode, genre);
@@ -81,6 +82,7 @@ public sealed class IngestService(
                 Station = episode.Station,
                 Program = episode.Program,
                 BroadcastDate = episode.BroadcastDate,
+                BroadcastTime = episode.BroadcastTime,
                 SourcePath = file.FilePath,
                 OutputPath = outputPath,
                 RuleVersion = NormalizationRuleVersion.Current,

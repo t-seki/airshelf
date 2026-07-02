@@ -45,7 +45,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
             """
             PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS imports (
-                identity_key   TEXT PRIMARY KEY,
+                identity_key   TEXT NOT NULL,
+                broadcast_time TEXT NOT NULL DEFAULT '',
                 station        TEXT NOT NULL,
                 program        TEXT NOT NULL,
                 broadcast_date TEXT NOT NULL,
@@ -53,22 +54,39 @@ public sealed class SqliteLedger : ILedger, IDisposable
                 output_path    TEXT NOT NULL,
                 rule_version   TEXT NOT NULL,
                 used_fallback  INTEGER NOT NULL,
-                imported_at    TEXT NOT NULL
+                imported_at    TEXT NOT NULL,
+                PRIMARY KEY (identity_key, broadcast_time)
             );
             CREATE INDEX IF NOT EXISTS ix_imports_source ON imports(source_path);
             """;
         cmd.ExecuteNonQuery();
     }
 
-    public bool Contains(IdentityKey key) => Exists("identity_key", key.Value);
+    // 時刻を "HHmmss" で保持。時刻なし(radikool 等)は空文字 = ワイルドカード。
+    private static string TimeKey(TimeOnly? time) =>
+        time?.ToString("HHmmss", CultureInfo.InvariantCulture) ?? string.Empty;
 
-    public bool ContainsSource(string sourcePath) => Exists("source_path", sourcePath);
-
-    private bool Exists(string column, string value)
+    public bool Contains(IdentityKey key, TimeOnly? broadcastTime)
     {
         using var cmd = _connection.CreateCommand();
-        cmd.CommandText = $"SELECT 1 FROM imports WHERE {column} = $v LIMIT 1;";
-        cmd.Parameters.AddWithValue("$v", value);
+        // 同一キーで、時刻が一致 / 既存が時刻なし / 今回が時刻なし のいずれかなら取込済みとみなす。
+        cmd.CommandText =
+            """
+            SELECT 1 FROM imports
+            WHERE identity_key = $id
+              AND (broadcast_time = $t OR broadcast_time = '' OR $t = '')
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("$id", key.Value);
+        cmd.Parameters.AddWithValue("$t", TimeKey(broadcastTime));
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    public bool ContainsSource(string sourcePath)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM imports WHERE source_path = $v LIMIT 1;";
+        cmd.Parameters.AddWithValue("$v", sourcePath);
         return cmd.ExecuteScalar() is not null;
     }
 
@@ -78,12 +96,13 @@ public sealed class SqliteLedger : ILedger, IDisposable
         cmd.CommandText =
             """
             INSERT OR IGNORE INTO imports
-                (identity_key, station, program, broadcast_date, source_path,
+                (identity_key, broadcast_time, station, program, broadcast_date, source_path,
                  output_path, rule_version, used_fallback, imported_at)
             VALUES
-                ($id, $station, $program, $date, $source, $output, $rule, $fallback, $imported);
+                ($id, $time, $station, $program, $date, $source, $output, $rule, $fallback, $imported);
             """;
         cmd.Parameters.AddWithValue("$id", entry.IdentityKey);
+        cmd.Parameters.AddWithValue("$time", TimeKey(entry.BroadcastTime));
         cmd.Parameters.AddWithValue("$station", entry.Station);
         cmd.Parameters.AddWithValue("$program", entry.Program);
         cmd.Parameters.AddWithValue("$date", entry.BroadcastDate.ToString(DateFormat, CultureInfo.InvariantCulture));
