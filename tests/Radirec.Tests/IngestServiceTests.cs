@@ -1,5 +1,6 @@
 using Radirec.Core.Configuration;
 using Radirec.Core.Ingestion;
+using Radirec.Core.Jellyfin;
 using Radirec.Core.Ledger;
 using Radirec.Core.Model;
 using Radirec.Core.Normalization;
@@ -64,8 +65,21 @@ public sealed class IngestServiceTests
             => throw new IOException("NAS 書き込み失敗(テスト)");
     }
 
+    private sealed class FakeRefresher : ILibraryRefresher
+    {
+        public int Calls { get; private set; }
+        public Exception? Throws { get; set; }
+
+        public Task RefreshAsync(CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Throws is null ? Task.CompletedTask : throw Throws;
+        }
+    }
+
     private readonly FakeLedger _ledger = new();
     private readonly FakeOutputTarget _target = new();
+    private readonly FakeRefresher _refresher = new();
 
     private IngestService Build(
         IEnumerable<RecordingFile> files, IEnumerable<string>? skipPatterns = null,
@@ -82,7 +96,8 @@ public sealed class IngestServiceTests
             target ?? _target,
             _ledger,
             new FixedClock(Now),
-            genre: "ラジオ");
+            genre: "ラジオ",
+            _refresher);
 
     private static RecordingFile Rec(
         string name, string station = "J-WAVE", string program = "LOGISTEEDRADIONOMICS",
@@ -196,5 +211,63 @@ public sealed class IngestServiceTests
         Assert.Equal(2, report.Items.Count);
         Assert.Equal(2, report.Count(IngestOutcome.Failed));
         Assert.Empty(_ledger.Keys); // 失敗は台帳に記録しない
+    }
+
+    [Fact]
+    public async Task Run_WithImport_TriggersLibraryRefresh()
+    {
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, _refresher.Calls);
+        Assert.True(report.LibraryRefreshed);
+        Assert.Null(report.RefreshError);
+    }
+
+    [Fact]
+    public async Task DryRun_DoesNotRefresh()
+    {
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true);
+
+        Assert.Equal(0, _refresher.Calls);
+        Assert.False(report.LibraryRefreshed);
+    }
+
+    [Fact]
+    public async Task Run_NoImports_DoesNotRefresh()
+    {
+        // ジャンクのみ = 取込0件 → リフレッシュは起動しない。
+        var junk = Rec("この時間はＮＨＫネットラジオでは_20241021200956.m4a");
+        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(0, _refresher.Calls);
+        Assert.False(report.LibraryRefreshed);
+    }
+
+    [Fact]
+    public async Task Run_RefreshFailure_DoesNotFailImport_ButReportsError()
+    {
+        _refresher.Throws = new JellyfinException("boom");
+
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+
+        // 取り込み自体は成功(台帳記録済み)。更新失敗はエラーとして報告するが巻き戻さない。
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.Single(_ledger.Keys);
+        Assert.False(report.LibraryRefreshed);
+        Assert.Equal("boom", report.RefreshError);
+    }
+
+    [Fact]
+    public async Task Run_RefreshTimeout_IsCaughtAsError_NotPropagated()
+    {
+        // HttpClient のタイムアウトは TaskCanceledException(OperationCanceledException のサブクラス)。
+        // 外部キャンセルではないので、伝播させず失敗として握ること。
+        _refresher.Throws = new TaskCanceledException("timeout");
+
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.False(report.LibraryRefreshed);
+        Assert.Equal("timeout", report.RefreshError);
     }
 }

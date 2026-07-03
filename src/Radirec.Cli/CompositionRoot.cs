@@ -2,6 +2,7 @@ using System.IO.Abstractions;
 using Radirec.Cli.Configuration;
 using Radirec.Core.Configuration;
 using Radirec.Core.Ingestion;
+using Radirec.Core.Jellyfin;
 using Radirec.Core.Ledger;
 using Radirec.Core.Normalization;
 using Radirec.Core.Output;
@@ -27,7 +28,13 @@ public static class CompositionRoot
             new StationResolver(stations),
             new ProgramResolver(programs));
 
-        var (ledger, disposable) = BuildLedger(config.LedgerPath, dryRun);
+        var (ledger, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
+
+        // dry-run はリフレッシュしないので Jellyfin 接続を作らない。
+        ILibraryRefresher refresher = new NullLibraryRefresher();
+        IDisposable? refresherDisposable = null;
+        if (!dryRun)
+            (refresher, refresherDisposable) = BuildRefresher(config);
 
         // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> radirec.json の Genre > 既定。
         var genre = string.IsNullOrWhiteSpace(programs.Defaults.Genre)
@@ -46,9 +53,45 @@ public static class CompositionRoot
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), config.OutputRoot),
             ledger,
             TimeProvider.System,
-            genre);
+            genre,
+            refresher);
 
-        return (service, disposable);
+        return (service, Combine(ledgerDisposable, refresherDisposable));
+    }
+
+    /// <summary>
+    /// config から Jellyfin リフレッシャを組み立てる(<c>refresh</c> コマンドでも再利用)。
+    /// URL / API キーが未設定なら <see cref="NullLibraryRefresher"/>(何もしない)を返す。
+    /// </summary>
+    public static (ILibraryRefresher Refresher, IDisposable? Disposable) BuildRefresher(RadirecConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(config.JellyfinUrl) || string.IsNullOrWhiteSpace(config.JellyfinApiKey))
+            return (new NullLibraryRefresher(), null);
+
+        // BaseAddress は末尾スラッシュ必須("Library/Refresh" 相対解決のため)。
+        // URL が不正形式でも取り込み(主機能)をブロックしない。リフレッシュだけ無効化する。
+        if (!Uri.TryCreate(config.JellyfinUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+            return (new NullLibraryRefresher(), null);
+
+        // 既定 100 秒だと更新遅延時に取込コマンドが長く固まるため、明示的に短くする。
+        var http = new HttpClient { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(30) };
+        return (new JellyfinLibraryRefresher(http, config.JellyfinApiKey), http);
+    }
+
+    private static IDisposable? Combine(IDisposable? a, IDisposable? b)
+    {
+        if (a is null) return b;
+        if (b is null) return a;
+        return new CompositeDisposable(a, b);
+    }
+
+    private sealed class CompositeDisposable(params IDisposable[] items) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var item in items)
+                item.Dispose();
+        }
     }
 
     private static (ILedger Ledger, IDisposable? Disposable) BuildLedger(string ledgerPath, bool dryRun)

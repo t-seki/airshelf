@@ -33,6 +33,8 @@ config/programs.sample.json  → config/programs.json (番組 alias)
 | `SkipPatterns` | 除外するファイル名部分一致(ジャンク録音) | `["この時間はＮＨＫネットラジオでは"]` |
 | `KnownRecordingKinds` | 剥がしてよい録音種別マーカー | `["TimeFree"]` |
 | `Genre` | 既定ジャンル | `ラジオ` |
+| `JellyfinUrl` | Jellyfin ルート URL(未設定なら更新しない) | `https://jellyfin.example.net` |
+| `JellyfinApiKey` | Jellyfin API キー(ダッシュボード → API キー) | `xxxxxxxx…` |
 
 > 設定ファイルは JSON ですが、`//` コメントと末尾カンマを許容します。
 
@@ -63,6 +65,18 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 | 失敗 | パース/コピー等に失敗 |
 
 `(fallback)` は、放送局または番組名が alias 未登録で生名を採用したことを示します。
+
+### Jellyfin ライブラリ更新
+
+`JellyfinUrl` / `JellyfinApiKey` を設定しておくと、**取込が1件以上あった実行の最後に自動で
+Jellyfin の全ライブラリスキャンを起動**します(`POST /Library/Refresh`。dry-run では起動しません)。
+更新の失敗は取り込み成功を巻き戻さず、警告として表示します。
+
+手動で更新だけ起動したいときは `refresh` コマンド(疎通確認にも便利):
+
+```powershell
+radirec refresh --config radirec.json
+```
 
 ## 4. 取り込みの挙動
 

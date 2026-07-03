@@ -11,5 +11,8 @@
     "TimeFree"
   ],
   "StationsFile": "config/stations.json",
-  "ProgramsFile": "config/programs.json"
+  "ProgramsFile": "config/programs.json",
+
+  "JellyfinUrl": "",
+  "JellyfinApiKey": ""
 }
