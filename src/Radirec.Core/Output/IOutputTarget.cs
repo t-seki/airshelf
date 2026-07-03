@@ -13,4 +13,7 @@ public interface IOutputTarget
     /// <summary>原本を非破壊コピーしてタグを書き、確定パスを返す。</summary>
     Task<string> WriteAsync(
         RecordingFile source, Episode episode, NormalizedTags tags, CancellationToken cancellationToken = default);
+
+    /// <summary>中断で残った孤児テンポラリを掃除し、削除数を返す(サービス起動時。ADR-0003)。</summary>
+    int CleanupOrphans();
 }

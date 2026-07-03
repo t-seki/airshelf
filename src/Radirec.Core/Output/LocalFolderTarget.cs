@@ -49,6 +49,31 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
         return finalPath;
     }
 
+    public int CleanupOrphans()
+    {
+        if (!fileSystem.Directory.Exists(outputRoot))
+            return 0;
+
+        var count = 0;
+        foreach (var file in fileSystem.Directory.EnumerateFiles(outputRoot, "*.partial.*", SearchOption.AllDirectories))
+        {
+            // 検索パターンの曖昧さを避け、命名規約(".partial." を含む)を明示的に確認。
+            if (!fileSystem.Path.GetFileName(file).Contains(".partial."))
+                continue;
+            try
+            {
+                fileSystem.File.Delete(file);
+                count++;
+            }
+            catch
+            {
+                // 掃除失敗は致命的でない(次回の書き込みで上書き・再試行される)。
+            }
+        }
+
+        return count;
+    }
+
     private string DirectoryFor(NormalizedTags tags)
         => fileSystem.Path.Combine(outputRoot, Sanitize(tags.AlbumArtist), Sanitize(tags.Album));
 

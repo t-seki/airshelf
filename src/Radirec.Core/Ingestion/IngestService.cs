@@ -24,6 +24,9 @@ public sealed class IngestService(
     string genre,
     ILibraryRefresher refresher)
 {
+    /// <summary>中断で残った孤児テンポラリを掃除する(サービス起動時に呼ぶ。ADR-0003)。</summary>
+    public int CleanupOrphans() => target.CleanupOrphans();
+
     public async Task<IngestReport> RunOnceAsync(bool dryRun, CancellationToken cancellationToken = default)
     {
         var items = new List<IngestItemResult>();
@@ -87,13 +90,17 @@ public sealed class IngestService(
             return Result(IngestOutcome.Failed, file, message: ex.Message);
         }
 
-        var artist = SafeReadArtist(file.FilePath);
-        var episode = assembler.Assemble(parsed, artist);
+        // 同一性(局/番組/日時)は出演者タグ無しで決まる。先に台帳判定し、既取込なら
+        // タグを読まずにスキップする(常駐キャッチアップスキャン/dry-run の高速化。ADR-0003)。
+        var episode = assembler.Assemble(parsed);
 
         // import-once: 同一性キー(+放送時刻)または 同一ソースパスが既にあればスキップ。
         // 同日でも時刻が異なる別放送は取り込む(ADR-0002)。
         if (ledger.Contains(episode.Identity, episode.BroadcastTime) || ledger.ContainsSource(file.FilePath))
             return Result(IngestOutcome.SkippedAlreadyImported, file, episode);
+
+        // 未取込のときだけ出演者タグを読む。
+        episode = episode with { Artist = SafeReadArtist(file.FilePath) };
 
         var tags = TagMapper.Map(episode, genre);
 
