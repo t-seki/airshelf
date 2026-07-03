@@ -21,5 +21,7 @@ builder.Services.AddHostedService<RadioMonitorWorker>();
 
 // コンソール無し前提: Windows イベントログへ出力(対話実行時はコンソールにも出る)。
 builder.Logging.AddEventLog(settings => settings.SourceName = "Radirec");
+// EventLog プロバイダの既定は Warning 以上。サービスの動作(取込件数等)を Information で残す。
+builder.Logging.AddFilter<Microsoft.Extensions.Logging.EventLog.EventLogLoggerProvider>(null, LogLevel.Information);
 
 builder.Build().Run();
