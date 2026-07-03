@@ -28,13 +28,20 @@ public sealed class ProgramResolver : IProgramResolver
         foreach (var entry in config.Programs)
         {
             var stationKey = TextNormalizer.ToMatchKey(entry.Match.Station);
-            var folders = entry.Match.Folders;
-            for (var i = 0; i < folders.Count; i++)
+
+            // 正規化キーで重複排除(表記ゆれの同一フォルダを 1 つに畳む)。パート番号は
+            // **異なる**フォルダが 2 つ以上ある場合のみ、その並び順で 1 始まりに振る。
+            var folderKeys = entry.Match.Folders
+                .Select(TextNormalizer.ToMatchKey)
+                .Where(k => !string.IsNullOrEmpty(k))
+                .Distinct()
+                .ToList();
+            var multiPart = folderKeys.Count > 1;
+
+            for (var i = 0; i < folderKeys.Count; i++)
             {
-                var key = (stationKey, TextNormalizer.ToMatchKey(folders[i]));
-                // 複数フォルダを統合した番組のみパート番号(1 始まり)を持たせる。
-                var partIndex = folders.Count > 1 ? i + 1 : (int?)null;
-                _map[key] = (entry.Canonical.Album, partIndex);
+                var partIndex = multiPart ? i + 1 : (int?)null;
+                _map[(stationKey, folderKeys[i])] = (entry.Canonical.Album, partIndex);
             }
         }
     }

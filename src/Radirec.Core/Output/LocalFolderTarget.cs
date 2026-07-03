@@ -5,7 +5,8 @@ namespace Radirec.Core.Output;
 
 /// <summary>
 /// ローカル/UNC フォルダへ配置する出力先。ディレクトリ <c>{放送局}/{番組}/</c>、ファイル名
-/// <c>{番組} {YYYY-MM-DD}.{ext}</c>(衝突時のみ時刻付与)。書き込みは
+/// <c>{番組} {YYYY-MM-DD}.{ext}</c>。統合番組の同日パートは <c>-N</c> を付す(<c>… YYYY-MM-DD-1</c>)。
+/// パート番号の無い想定外の同日衝突は時刻を保険に付す。書き込みは
 /// テンポラリ(<c>.partial</c>)→ タグ付与 → 同一ディレクトリ内リネームでアトミックに確定する。
 /// </summary>
 public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWriter, string outputRoot)

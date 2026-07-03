@@ -408,7 +408,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
       直接**(`Tag.Year` は使わない)。
 - [ ] 実機で Jellyfin のアルバム内トラック順が `(disc, track)` 順になることの確認。
 - [ ] 監視/ポーリング間隔・安定判定待機秒数の初期値。
-- [ ] 同日 2 放送時の `track`/`title` 衝突回避ルール。
+- [x] 同日 2 放送時の `track`/`title`/ファイル名の衝突回避([ADR-0002](adr/0002-same-day-tiebreak-by-time.md)):
+      パート番号(`-N` / `track=MMDD*10+N` / `title (N)`)+ 時刻 dedup で解決済み。
 - [ ] コード/リポジトリの配置(`C:\dev\radirec-tool` 等)と .NET SDK バージョン。
 - [ ] TagLib# で MP3 ID3 側の §6 マッピングが書けることの実地確認(radikool / M4 スコープ)。
 

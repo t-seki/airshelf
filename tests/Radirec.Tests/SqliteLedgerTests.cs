@@ -106,26 +106,48 @@ public sealed class SqliteLedgerTests : IDisposable
         Assert.True(ledger.Contains(key, t1000));    // 2件目も別レコードとして記録される
     }
 
-    [Fact]
-    public void Migrates_OldSchemaWithoutBroadcastTime()
+    // 旧スキーマ(broadcast_time 列なし)の台帳に 1 行入れて作る
+    private void CreateLegacyDb(IdentityKey key, string source)
     {
-        // 旧スキーマ(broadcast_time 列なし)の台帳を用意
-        using (var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}"))
-        {
-            conn.Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText =
-                "CREATE TABLE imports (identity_key TEXT PRIMARY KEY, station TEXT, program TEXT, " +
-                "broadcast_date TEXT, source_path TEXT, output_path TEXT, rule_version TEXT, " +
-                "used_fallback INTEGER, imported_at TEXT);";
-            cmd.ExecuteNonQuery();
-        }
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "CREATE TABLE imports (identity_key TEXT PRIMARY KEY, station TEXT, program TEXT, " +
+            "broadcast_date TEXT, source_path TEXT, output_path TEXT, rule_version TEXT, " +
+            "used_fallback INTEGER, imported_at TEXT);" +
+            "INSERT INTO imports VALUES ($id,'局','番組','2026-06-12',$src,'/out/a.m4a','m1-1',0,'2026-06-12T00:00:00Z');";
+        cmd.Parameters.AddWithValue("$id", key.Value);
+        cmd.Parameters.AddWithValue("$src", source);
+        cmd.ExecuteNonQuery();
+    }
 
-        // 新コードで開くと作り直され、例外なく使える
+    [Fact]
+    public void Migrates_OldSchema_PreservesExistingRows()
+    {
+        var key = Key();
+        CreateLegacyDb(key, source: "/in/legacy.m4a");
+
         using var ledger = new SqliteLedger(DbPath);
-        ledger.Record(Entry(Key(), time: new TimeOnly(8, 30, 0)));
 
-        Assert.True(ledger.Contains(Key(), new TimeOnly(8, 30, 0)));
+        // 旧行が保持され、取込済みとして扱われる(再取込による出力重複を防ぐ)。
+        Assert.True(ledger.Contains(key, new TimeOnly(8, 30, 0))); // 旧行は時刻なし='' なので一致
+        Assert.True(ledger.ContainsSource("/in/legacy.m4a"));
+        // 新スキーマとして書き込みも可能
+        ledger.Record(Entry(Key("別番組"), time: new TimeOnly(1, 0, 0)));
+        Assert.True(ledger.Contains(Key("別番組"), new TimeOnly(1, 0, 0)));
+    }
+
+    [Fact]
+    public void ReadOnly_OnOldSchema_DoesNotThrow_AndReportsNotContained()
+    {
+        CreateLegacyDb(Key(), source: "/in/legacy.m4a");
+
+        // 読み取り専用(dry-run 経路)で旧スキーマを開いても例外にならず、未取込扱いになる。
+        using var ledger = new SqliteLedger(DbPath, readOnly: true);
+
+        Assert.False(ledger.Contains(Key(), new TimeOnly(8, 30, 0)));
+        Assert.False(ledger.ContainsSource("/in/legacy.m4a"));
     }
 
     [Fact]

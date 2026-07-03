@@ -111,6 +111,25 @@ public sealed class ProgramResolverTests
         Assert.Equal(2, resolver.Resolve("TBSラジオ", "ふらっと(2)").PartIndex);
         Assert.Equal("ふらっと", resolver.Resolve("TBSラジオ", "ふらっと(2)").Canonical);
     }
+
+    [Fact]
+    public void SpellingVariantFolders_DoNotBecomeParts()
+    {
+        // 正規化で同一キーに畳まれるフォルダを 2 つ並べても、実質 1 フォルダ = パート番号なし。
+        var resolver = new ProgramResolver(new ProgramMasterConfig
+        {
+            Programs =
+            [
+                new ProgramAlias
+                {
+                    Match = new ProgramMatch { Station = "J-WAVE", Folders = ["SONY SONPO QUEST", "SONYSONPO QUEST"] },
+                    Canonical = new ProgramCanonical { Album = "SONY SONPO QUEST" },
+                },
+            ],
+        });
+
+        Assert.Null(resolver.Resolve("J-WAVE", "SONYSONPO QUEST").PartIndex);
+    }
 }
 
 public sealed class EpisodeAssemblerTests

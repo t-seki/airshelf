@@ -67,11 +67,11 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 ## 4. 取り込みの挙動
 
 - **非破壊**: らじれこ原本(`RadioRoot`)は読むだけで変更しません。整理済みは `OutputRoot` にコピーされます。
-- **非破壊**: らじれこ原本(`RadioRoot`)は読むだけで変更しません。整理済みは `OutputRoot` にコピーされます。
 - **配置**: `{放送局}/{番組}/{番組} YYYY-MM-DD.m4a`(Jellyfin はタグで束ねますが人間可読性のため)。
   複数フォルダを統合した番組の同日パートは `… YYYY-MM-DD-1.m4a` / `-2` とパート番号で区別されます。
 - **タグ(案A)**: `albumartist=放送局 / album=番組 / title=放送日 / disc=放送年 / track=MMDD /
   genre / comment=録音種別 / date=放送日(フル ISO)`。出演者は元タグを維持。
+  統合番組の同日パートは `title` に `(N)`、`track` に `MMDD*10+N` を付けてアルバム内の並び順を確定します。
 - **冪等(import-once)**: アルバムのグルーピングは `(放送局, 番組, 放送日)` 単位ですが、**取り込みの
   重複判定は放送時刻も見ます**([ADR-0002](adr/0002-same-day-tiebreak-by-time.md))。同日でも時刻が
   異なる別放送(時間帯分割番組のパート等)は両方取り込まれ、同時刻の再取り込みだけがスキップされます。
