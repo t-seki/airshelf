@@ -35,6 +35,8 @@ config/programs.sample.json  → config/programs.json (番組 alias)
 | `Genre` | 既定ジャンル | `ラジオ` |
 | `JellyfinUrl` | Jellyfin ルート URL(未設定なら更新しない) | `https://jellyfin.example.net` |
 | `JellyfinApiKey` | Jellyfin API キー(ダッシュボード → API キー) | `xxxxxxxx…` |
+| `ScanIntervalSeconds` | 常駐サービスの定期(安全網)スキャン間隔・秒 | `120` |
+| `WatchDebounceSeconds` | 検知後スキャンまでのデバウンス秒 | `10` |
 
 > 設定ファイルは JSON ですが、`//` コメントと末尾カンマを許容します。
 
@@ -126,7 +128,48 @@ radirec refresh --config radirec.json
 > 既に取り込み済みの回へ後から alias を効かせる一括再適用は **M4** で提供予定です
 > (現時点では新規取り込み分にのみ効きます)。
 
-## 6. 配布用 exe(任意)
+## 6. 常駐サービス(自動取り込み・M3)
+
+`Radirec.Service`(Windows サービス)を常駐させると、録音を検知して自動で取り込み + Jellyfin 更新まで
+行います。らじれこは録音後 ~30 秒で強制スリープするため、**取りこぼしゼロはスリープ復帰時のキャッチアップ
++ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-race.md))。トリガは①録音検知
+(FileSystemWatcher)②スリープ復帰 ③サービス起動時 ④定期(安全網)。
+
+### ビルド
+
+```powershell
+dotnet publish src\Radirec.Service -c Release -r win-x64 --self-contained -o C:\radirec\service
+```
+`radirec.json`(および `stations.json` / `programs.json`)を exe と同じ場所か、絶対パスで参照できる場所に置きます。
+
+### インストール(PowerShell 管理者)
+
+NAS(UNC)へ書くため、**サービスは自分の Windows アカウントで実行**します(マップ済み Z: はサービスから
+不可視なので UNC 直参照)。
+
+```powershell
+# イベントログのソースを一度だけ登録(任意だが推奨)
+New-EventLog -LogName Application -Source Radirec
+
+# サービス登録(Log On As = 自分のアカウント。NAS アクセスを継承)
+New-Service -Name Radirec `
+  -BinaryPathName '"C:\radirec\service\Radirec.Service.exe" "C:\radirec\radirec.json"' `
+  -StartupType Automatic -Credential (Get-Credential)
+
+Start-Service Radirec
+```
+
+### 確認・アンインストール
+
+```powershell
+Get-Service Radirec
+Get-EventLog -LogName Application -Source Radirec -Newest 20   # 動作ログ
+
+Stop-Service Radirec
+sc.exe delete Radirec
+```
+
+## 7. 配布用 exe(任意)
 
 非技術者向けに単体 exe を作る場合:
 

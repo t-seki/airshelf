@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Radirec.Cli.Configuration;
+namespace Radirec.Hosting;
 
 /// <summary>JSON 設定の読み込み(コメント・trailing comma 許容)。</summary>
 public static class ConfigLoader

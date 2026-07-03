@@ -14,5 +14,8 @@
   "ProgramsFile": "config/programs.json",
 
   "JellyfinUrl": "",
-  "JellyfinApiKey": ""
+  "JellyfinApiKey": "",
+
+  "ScanIntervalSeconds": 120,
+  "WatchDebounceSeconds": 10
 }

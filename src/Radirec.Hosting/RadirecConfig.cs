@@ -1,4 +1,4 @@
-namespace Radirec.Cli.Configuration;
+namespace Radirec.Hosting;
 
 /// <summary>環境設定(radirec.json)。個人固有値はここに集約しコードにハードコードしない。</summary>
 public sealed class RadirecConfig
@@ -35,4 +35,10 @@ public sealed class RadirecConfig
 
     /// <summary>Jellyfin API キー(ダッシュボード → API キーで発行)。</summary>
     public string JellyfinApiKey { get; set; } = string.Empty;
+
+    /// <summary>常駐サービスの定期(安全網)スキャン間隔・秒。</summary>
+    public int ScanIntervalSeconds { get; set; } = 120;
+
+    /// <summary>検知後スキャンまでのデバウンス秒(書き込み中の連続イベントを束ねる)。</summary>
+    public int WatchDebounceSeconds { get; set; } = 10;
 }
