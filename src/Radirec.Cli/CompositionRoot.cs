@@ -69,7 +69,12 @@ public static class CompositionRoot
             return (new NullLibraryRefresher(), null);
 
         // BaseAddress は末尾スラッシュ必須("Library/Refresh" 相対解決のため)。
-        var http = new HttpClient { BaseAddress = new Uri(config.JellyfinUrl.TrimEnd('/') + "/") };
+        // URL が不正形式でも取り込み(主機能)をブロックしない。リフレッシュだけ無効化する。
+        if (!Uri.TryCreate(config.JellyfinUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
+            return (new NullLibraryRefresher(), null);
+
+        // 既定 100 秒だと更新遅延時に取込コマンドが長く固まるため、明示的に短くする。
+        var http = new HttpClient { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(30) };
         return (new JellyfinLibraryRefresher(http, config.JellyfinApiKey), http);
     }
 

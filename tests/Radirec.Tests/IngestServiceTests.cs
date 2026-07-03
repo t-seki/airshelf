@@ -256,4 +256,18 @@ public sealed class IngestServiceTests
         Assert.False(report.LibraryRefreshed);
         Assert.Equal("boom", report.RefreshError);
     }
+
+    [Fact]
+    public async Task Run_RefreshTimeout_IsCaughtAsError_NotPropagated()
+    {
+        // HttpClient のタイムアウトは TaskCanceledException(OperationCanceledException のサブクラス)。
+        // 外部キャンセルではないので、伝播させず失敗として握ること。
+        _refresher.Throws = new TaskCanceledException("timeout");
+
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.False(report.LibraryRefreshed);
+        Assert.Equal("timeout", report.RefreshError);
+    }
 }

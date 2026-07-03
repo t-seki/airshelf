@@ -56,7 +56,10 @@ public sealed class IngestService(
             await refresher.RefreshAsync(cancellationToken);
             return (true, null);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // 真のキャンセル(呼び出し元のトークン発火)は伝播させる。
+        // HttpClient のタイムアウト(トークン未発火の TaskCanceledException)含むそれ以外の
+        // 失敗は握って報告する(取り込み成功は巻き戻さない)。
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             return (false, ex.Message);
         }
