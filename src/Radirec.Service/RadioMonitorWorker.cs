@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
@@ -8,8 +9,9 @@ namespace Radirec.Service;
 
 /// <summary>
 /// I: を監視し録音を検知即取り込みする常駐ワーカー。正しさはキャッチアップ + import-once 冪等で
-/// 担保する(ADR-0003):①FileSystemWatcher ②スリープ復帰 ③起動時 ④定期、の各トリガを
-/// 同じ取り込みパイプラインへ流し、スキャンは常に1本に直列化する。
+/// 担保する(ADR-0003)。トリガ①FileSystemWatcher ②スリープ復帰(電源イベント)③起動時 ④定期は
+/// すべて単一の要求チャネルへ投げ、ExecuteAsync 内の**単一直列コンシューマ**が順に取り込む。
+/// これにより fire-and-forget を排し、停止時に在中スキャンをまたいでリソースを破棄するレースを避ける。
 /// </summary>
 public sealed class RadioMonitorWorker : BackgroundService
 {
@@ -17,11 +19,14 @@ public sealed class RadioMonitorWorker : BackgroundService
     private readonly ILogger<RadioMonitorWorker> _log;
     private readonly IngestService _ingest;
     private readonly IDisposable? _resources;
-    private readonly SemaphoreSlim _scanLock = new(1, 1);
+
+    // 容量1・満杯時は書き捨て = 複数トリガを1回のスキャンに束ねる(コアレス)。
+    private readonly Channel<string> _requests = Channel.CreateBounded<string>(
+        new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
 
     private FileSystemWatcher? _watcher;
-    private CancellationTokenSource? _debounce;
-    private CancellationToken _stopping;
+    private Timer? _debounceTimer; // 書き込み中の連続イベントを束ねる(単一の再利用タイマー)
+    private Timer? _periodicTimer; // 定期(安全網)
 
     public RadioMonitorWorker(RadirecConfig config, ILogger<RadioMonitorWorker> log)
     {
@@ -32,7 +37,6 @@ public sealed class RadioMonitorWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _stopping = stoppingToken;
         _log.LogInformation("Radirec サービス開始。監視ルート: {Root}", _config.RadioRoot);
 
         var orphans = _ingest.CleanupOrphans();
@@ -41,15 +45,18 @@ public sealed class RadioMonitorWorker : BackgroundService
 
         StartWatcher();
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        _periodicTimer = new Timer(
+            _ => Request("定期"), null,
+            TimeSpan.FromSeconds(Math.Max(10, _config.ScanIntervalSeconds)),
+            TimeSpan.FromSeconds(Math.Max(10, _config.ScanIntervalSeconds)));
 
-        await ScanAsync("起動時", stoppingToken);
+        Request("起動時");
 
-        // 定期スキャン(安全網。イベント取りこぼし・監視不能時のフォールバック)。
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(10, _config.ScanIntervalSeconds)));
         try
         {
-            while (await timer.WaitForNextTickAsync(stoppingToken))
-                await ScanAsync("定期", stoppingToken);
+            // 単一直列コンシューマ。停止時はこのループが在中スキャン完了後に抜ける(StopAsync が待つ)。
+            await foreach (var trigger in _requests.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+                await ScanAsync(trigger, stoppingToken);
         }
         catch (OperationCanceledException)
         {
@@ -58,9 +65,10 @@ public sealed class RadioMonitorWorker : BackgroundService
         finally
         {
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
-            _watcher?.Dispose();
         }
     }
+
+    private void Request(string trigger) => _requests.Writer.TryWrite(trigger);
 
     private void StartWatcher()
     {
@@ -70,50 +78,33 @@ public sealed class RadioMonitorWorker : BackgroundService
             return;
         }
 
+        // 書き込み中の連続イベントを束ね、静穏化してから1回スキャンを要求(安定判定は取り込み側でも実施)。
+        _debounceTimer = new Timer(_ => Request("検知"), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
         _watcher = new FileSystemWatcher(_config.RadioRoot)
         {
             IncludeSubdirectories = true,
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
         };
-        _watcher.Created += (_, _) => Debounce();
-        _watcher.Changed += (_, _) => Debounce();
+        _watcher.Created += (_, _) => NudgeDebounce();
+        _watcher.Changed += (_, _) => NudgeDebounce();
         _watcher.Error += (_, e) => _log.LogWarning(e.GetException(), "FileSystemWatcher エラー(定期スキャンで回収)");
         _watcher.EnableRaisingEvents = true;
     }
 
-    // 書き込み中の連続イベントを束ね、静穏化してからスキャンする(安定判定は取り込み側でも実施)。
-    private void Debounce()
-    {
-        _debounce?.Cancel();
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(_stopping);
-        _debounce = cts;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _config.WatchDebounceSeconds)), cts.Token);
-                await ScanAsync("検知", _stopping);
-            }
-            catch (OperationCanceledException)
-            {
-                // 次のイベントで置き換えられた or 停止。
-            }
-        }, cts.Token);
-    }
+    // イベントごとに単一タイマーを再スタート = 最後のイベントから静穏 WatchDebounceSeconds 秒後に発火。
+    private void NudgeDebounce()
+        => _debounceTimer?.Change(TimeSpan.FromSeconds(Math.Max(1, _config.WatchDebounceSeconds)), Timeout.InfiniteTimeSpan);
 
     private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
     {
         // 強制スリープからの復帰。取りこぼしをキャッチアップ(ADR-0003 の主回収機構)。
         if (e.Mode == PowerModes.Resume)
-            _ = ScanAsync("スリープ復帰", _stopping);
+            Request("スリープ復帰");
     }
 
-    // スキャンは常に1本に直列化。実行中の追加トリガはスキップ(定期/次イベントで確実に回収される)。
     private async Task ScanAsync(string trigger, CancellationToken cancellationToken)
     {
-        if (!await _scanLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-            return;
-
         try
         {
             var report = await _ingest.RunOnceAsync(dryRun: false, cancellationToken);
@@ -129,21 +120,20 @@ public sealed class RadioMonitorWorker : BackgroundService
         }
         catch (OperationCanceledException)
         {
-            // 停止要求。
+            throw; // 停止要求はコンシューマループへ伝播させて終了する。
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "{Trigger}スキャンで想定外の例外", trigger);
         }
-        finally
-        {
-            _scanLock.Release();
-        }
     }
 
     public override void Dispose()
     {
-        _scanLock.Dispose();
+        // コンシューマループ(ExecuteAsync)は StopAsync で完了済み。ここでは資源のみ解放。
+        _watcher?.Dispose();
+        _debounceTimer?.Dispose();
+        _periodicTimer?.Dispose();
         _resources?.Dispose();
         base.Dispose();
     }
