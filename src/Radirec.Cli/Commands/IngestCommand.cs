@@ -1,5 +1,5 @@
 using System.ComponentModel;
-using Radirec.Cli.Configuration;
+using Radirec.Hosting;
 using Radirec.Core.Ingestion;
 using Spectre.Console;
 using Spectre.Console.Cli;

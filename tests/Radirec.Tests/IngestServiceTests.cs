@@ -51,11 +51,18 @@ public sealed class IngestServiceTests
             Written.Add(e);
             return Task.FromResult($"/out/{e.Program}.m4a");
         }
+        public int CleanupOrphans() => 0;
     }
 
     private sealed class FakeTagReader(string? artist = null) : ITagReader
     {
-        public string? ReadArtist(string filePath) => artist;
+        public int Reads { get; private set; }
+
+        public string? ReadArtist(string filePath)
+        {
+            Reads++;
+            return artist;
+        }
     }
 
     private sealed class ThrowingOutputTarget : IOutputTarget
@@ -63,6 +70,7 @@ public sealed class IngestServiceTests
         public string PlanPath(RecordingFile s, Episode e, NormalizedTags t) => "/out/plan.m4a";
         public Task<string> WriteAsync(RecordingFile s, Episode e, NormalizedTags t, CancellationToken ct = default)
             => throw new IOException("NAS 書き込み失敗(テスト)");
+        public int CleanupOrphans() => 0;
     }
 
     private sealed class FakeRefresher : ILibraryRefresher
@@ -80,6 +88,7 @@ public sealed class IngestServiceTests
     private readonly FakeLedger _ledger = new();
     private readonly FakeOutputTarget _target = new();
     private readonly FakeRefresher _refresher = new();
+    private readonly FakeTagReader _tagReader = new("出演者");
 
     private IngestService Build(
         IEnumerable<RecordingFile> files, IEnumerable<string>? skipPatterns = null,
@@ -89,7 +98,7 @@ public sealed class IngestServiceTests
             new RajirekoImporter(),
             new StabilityChecker(new FixedClock(Now), TimeSpan.FromSeconds(15)),
             new RecordingSkipPolicy(skipPatterns ?? []),
-            new FakeTagReader("出演者"),
+            _tagReader,
             new EpisodeAssembler(
                 new StationResolver(new StationMasterConfig()),
                 new ProgramResolver(new ProgramMasterConfig())),
@@ -211,6 +220,19 @@ public sealed class IngestServiceTests
         Assert.Equal(2, report.Items.Count);
         Assert.Equal(2, report.Count(IngestOutcome.Failed));
         Assert.Empty(_ledger.Keys); // 失敗は台帳に記録しない
+    }
+
+    [Fact]
+    public async Task AlreadyImported_SkipsWithoutReadingArtistTag()
+    {
+        var files = new[] { Rec(StandardName) };
+        await Build(files).RunOnceAsync(dryRun: false); // 取込: 出演者を1回読む
+        var afterImport = _tagReader.Reads;
+
+        await Build(files).RunOnceAsync(dryRun: false); // 2回目: 既取込 → タグを読まずにスキップ
+
+        Assert.Equal(1, afterImport);
+        Assert.Equal(afterImport, _tagReader.Reads); // 追加読取なし(ADR-0003 の高速化)
     }
 
     [Fact]

@@ -93,6 +93,25 @@ public sealed class LocalFolderTargetTests
     }
 
     [Fact]
+    public void CleanupOrphans_DeletesOnlyPartialTempFiles()
+    {
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/out/J-WAVE/番組/回 2026-06-12.m4a"] = new("keep"),
+            ["/out/J-WAVE/番組/回 2026-06-12.partial.m4a"] = new("orphan"),
+            ["/out/J-WAVE/番組/回 2026-06-19.partial.m4a"] = new("orphan2"),
+        });
+        var sut = new LocalFolderTarget(fs, new FakeTagWriter(), Root);
+
+        var removed = sut.CleanupOrphans();
+
+        Assert.Equal(2, removed);
+        Assert.True(fs.File.Exists("/out/J-WAVE/番組/回 2026-06-12.m4a"));      // 最終ファイルは残す
+        Assert.False(fs.File.Exists("/out/J-WAVE/番組/回 2026-06-12.partial.m4a"));
+        Assert.False(fs.File.Exists("/out/J-WAVE/番組/回 2026-06-19.partial.m4a"));
+    }
+
+    [Fact]
     public async Task WriteAsync_OnCollision_AppendsTime()
     {
         var fs = new MockFileSystem(new Dictionary<string, MockFileData>

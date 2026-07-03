@@ -1,5 +1,4 @@
 using System.IO.Abstractions;
-using Radirec.Cli.Configuration;
 using Radirec.Core.Configuration;
 using Radirec.Core.Ingestion;
 using Radirec.Core.Jellyfin;
@@ -8,7 +7,7 @@ using Radirec.Core.Normalization;
 using Radirec.Core.Output;
 using Radirec.Core.Sources;
 
-namespace Radirec.Cli;
+namespace Radirec.Hosting;
 
 /// <summary>設定から取り込みサービス一式を組み立てる合成ルート(M1 は手配線)。</summary>
 public static class CompositionRoot
