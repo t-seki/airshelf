@@ -78,6 +78,11 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
             $"済 {report.Count(IngestOutcome.SkippedAlreadyImported)} / 未安定 {report.Count(IngestOutcome.SkippedUnstable)} / " +
             $"ジャンク {report.Count(IngestOutcome.SkippedJunk)} / 対象外 {report.Count(IngestOutcome.SkippedUnsupported)} / " +
             $"失敗 {report.Count(IngestOutcome.Failed)} {mode}");
+
+        if (report.LibraryRefreshed)
+            AnsiConsole.MarkupLine("[green]Jellyfin ライブラリ更新: 起動しました[/]");
+        else if (report.RefreshError is { } error)
+            AnsiConsole.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新に失敗:[/] {error}");
     }
 
     private static string Detail(IngestItemResult item) => item.Outcome switch

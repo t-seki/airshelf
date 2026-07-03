@@ -1,3 +1,4 @@
+using Radirec.Core.Jellyfin;
 using Radirec.Core.Ledger;
 using Radirec.Core.Model;
 using Radirec.Core.Normalization;
@@ -20,7 +21,8 @@ public sealed class IngestService(
     IOutputTarget target,
     ILedger ledger,
     TimeProvider clock,
-    string genre)
+    string genre,
+    ILibraryRefresher refresher)
 {
     public async Task<IngestReport> RunOnceAsync(bool dryRun, CancellationToken cancellationToken = default)
     {
@@ -31,7 +33,33 @@ public sealed class IngestService(
             items.Add(await ProcessAsync(file, dryRun, cancellationToken));
         }
 
-        return new IngestReport { Items = items, DryRun = dryRun };
+        var (refreshed, refreshError) = await MaybeRefreshLibraryAsync(items, dryRun, cancellationToken);
+        return new IngestReport
+        {
+            Items = items,
+            DryRun = dryRun,
+            LibraryRefreshed = refreshed,
+            RefreshError = refreshError,
+        };
+    }
+
+    // 取込が1件以上あった実行のみライブラリ更新を起動(dry-run は起動しない)。
+    // 更新失敗で取り込み成功は巻き戻さない(コピーは完了済み)。
+    private async Task<(bool Refreshed, string? Error)> MaybeRefreshLibraryAsync(
+        IReadOnlyList<IngestItemResult> items, bool dryRun, CancellationToken cancellationToken)
+    {
+        if (dryRun || !items.Any(i => i.Outcome == IngestOutcome.Imported))
+            return (false, null);
+
+        try
+        {
+            await refresher.RefreshAsync(cancellationToken);
+            return (true, null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return (false, ex.Message);
+        }
     }
 
     private async Task<IngestItemResult> ProcessAsync(

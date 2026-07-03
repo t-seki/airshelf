@@ -44,5 +44,11 @@ public sealed record IngestReport
     public required IReadOnlyList<IngestItemResult> Items { get; init; }
     public required bool DryRun { get; init; }
 
+    /// <summary>取込後に Jellyfin ライブラリ更新を起動できたか(取込0件・dry-run 時は false)。</summary>
+    public bool LibraryRefreshed { get; init; }
+
+    /// <summary>ライブラリ更新に失敗したときのメッセージ(成功・未起動時は null)。</summary>
+    public string? RefreshError { get; init; }
+
     public int Count(IngestOutcome outcome) => Items.Count(i => i.Outcome == outcome);
 }

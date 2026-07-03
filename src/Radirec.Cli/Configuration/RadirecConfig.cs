@@ -29,4 +29,10 @@ public sealed class RadirecConfig
 
     /// <summary>番組 alias のパス。</summary>
     public string ProgramsFile { get; set; } = "programs.json";
+
+    /// <summary>Jellyfin のルート URL(例 <c>https://jellyfin.example.net</c>)。未設定なら取込後リフレッシュしない。</summary>
+    public string JellyfinUrl { get; set; } = string.Empty;
+
+    /// <summary>Jellyfin API キー(ダッシュボード → API キーで発行)。</summary>
+    public string JellyfinApiKey { get; set; } = string.Empty;
 }
