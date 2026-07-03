@@ -47,10 +47,11 @@ public sealed class ProgramResolverTests
         [
             new ProgramAlias
             {
+                // 表記ゆれは空白除去でフォルダが1つに畳まれる(入力側も ToMatchKey で正規化される)。
                 Match = new ProgramMatch
                 {
                     Station = "J-WAVE",
-                    Folders = ["SONYSONPOQUESTFORTHEFUTURE", "SONY SONPO QUEST FOR THE FUTURE"],
+                    Folders = ["SONYSONPOQUESTFORTHEFUTURE"],
                 },
                 Canonical = new ProgramCanonical { Album = "SONY SONPO QUEST FOR THE FUTURE" },
             },
@@ -83,6 +84,51 @@ public sealed class ProgramResolverTests
         var r = Build().Resolve("TBSラジオ", "SONY SONPO QUEST FOR THE FUTURE");
 
         Assert.True(r.UsedFallback);
+    }
+
+    [Fact]
+    public void SingleFolder_HasNoPartIndex()
+    {
+        Assert.Null(Build().Resolve("J-WAVE", "SONYSONPOQUESTFORTHEFUTURE").PartIndex);
+    }
+
+    [Fact]
+    public void MultiFolder_AssignsPartIndexByOrder()
+    {
+        var resolver = new ProgramResolver(new ProgramMasterConfig
+        {
+            Programs =
+            [
+                new ProgramAlias
+                {
+                    Match = new ProgramMatch { Station = "TBSラジオ", Folders = ["ふらっと(1)", "ふらっと(2)"] },
+                    Canonical = new ProgramCanonical { Album = "ふらっと" },
+                },
+            ],
+        });
+
+        Assert.Equal(1, resolver.Resolve("TBSラジオ", "ふらっと(1)").PartIndex);
+        Assert.Equal(2, resolver.Resolve("TBSラジオ", "ふらっと(2)").PartIndex);
+        Assert.Equal("ふらっと", resolver.Resolve("TBSラジオ", "ふらっと(2)").Canonical);
+    }
+
+    [Fact]
+    public void SpellingVariantFolders_DoNotBecomeParts()
+    {
+        // 正規化で同一キーに畳まれるフォルダを 2 つ並べても、実質 1 フォルダ = パート番号なし。
+        var resolver = new ProgramResolver(new ProgramMasterConfig
+        {
+            Programs =
+            [
+                new ProgramAlias
+                {
+                    Match = new ProgramMatch { Station = "J-WAVE", Folders = ["SONY SONPO QUEST", "SONYSONPO QUEST"] },
+                    Canonical = new ProgramCanonical { Album = "SONY SONPO QUEST" },
+                },
+            ],
+        });
+
+        Assert.Null(resolver.Resolve("J-WAVE", "SONYSONPO QUEST").PartIndex);
     }
 }
 

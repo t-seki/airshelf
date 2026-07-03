@@ -5,7 +5,8 @@ namespace Radirec.Core.Output;
 
 /// <summary>
 /// ローカル/UNC フォルダへ配置する出力先。ディレクトリ <c>{放送局}/{番組}/</c>、ファイル名
-/// <c>{番組} {YYYY-MM-DD}.{ext}</c>(衝突時のみ時刻付与)。書き込みは
+/// <c>{番組} {YYYY-MM-DD}.{ext}</c>。統合番組の同日パートは <c>-N</c> を付す(<c>… YYYY-MM-DD-1</c>)。
+/// パート番号の無い想定外の同日衝突は時刻を保険に付す。書き込みは
 /// テンポラリ(<c>.partial</c>)→ タグ付与 → 同一ディレクトリ内リネームでアトミックに確定する。
 /// </summary>
 public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWriter, string outputRoot)
@@ -62,11 +63,16 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
     private string ResolveFinalPath(string dir, Episode episode, NormalizedTags tags, string extension)
     {
         var baseName = $"{Sanitize(tags.Album)} {tags.Date:yyyy-MM-dd}";
+
+        // 複数フォルダ統合番組の同日パートは、由来フォルダ順のパート番号で区別する(-1, -2, …)。
+        if (episode.PartIndex is int part)
+            baseName = $"{baseName}-{part}";
+
         var candidate = fileSystem.Path.Combine(dir, baseName + extension);
         if (!fileSystem.File.Exists(candidate))
             return candidate;
 
-        // 同日別2回の衝突: 時刻(あれば)で区別。
+        // 想定外の同日衝突(パート番号の無い同日別放送等)の保険: 時刻(あれば)で区別。
         var suffix = episode.BroadcastTime is { } t ? t.ToString("HHmm") : "2";
         return fileSystem.Path.Combine(dir, $"{baseName} {suffix}{extension}");
     }

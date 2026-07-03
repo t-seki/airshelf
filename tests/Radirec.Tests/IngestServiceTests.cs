@@ -24,13 +24,19 @@ public sealed class IngestServiceTests
 
     private sealed class FakeLedger : ILedger
     {
-        public HashSet<string> Keys { get; } = [];
+        private readonly List<(string Key, TimeOnly? Time)> _entries = [];
         public HashSet<string> Sources { get; } = [];
-        public bool Contains(IdentityKey key) => Keys.Contains(key.Value);
+        public IReadOnlyList<string> Keys => _entries.Select(e => e.Key).ToList();
+
+        public bool Contains(IdentityKey key, TimeOnly? broadcastTime) =>
+            _entries.Any(e => e.Key == key.Value
+                && (e.Time == broadcastTime || e.Time is null || broadcastTime is null));
+
         public bool ContainsSource(string sourcePath) => Sources.Contains(sourcePath);
+
         public void Record(LedgerEntry entry)
         {
-            Keys.Add(entry.IdentityKey);
+            _entries.Add((entry.IdentityKey, entry.BroadcastTime));
             Sources.Add(entry.SourcePath);
         }
     }
@@ -114,7 +120,23 @@ public sealed class IngestServiceTests
         Assert.Equal(IngestOutcome.Imported, item.Outcome);
         Assert.Single(_target.Written);
         Assert.True(_ledger.Contains(
-            new IdentityKey("J-WAVE", "LOGISTEED RADIONOMICS", new DateOnly(2026, 6, 12))));
+            new IdentityKey("J-WAVE", "LOGISTEED RADIONOMICS", new DateOnly(2026, 6, 12)), broadcastTime: null));
+    }
+
+    [Fact]
+    public async Task SameDate_DifferentTime_BothImported()
+    {
+        // 同一番組・同日で別時刻の2パート(パンサー向井のふらっと(1)/(2) 型)。両方取り込む。
+        var files = new[]
+        {
+            Rec("[TBSラジオ]番組(TimeFree)_20240101083000.m4a", station: "TBSラジオ", program: "番組"),
+            Rec("[TBSラジオ]番組(TimeFree)_20240101100000.m4a", station: "TBSラジオ", program: "番組"),
+        };
+
+        var report = await Build(files).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(2, report.Count(IngestOutcome.Imported));
+        Assert.Equal(2, _target.Written.Count);
     }
 
     [Fact]

@@ -7,7 +7,7 @@ namespace Radirec.Core.Ledger;
 /// </summary>
 public sealed class NullLedger : ILedger
 {
-    public bool Contains(IdentityKey key) => false;
+    public bool Contains(IdentityKey key, TimeOnly? broadcastTime) => false;
 
     public bool ContainsSource(string sourcePath) => false;
 
