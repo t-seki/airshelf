@@ -16,6 +16,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
         CREATE TABLE IF NOT EXISTS imports (
             identity_key   TEXT NOT NULL,
             broadcast_time TEXT NOT NULL DEFAULT '',
+            part_index     INTEGER NOT NULL DEFAULT 0,
             station        TEXT NOT NULL,
             program        TEXT NOT NULL,
             broadcast_date TEXT NOT NULL,
@@ -24,7 +25,7 @@ public sealed class SqliteLedger : ILedger, IDisposable
             rule_version   TEXT NOT NULL,
             used_fallback  INTEGER NOT NULL,
             imported_at    TEXT NOT NULL,
-            PRIMARY KEY (identity_key, broadcast_time)
+            PRIMARY KEY (identity_key, broadcast_time, part_index)
         );
         CREATE INDEX IF NOT EXISTS ix_imports_source ON imports(source_path);
         """;
@@ -64,35 +65,56 @@ public sealed class SqliteLedger : ILedger, IDisposable
         }
         else
         {
-            _usable = TableExists("imports") && ColumnExists("imports", "broadcast_time");
+            _usable = TableExists("imports") && ColumnExists("imports", "part_index");
         }
     }
 
+    // 順序付き冪等マイグレーション(ADR-0002 / 0004)。ALTER では PK を変えられないため、
+    // 旧行を保持したまま rename→create→INSERT SELECT→drop で新スキーマへ移送する。
+    // 取込済み記録を失わず、再取込による出力重複を防ぐ。
     private void MigrateOrCreate()
     {
         Exec("PRAGMA journal_mode=WAL;");
 
-        // 旧スキーマ(broadcast_time 列なし)は複合 PK 化を ALTER できないため、旧行を保持したまま
-        // 新スキーマへ移送する。取込済み記録を失わず、再取込による出力重複を防ぐ(旧行は時刻なし='')。
-        if (TableExists("imports") && !ColumnExists("imports", "broadcast_time"))
+        if (!TableExists("imports"))
         {
-            Exec("ALTER TABLE imports RENAME TO imports_legacy;");
             Exec(CreateTableSql);
-            Exec(
-                """
-                INSERT INTO imports
-                    (identity_key, broadcast_time, station, program, broadcast_date,
-                     source_path, output_path, rule_version, used_fallback, imported_at)
-                SELECT identity_key, '', station, program, broadcast_date,
-                       source_path, output_path, rule_version, used_fallback, imported_at
-                FROM imports_legacy;
-                """);
-            Exec("DROP TABLE imports_legacy;");
+            return;
+        }
+
+        if (!ColumnExists("imports", "broadcast_time"))
+        {
+            // 最古スキーマ(identity_key 単独 PK)。broadcast_time='' / part_index=0 で移送。
+            MigrateVia("''");
+        }
+        else if (!ColumnExists("imports", "part_index"))
+        {
+            // 現行スキーマ((identity_key, broadcast_time) PK)。part_index=0 で移送(既存の時刻は保持)。
+            MigrateVia("broadcast_time");
         }
         else
         {
+            // 最新スキーマ。テーブルはそのまま、インデックスのみ保証する。
             Exec(CreateTableSql);
         }
+    }
+
+    // 旧 imports を退避し、新スキーマへ移送する。<paramref name="timeExpr"/> は移送元の
+    // broadcast_time 相当の式(最古スキーマは列が無いので定数 '')。part_index は既定 0。
+    private void MigrateVia(string timeExpr)
+    {
+        Exec("ALTER TABLE imports RENAME TO imports_legacy;");
+        Exec(CreateTableSql);
+        Exec(
+            $"""
+            INSERT INTO imports
+                (identity_key, broadcast_time, station, program, broadcast_date,
+                 source_path, output_path, rule_version, used_fallback, imported_at)
+            SELECT identity_key, {timeExpr}, station, program, broadcast_date,
+                   source_path, output_path, rule_version, used_fallback, imported_at
+            FROM imports_legacy;
+            """);
+        Exec("DROP TABLE imports_legacy;");
     }
 
     private void Exec(string sql)
@@ -122,22 +144,23 @@ public sealed class SqliteLedger : ILedger, IDisposable
     private static string TimeKey(TimeOnly? time) =>
         time?.ToString("HHmmss", CultureInfo.InvariantCulture) ?? string.Empty;
 
-    public bool Contains(IdentityKey key, TimeOnly? broadcastTime)
+    public bool Contains(IdentityKey key, TimeOnly? broadcastTime, int partIndex)
     {
         if (!_usable)
             return false;
 
         using var cmd = _connection.CreateCommand();
-        // 同一キーで、時刻が一致 / 既存が時刻なし / 今回が時刻なし のいずれかなら取込済みとみなす。
+        // 厳密一致(ADR-0004)。同日でも時刻 or part が異なれば別放送=未取込。時刻なしの
+        // ワイルドカードは撤去した(#11 の粗さの原因。時刻なしソースの同日重複は part で区別する)。
         cmd.CommandText =
             """
             SELECT 1 FROM imports
-            WHERE identity_key = $id
-              AND (broadcast_time = $t OR broadcast_time = '' OR $t = '')
+            WHERE identity_key = $id AND broadcast_time = $t AND part_index = $p
             LIMIT 1;
             """;
         cmd.Parameters.AddWithValue("$id", key.Value);
         cmd.Parameters.AddWithValue("$t", TimeKey(broadcastTime));
+        cmd.Parameters.AddWithValue("$p", partIndex);
         return cmd.ExecuteScalar() is not null;
     }
 
@@ -158,13 +181,14 @@ public sealed class SqliteLedger : ILedger, IDisposable
         cmd.CommandText =
             """
             INSERT OR IGNORE INTO imports
-                (identity_key, broadcast_time, station, program, broadcast_date, source_path,
+                (identity_key, broadcast_time, part_index, station, program, broadcast_date, source_path,
                  output_path, rule_version, used_fallback, imported_at)
             VALUES
-                ($id, $time, $station, $program, $date, $source, $output, $rule, $fallback, $imported);
+                ($id, $time, $part, $station, $program, $date, $source, $output, $rule, $fallback, $imported);
             """;
         cmd.Parameters.AddWithValue("$id", entry.IdentityKey);
         cmd.Parameters.AddWithValue("$time", TimeKey(entry.BroadcastTime));
+        cmd.Parameters.AddWithValue("$part", entry.PartIndex);
         cmd.Parameters.AddWithValue("$station", entry.Station);
         cmd.Parameters.AddWithValue("$program", entry.Program);
         cmd.Parameters.AddWithValue("$date", entry.BroadcastDate.ToString(DateFormat, CultureInfo.InvariantCulture));

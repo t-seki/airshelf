@@ -25,19 +25,19 @@ public sealed class IngestServiceTests
 
     private sealed class FakeLedger : ILedger
     {
-        private readonly List<(string Key, TimeOnly? Time)> _entries = [];
+        private readonly List<(string Key, TimeOnly? Time, int Part)> _entries = [];
         public HashSet<string> Sources { get; } = [];
         public IReadOnlyList<string> Keys => _entries.Select(e => e.Key).ToList();
 
-        public bool Contains(IdentityKey key, TimeOnly? broadcastTime) =>
-            _entries.Any(e => e.Key == key.Value
-                && (e.Time == broadcastTime || e.Time is null || broadcastTime is null));
+        // 厳密一致(ADR-0004)。時刻 or part が異なれば別放送。
+        public bool Contains(IdentityKey key, TimeOnly? broadcastTime, int partIndex) =>
+            _entries.Any(e => e.Key == key.Value && e.Time == broadcastTime && e.Part == partIndex);
 
         public bool ContainsSource(string sourcePath) => Sources.Contains(sourcePath);
 
         public void Record(LedgerEntry entry)
         {
-            _entries.Add((entry.IdentityKey, entry.BroadcastTime));
+            _entries.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
             Sources.Add(entry.SourcePath);
         }
     }
@@ -62,6 +62,12 @@ public sealed class IngestServiceTests
         {
             Reads++;
             return artist;
+        }
+
+        public RawTags ReadTags(string filePath)
+        {
+            Reads++;
+            return new RawTags(Genre: null, Artist: artist);
         }
     }
 
@@ -144,7 +150,8 @@ public sealed class IngestServiceTests
         Assert.Equal(IngestOutcome.Imported, item.Outcome);
         Assert.Single(_target.Written);
         Assert.True(_ledger.Contains(
-            new IdentityKey("J-WAVE", "LOGISTEED RADIONOMICS", new DateOnly(2026, 6, 12)), broadcastTime: null));
+            new IdentityKey("J-WAVE", "LOGISTEED RADIONOMICS", new DateOnly(2026, 6, 12)),
+            broadcastTime: new TimeOnly(22, 30, 0), partIndex: 0));
     }
 
     [Fact]

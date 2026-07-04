@@ -19,6 +19,10 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
         [CommandOption("--dry-run")]
         [Description("副作用なしで取り込み予定を表示する")]
         public bool DryRun { get; init; }
+
+        [CommandOption("--root <PATH>")]
+        [Description("監視ルートの上書き(radikool 一括移行など一度きりの走査に使う)")]
+        public string? Root { get; init; }
     }
 
     protected override async Task<int> ExecuteAsync(
@@ -36,7 +40,7 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
         try
         {
             config = ConfigLoader.LoadRequired<RadirecConfig>(settings.Config);
-            (service, disposable) = CompositionRoot.Build(config, settings.DryRun);
+            (service, disposable) = CompositionRoot.Build(config, settings.DryRun, settings.Root);
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
         {

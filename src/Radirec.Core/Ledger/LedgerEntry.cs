@@ -10,6 +10,12 @@ public sealed record LedgerEntry
 
     /// <summary>放送時刻(同日・別放送の区別に使う)。時刻なし(radikool 等)は null。</summary>
     public TimeOnly? BroadcastTime { get; init; }
+
+    /// <summary>
+    /// 同日重複の判別子(パート序数)。時刻が同じ(または無い)同日別放送を区別する。
+    /// 無ければ 0。ADR-0004。
+    /// </summary>
+    public int PartIndex { get; init; }
     public required string SourcePath { get; init; }
     public required string OutputPath { get; init; }
     public required string RuleVersion { get; init; }

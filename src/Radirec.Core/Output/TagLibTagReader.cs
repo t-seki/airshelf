@@ -6,7 +6,15 @@ public sealed class TagLibTagReader : ITagReader
     public string? ReadArtist(string filePath)
     {
         using var file = TagLib.File.Create(filePath);
-        var artist = file.Tag.FirstPerformer;
-        return string.IsNullOrWhiteSpace(artist) ? null : artist;
+        return Clean(file.Tag.FirstPerformer);
     }
+
+    public RawTags ReadTags(string filePath)
+    {
+        using var file = TagLib.File.Create(filePath);
+        return new RawTags(Clean(file.Tag.FirstGenre), Clean(file.Tag.FirstPerformer));
+    }
+
+    private static string? Clean(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 }

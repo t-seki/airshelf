@@ -15,8 +15,13 @@ public static class CompositionRoot
     /// <param name="dryRun">
     /// true なら台帳を副作用なく扱う(既存 DB は読み取り専用で開き、無ければ NullLedger)。
     /// </param>
+    /// <param name="rootOverride">
+    /// 監視ルートの上書き(radikool 一括移行の一度きり実行で <c>--root</c> から渡す)。
+    /// null なら <see cref="RadirecConfig.RadioRoot"/> を使う。
+    /// </param>
     /// <returns>サービスと、破棄すべきリソース(台帳。NullLedger 時は null)。</returns>
-    public static (IngestService Service, IDisposable? Disposable) Build(RadirecConfig config, bool dryRun)
+    public static (IngestService Service, IDisposable? Disposable) Build(
+        RadirecConfig config, bool dryRun, string? rootOverride = null)
     {
         var fileSystem = new FileSystem();
 
@@ -42,12 +47,22 @@ public static class CompositionRoot
         if (string.IsNullOrWhiteSpace(genre))
             genre = TagMapper.DefaultGenre;
 
-        var service = new IngestService(
-            new FileSystemRecordingSource(fileSystem, config.RadioRoot),
+        var tagReader = new TagLibTagReader();
+
+        // らじれこ(M4A)と radikool(MP3)を CanHandle で振り分ける。radikool は識別に
+        // タグ(局=genre)を要するため tagReader を渡す。
+        var importer = new SourceRouter(
+        [
             new RajirekoImporter(config.KnownRecordingKinds),
+            new RadikoolImporter(tagReader),
+        ]);
+
+        var service = new IngestService(
+            new FileSystemRecordingSource(fileSystem, rootOverride ?? config.RadioRoot),
+            importer,
             new StabilityChecker(TimeProvider.System, TimeSpan.FromSeconds(config.StabilitySeconds)),
             new RecordingSkipPolicy(config.SkipPatterns),
-            new TagLibTagReader(),
+            tagReader,
             assembler,
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), config.OutputRoot),
             ledger,

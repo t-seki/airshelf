@@ -19,10 +19,12 @@ public sealed class EpisodeAssembler(IStationResolver stationResolver, IProgramR
         {
             Identity = identity,
             BroadcastTime = source.BroadcastTime,
-            Artist = artist,
+            // radikool は識別時にタグから artist を得ている。無ければ引数(らじれこの遅延読取)。
+            Artist = source.Artist ?? artist,
             RecordingKind = source.RecordingKind,
             UsedFallback = station.UsedFallback || program.UsedFallback,
-            PartIndex = program.PartIndex,
+            // ファイル名由来の part(radikool の (N))を優先。無ければ統合フォルダ由来(らじれこ)。
+            PartIndex = source.PartIndex ?? program.PartIndex,
         };
     }
 }
