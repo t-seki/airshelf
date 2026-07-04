@@ -61,11 +61,13 @@ public sealed class RadikoolImporter(ITagReader tagReader) : ISourceImporter
             throw new SourceParseException($"タグを読めません ({ex.Message}): {name}", ex);
         }
 
-        // 局が genre から得られない場合のフォールバック。radikool のディスク構造は
-        // {局コード}/{ファイル}.mp3 の 1 階層なので、局コードは**直上フォルダ**(ProgramFolder)に入る
-        // (FileSystemRecordingSource は 2 階層前提で StationFolder に祖父=ルート名を入れてしまう)。
+        // 局は genre タグが権威(実データ 2564 件中 2563 件を被覆)。genre が空のときだけ
+        // フォルダにフォールバックする。ただし radikool のディスク構造はバージョンで混在し
+        // ({局コード}/file の 1 階層と {局コード}/{番組}/file の 2 階層が混在)、局コードの位置が
+        // 一意に定まらない = フォールバックは best-effort。実データで genre が空の唯一の 1 件は
+        // 2 階層で、その場合 StationFolder(祖父=局コード)が正しく局に解決する(→ alias で正規名へ)。
         var stationFromFolder = string.IsNullOrWhiteSpace(tags.Genre);
-        var rawStation = stationFromFolder ? file.ProgramFolder.Trim() : tags.Genre!.Trim();
+        var rawStation = stationFromFolder ? file.StationFolder.Trim() : tags.Genre!.Trim();
 
         return new ParsedSource
         {

@@ -20,11 +20,10 @@ public sealed class RadikoolImporterTests
         public RawTags ReadTags(string filePath) => throw new IOException("壊れたMP3");
     }
 
-    // radikool のディスク構造は {局コード}/{ファイル}.mp3 の 1 階層なので、局コードは
-    // FileSystemRecordingSource 上は ProgramFolder(直上フォルダ)に入る。StationFolder は
-    // ルート名(局とは無関係)になる。
+    // radikool の構造はバージョンで混在。genre が空の実データ唯一の 1 件は 2 階層
+    // ({局コード}/{番組}/file)で、StationFolder=祖父=局コードが正しい。ここではその形を模す。
     private static RecordingFile Rec(
-        string name, string programFolder = "LFR", string stationFolder = "records")
+        string name, string programFolder = "番組", string stationFolder = "LFR")
         => new()
         {
             FilePath = "/in/" + name,
@@ -97,11 +96,12 @@ public sealed class RadikoolImporterTests
     }
 
     [Fact]
-    public void Parse_GenreMissing_FallsBackToStationCodeFolder()
+    public void Parse_GenreMissing_FallsBackToStationFolder()
     {
-        // genre 欠落 → 局コードは直上フォルダ(ProgramFolder)から採る。祖父(StationFolder=ルート名)は使わない。
+        // genre 欠落 → StationFolder(2 階層構造では祖父=局コード)にフォールバックする。
+        // 実データで genre が空の唯一の 1 件がこの形(LFR/番組/file)。
         var parsed = Importer(genre: null)
-            .Parse(Rec("番組_20200823.mp3", programFolder: "LFR", stationFolder: "records"));
+            .Parse(Rec("番組_20200129.mp3", programFolder: "日向坂高校放送部", stationFolder: "LFR"));
 
         Assert.Equal("LFR", parsed.RawStation);
         Assert.True(parsed.StationFromFolder);

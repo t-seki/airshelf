@@ -4,6 +4,8 @@
     { "Canonical": "文化放送", "Aliases": [ "QRR" ] },
     { "Canonical": "TOKYO FM", "Aliases": [ "FMT", "fm_tokyo", "TOKYOFM" ] },
     { "Canonical": "NHK-FM", "Aliases": [ "JOAK-FM", "NHK-FM（東京）", "NHK FM(東京)", "NHK-FM" ] },
-    { "Canonical": "NHKラジオ第1", "Aliases": [ "NHKラジオ第1(radiko)" ] }
+    { "Canonical": "NHKラジオ第1", "Aliases": [ "NHKラジオ第1(radiko)", "NHKラジオ第1（東京）", "ラジオ第1(東京)", "JOAK", "R1_tokyo" ] },
+    { "Canonical": "TBSラジオ", "Aliases": [ "TBS" ] },
+    { "Canonical": "InterFM897", "Aliases": [ "INT" ] }
   ]
 }

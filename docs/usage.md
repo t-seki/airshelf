@@ -93,6 +93,12 @@ radirec ingest --config radirec.json --root "I:\d\radikool\records" --dry-run
 radirec ingest --config radirec.json --root "I:\d\radikool\records"
 ```
 
+radikool のバージョンごとに `records` フォルダが分かれている場合(例 `radikool4.9.3` /
+`radikool4.9.1` / `radikool`)は、**同じ台帳・出力先のまま `--root` を替えて順に実行**すれば、
+版をまたぐ同一回は同一性キーで**自動的に重複排除**される(先に取り込んだ版が残り、後は「済」でスキップ)。
+版フォルダの構造は `{局コード}/file.mp3` の 1 階層と `{局コード}/{番組}/file.mp3` の 2 階層が混在するが、
+番組名・放送日は**ファイル名から**採るためどちらも取り込める。
+
 radikool 固有の扱い:
 
 - **放送局は ID3 の `genre` タグが権威**(局コードフォルダは誤分類がありうるため信用しない。
