@@ -108,6 +108,20 @@ public sealed class SqliteLedgerTests : IDisposable
         Assert.True(ledger.Contains(key, t1000, 0));    // 2件目も別レコードとして記録される
     }
 
+    [Fact]
+    public void TimelessQuery_DoesNotMatchTimeBearingRow_NoWildcard()
+    {
+        // ADR-0004 でワイルドカードを撤去したことをロックする(#11 の再発防止)。
+        // 旧実装では時刻なし照会が時刻ありの行に一致して誤スキップしていた。
+        using var ledger = new SqliteLedger(DbPath);
+        var key = Key();
+        ledger.Record(Entry(key, source: "/in/a.m4a", time: new TimeOnly(8, 30, 0), part: 0));
+
+        Assert.False(ledger.Contains(key, null, 0));               // 時刻なし照会は時刻あり行に一致しない
+        Assert.False(ledger.Contains(key, new TimeOnly(8, 30), 1)); // part が違えば一致しない
+        Assert.True(ledger.Contains(key, new TimeOnly(8, 30), 0));  // 完全一致のみ取込済み
+    }
+
     // ---- 時刻なしソースの同日重複を part で区別(ADR-0004。#11 の回帰防止)----
 
     [Fact]
