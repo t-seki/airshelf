@@ -48,10 +48,24 @@ public sealed class RadikoolImporter(ITagReader tagReader) : ISourceImporter
         // 番組名 = 末尾 "_YYYYMMDD(N).mp3" を除いた stem。
         var program = name[..match.Index].Trim();
 
-        // 局 = genre タグ(権威)。無ければ局コードフォルダにフォールバック(Q1)。出演者も同時取得。
-        var tags = tagReader.ReadTags(file.FilePath);
+        // 局 = genre タグ(権威)。出演者も同時取得。破損/ロック等でタグを読めない場合は
+        // SourceParseException にして当該ファイルだけ Failed 扱いにする(バッチ/ dry-run 全体を
+        // 落とさない。ProcessAsync が catch する)。
+        RawTags tags;
+        try
+        {
+            tags = tagReader.ReadTags(file.FilePath);
+        }
+        catch (Exception ex)
+        {
+            throw new SourceParseException($"タグを読めません ({ex.Message}): {name}", ex);
+        }
+
+        // 局が genre から得られない場合のフォールバック。radikool のディスク構造は
+        // {局コード}/{ファイル}.mp3 の 1 階層なので、局コードは**直上フォルダ**(ProgramFolder)に入る
+        // (FileSystemRecordingSource は 2 階層前提で StationFolder に祖父=ルート名を入れてしまう)。
         var stationFromFolder = string.IsNullOrWhiteSpace(tags.Genre);
-        var rawStation = stationFromFolder ? file.StationFolder.Trim() : tags.Genre!.Trim();
+        var rawStation = stationFromFolder ? file.ProgramFolder.Trim() : tags.Genre!.Trim();
 
         return new ParsedSource
         {

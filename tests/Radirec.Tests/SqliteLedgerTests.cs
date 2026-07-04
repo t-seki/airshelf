@@ -224,4 +224,18 @@ public sealed class SqliteLedgerTests : IDisposable
         Assert.False(ledger.Contains(Key(), new TimeOnly(8, 30, 0), 0));
         Assert.False(ledger.ContainsSource("/in/legacy.m4a"));
     }
+
+    [Fact]
+    public void ReadOnly_OnBroadcastTimeSchema_DoesNotThrow_AndReportsNotContained()
+    {
+        // 本番の現行スキーマ(broadcast_time あり・part_index なし)を dry-run で読み取り専用オープン。
+        // Contains は part_index 列を参照するため、_usable=false で例外を出さず未取込扱いにする
+        // (書き込み実行時に自動マイグレーションされるまでの一時的挙動)。
+        CreateBroadcastTimeSchemaDb(Key(), source: "/in/prod.m4a", time: "083000");
+
+        using var ledger = new SqliteLedger(DbPath, readOnly: true);
+
+        Assert.False(ledger.Contains(Key(), new TimeOnly(8, 30, 0), 0));
+        Assert.False(ledger.ContainsSource("/in/prod.m4a"));
+    }
 }

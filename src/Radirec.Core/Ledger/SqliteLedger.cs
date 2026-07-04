@@ -32,8 +32,9 @@ public sealed class SqliteLedger : ILedger, IDisposable
 
     private readonly SqliteConnection _connection;
 
-    // 読み取り専用で開いた際、互換スキーマ(broadcast_time 列あり)でなければ台帳を使わない。
-    // 旧スキーマDBに対する dry-run が例外で落ちるのを防ぐ(readOnly では作り直せないため)。
+    // 読み取り専用で開いた際、互換スキーマ(part_index 列あり)でなければ台帳を使わない。
+    // 旧スキーマDBに対する dry-run が例外(no such column: part_index 等)で落ちるのを防ぐ
+    // (readOnly では作り直せないため)。
     private readonly bool _usable;
 
     /// <param name="databasePath">台帳 DB のパス(ローカルディスク)。</param>
@@ -140,7 +141,8 @@ public sealed class SqliteLedger : ILedger, IDisposable
         return cmd.ExecuteScalar() is not null;
     }
 
-    // 時刻を "HHmmss" で保持。時刻なし(radikool 等)は空文字 = ワイルドカード。
+    // 時刻を "HHmmss" で保持。時刻なし(radikool 等)は空文字("")。ADR-0004 以降は厳密一致
+    // のキーの一部であり、ワイルドカードではない(同日重複は part_index で区別する)。
     private static string TimeKey(TimeOnly? time) =>
         time?.ToString("HHmmss", CultureInfo.InvariantCulture) ?? string.Empty;
 

@@ -49,9 +49,10 @@ radikool(MP3)を取り込むと、放送時刻を持たない録音が台帳に�
 - **出力・整列**: part がある回は `… YYYY-MM-DD-N.ext` / `track = MMDD*10+N` / `title (N)`(既存 TagMapper 機構)。
 - **台帳スキーマ変更(順序付き冪等マイグレーション)**: `imports` に `part_index INTEGER NOT NULL DEFAULT 0` を
   追加し、PK を `(identity_key, broadcast_time, part_index)` に拡張する。ALTER で PK は変えられないため、
-  起動時に **順序付きステップ**で移送する: ① `broadcast_time` 列が無い旧DB → 全面作り直し(両列を得る)
-  ② `part_index` 列が無い(= 本番の現行スキーマ)→ rename→create→`INSERT … SELECT`(part_index=0 で埋める)
-  →drop で保持移送 ③ 両列あり → no-op。既存行は `part_index=0`。再取込時の冪等性は `source_path` 一意で担保
+  起動時に **順序付きステップ**で移送する(いずれも rename→create→`INSERT … SELECT`→drop で**既存行を保持**):
+  ① `broadcast_time` 列が無い最古DB → 保持移送(broadcast_time='' / part_index=0 を補う)
+  ② `part_index` 列が無い(= 本番の現行スキーマ)→ 保持移送(既存の時刻を保ち part_index=0 を補う)
+  ③ 両列あり → no-op。既存行は `part_index=0`。再取込時の冪等性は `source_path` 一意で担保
   されるため(`ContainsSource` が同一ファイルを先に短絡)、既存行の part_index を再導出できなくても二重取込
   しない。
 - **デプロイ結合**: 新バイナリを配ると、稼働中サービスが次回起動時に `C:\radirec\ledger.db` を新スキーマへ

@@ -13,13 +13,24 @@ public sealed class RadikoolImporterTests
         public RawTags ReadTags(string filePath) => new(genre, artist);
     }
 
-    private static RecordingFile Rec(string name, string stationFolder = "LFR")
+    // タグ読取が失敗する fake(破損/ロック MP3 を模す)。
+    private sealed class ThrowingTagReader : ITagReader
+    {
+        public string? ReadArtist(string filePath) => null;
+        public RawTags ReadTags(string filePath) => throw new IOException("壊れたMP3");
+    }
+
+    // radikool のディスク構造は {局コード}/{ファイル}.mp3 の 1 階層なので、局コードは
+    // FileSystemRecordingSource 上は ProgramFolder(直上フォルダ)に入る。StationFolder は
+    // ルート名(局とは無関係)になる。
+    private static RecordingFile Rec(
+        string name, string programFolder = "LFR", string stationFolder = "records")
         => new()
         {
             FilePath = "/in/" + name,
             FileName = name,
             StationFolder = stationFolder,
-            ProgramFolder = string.Empty, // radikool は番組フォルダを持たない(局コード直下)。
+            ProgramFolder = programFolder,
             Extension = Path.GetExtension(name).ToLowerInvariant(),
             SizeBytes = 1024,
             LastWriteTimeUtc = DateTimeOffset.UnixEpoch,
@@ -86,10 +97,11 @@ public sealed class RadikoolImporterTests
     }
 
     [Fact]
-    public void Parse_GenreMissing_FallsBackToStationFolder()
+    public void Parse_GenreMissing_FallsBackToStationCodeFolder()
     {
+        // genre 欠落 → 局コードは直上フォルダ(ProgramFolder)から採る。祖父(StationFolder=ルート名)は使わない。
         var parsed = Importer(genre: null)
-            .Parse(Rec("番組_20200823.mp3", stationFolder: "LFR"));
+            .Parse(Rec("番組_20200823.mp3", programFolder: "LFR", stationFolder: "records"));
 
         Assert.Equal("LFR", parsed.RawStation);
         Assert.True(parsed.StationFromFolder);
@@ -101,5 +113,15 @@ public sealed class RadikoolImporterTests
         // 2020-02-30 は存在しない日付。
         Assert.Throws<SourceParseException>(
             () => Importer().Parse(Rec("番組_20200230.mp3")));
+    }
+
+    [Fact]
+    public void Parse_TagReadFailure_ThrowsSourceParseException()
+    {
+        // 破損/ロックで genre タグを読めない場合は SourceParseException(= 当該ファイルのみ Failed。
+        // バッチ/ dry-run 全体は落とさない)。
+        var importer = new RadikoolImporter(new ThrowingTagReader());
+        Assert.Throws<SourceParseException>(
+            () => importer.Parse(Rec("番組_20200823.mp3")));
     }
 }

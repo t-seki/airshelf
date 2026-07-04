@@ -94,8 +94,8 @@ public sealed class IngestService(
         // タグを読まずにスキップする(常駐キャッチアップスキャン/dry-run の高速化。ADR-0003)。
         var episode = assembler.Assemble(parsed);
 
-        // import-once: 同一性キー(+放送時刻)または 同一ソースパスが既にあればスキップ。
-        // 同日でも時刻が異なる別放送は取り込む(ADR-0002)。
+        // import-once: 同一性キー(+放送時刻+パート序数)または 同一ソースパスが既にあればスキップ。
+        // 同日でも時刻 or part が異なる別放送は取り込む(ADR-0002 / 0004、厳密一致)。
         if (ledger.Contains(episode.Identity, episode.BroadcastTime, episode.PartIndex ?? 0)
             || ledger.ContainsSource(file.FilePath))
             return Result(IngestOutcome.SkippedAlreadyImported, file, episode);
