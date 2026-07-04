@@ -94,13 +94,14 @@ public sealed class IngestService(
         // タグを読まずにスキップする(常駐キャッチアップスキャン/dry-run の高速化。ADR-0003)。
         var episode = assembler.Assemble(parsed);
 
-        // import-once: 同一性キー(+放送時刻)または 同一ソースパスが既にあればスキップ。
-        // 同日でも時刻が異なる別放送は取り込む(ADR-0002)。
-        if (ledger.Contains(episode.Identity, episode.BroadcastTime) || ledger.ContainsSource(file.FilePath))
+        // import-once: 同一性キー(+放送時刻+パート序数)または 同一ソースパスが既にあればスキップ。
+        // 同日でも時刻 or part が異なる別放送は取り込む(ADR-0002 / 0004、厳密一致)。
+        if (ledger.Contains(episode.Identity, episode.BroadcastTime, episode.PartIndex ?? 0)
+            || ledger.ContainsSource(file.FilePath))
             return Result(IngestOutcome.SkippedAlreadyImported, file, episode);
 
-        // 未取込のときだけ出演者タグを読む。
-        episode = episode with { Artist = SafeReadArtist(file.FilePath) };
+        // 未取込のときだけ出演者タグを読む。radikool は識別時に取得済み(episode.Artist)なので再読しない。
+        episode = episode with { Artist = episode.Artist ?? SafeReadArtist(file.FilePath) };
 
         var tags = TagMapper.Map(episode, genre);
 
@@ -121,6 +122,7 @@ public sealed class IngestService(
                 Program = episode.Program,
                 BroadcastDate = episode.BroadcastDate,
                 BroadcastTime = episode.BroadcastTime,
+                PartIndex = episode.PartIndex ?? 0,
                 SourcePath = file.FilePath,
                 OutputPath = outputPath,
                 RuleVersion = NormalizationRuleVersion.Current,

@@ -6,11 +6,11 @@ namespace Radirec.Core.Ledger;
 public interface ILedger
 {
     /// <summary>
-    /// 同一性キー(局・番組・日)+ 放送時刻が取り込み済みか。同一キーでも時刻が異なれば別放送として
-    /// 未取込扱い。時刻なし(<paramref name="broadcastTime"/> = null)は同日どの時刻とも一致する
-    /// ワイルドカード(cross-source の同一回を重複排除。ADR-0002)。
+    /// 同一性キー(局・番組・日)+ 放送時刻 + パート序数が取り込み済みか(厳密一致)。同一キーでも
+    /// 時刻 or part が異なれば別放送として未取込扱い。時刻なしソース(radikool)の同日重複は
+    /// <paramref name="partIndex"/> で区別する(ADR-0004。ワイルドカードは撤去済み)。
     /// </summary>
-    bool Contains(IdentityKey key, TimeOnly? broadcastTime);
+    bool Contains(IdentityKey key, TimeOnly? broadcastTime, int partIndex);
 
     /// <summary>同一ソースパスが取り込み済みか(フォールバックキーの重複コピー抑止)。</summary>
     bool ContainsSource(string sourcePath);

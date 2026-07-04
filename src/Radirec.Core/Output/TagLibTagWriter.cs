@@ -4,12 +4,13 @@ using TagLib;
 namespace Radirec.Core.Output;
 
 /// <summary>
-/// TagLib# による <see cref="ITagWriter"/> 実装。MP4(M4A)へ案A タグを書き込む。
+/// TagLib# による <see cref="ITagWriter"/> 実装。MP4(M4A / らじれこ)と MP3(ID3 / radikool)の
+/// 両方へ案A タグを書き込む。
 /// </summary>
 /// <remarks>
-/// date はフル ISO(YYYY-MM-DD)を MP4 の <c>©day</c> アトムへ直接書く。
-/// TagLib の汎用 <c>Tag.Year</c> は 4 桁年しか持てず <c>©day</c> を年だけで上書きしてしまうため、
-/// <c>Tag.Year</c> は設定しない。
+/// 汎用タグ(album/albumartist/title/genre/disc/track 等)は両形式共通。フル ISO 日付
+/// (YYYY-MM-DD)だけ形式別に書く: MP4 は <c>©day</c> アトム、MP3 は ID3v2 の <c>TDRC</c> フレーム。
+/// TagLib の汎用 <c>Tag.Year</c> は 4 桁年しか持てず日付を年だけに潰すため使わない。
 /// </remarks>
 public sealed class TagLibTagWriter : ITagWriter
 {
@@ -27,13 +28,37 @@ public sealed class TagLibTagWriter : ITagWriter
         tag.Performers = tags.Artist is null ? [] : [tags.Artist];
         tag.Title = tags.Title;
         tag.Genres = [tags.Genre];
-        tag.Comment = tags.Comment;
+        // null 代入では既存フレームが消えない実装があるため空文字でクリアする(radikool の
+        // 元コメント "YYYY年MM月DD日" が残らないように)。案A の comment は録音種別 or 空。
+        tag.Comment = tags.Comment ?? string.Empty;
         tag.Disc = tags.Disc;
         tag.Track = tags.Track;
 
+        var iso = tags.Date.ToString("yyyy-MM-dd");
+
         if (file.GetTag(TagTypes.Apple, create: true) is TagLib.Mpeg4.AppleTag apple)
         {
-            apple.SetText(DayAtom, tags.Date.ToString("yyyy-MM-dd"));
+            apple.SetText(DayAtom, iso);
+        }
+
+        if (file.GetTag(TagTypes.Id3v2, create: true) is TagLib.Id3v2.Tag id3)
+        {
+            // TDRC(Recording time)へフル日付を直接書く(Tag.Year の年潰しを避ける)。
+            id3.SetTextFrame("TDRC", iso);
+
+            // 案A の comment が空(radikool)なら、元ソースのコメントフレームを除去する
+            // (汎用 Comment への null/空 代入では既存フレームが消えないため)。radikool(旧 Lavf)は
+            // コメントを標準 COMM ではなく TXXX(description="comment")で書くので両方を掃除する。
+            if (string.IsNullOrEmpty(tags.Comment))
+            {
+                id3.RemoveFrames("COMM");
+                foreach (var f in id3.GetFrames<TagLib.Id3v2.UserTextInformationFrame>()
+                             .Where(f => string.Equals(f.Description, "comment", StringComparison.OrdinalIgnoreCase))
+                             .ToList())
+                {
+                    id3.RemoveFrame(f);
+                }
+            }
         }
 
         file.Save();

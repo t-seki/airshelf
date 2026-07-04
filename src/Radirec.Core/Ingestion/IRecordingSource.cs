@@ -12,16 +12,21 @@ public interface IRecordingSource
 /// <summary>
 /// <c>{root}/{放送局}/{番組}/{file}</c> 構造のフォルダを走査して <see cref="RecordingFile"/> を作る。
 /// 放送局フォルダ = 祖父ディレクトリ名、番組フォルダ = 親ディレクトリ名。
+/// 既定で らじれこ(<c>*.m4a</c>)と radikool(<c>*.mp3</c>)の両方を列挙する(importer が振り分ける)。
 /// </summary>
-public sealed class FileSystemRecordingSource(IFileSystem fileSystem, string root, string searchPattern = "*.m4a")
+public sealed class FileSystemRecordingSource(
+    IFileSystem fileSystem, string root, params string[] searchPatterns)
     : IRecordingSource
 {
+    private readonly string[] _patterns = searchPatterns.Length > 0 ? searchPatterns : ["*.m4a", "*.mp3"];
+
     public IEnumerable<RecordingFile> Enumerate()
     {
         if (!fileSystem.Directory.Exists(root))
             yield break;
 
-        foreach (var path in fileSystem.Directory.EnumerateFiles(root, searchPattern, SearchOption.AllDirectories))
+        foreach (var path in _patterns.SelectMany(
+                     p => fileSystem.Directory.EnumerateFiles(root, p, SearchOption.AllDirectories)))
         {
             var info = fileSystem.FileInfo.New(path);
             var programDir = fileSystem.Path.GetDirectoryName(path);

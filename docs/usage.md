@@ -2,8 +2,8 @@
 
 らじれこで録音した M4A を、Jellyfin 音楽ライブラリ向けに整理・取り込みする CLI の使い方。
 
-> 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M3**(常駐サービス)。
-> radikool 移行(M4)、GUI(M5)は未実装です。
+> 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M3**(常駐サービス)/
+> **M4-A**(radikool MP3 の一括移行)。GUI(M5)、ソース跨ぎのアルバム統合(M4-C)は未実装です。
 
 ## 1. 前提
 
@@ -80,6 +80,35 @@ Jellyfin の全ライブラリスキャンを起動**します(`POST /Library/Re
 radirec refresh --config radirec.json
 ```
 
+### radikool(旧 MP3 録音)の一括移行(M4-A)
+
+旧録音アプリ **radikool** の MP3 アーカイブ(`{局コード}/{番組名}_{YYYYMMDD}.mp3`)を、`--root` で
+一度きり取り込みます。同じ台帳・出力先・Jellyfin ライブラリへ束ねられ(**一度きりの移行なので常駐
+サービスの監視対象にはしない**)、`.m4a`/`.mp3` はファイルごとに自動で振り分けられます。
+
+```powershell
+# まず dry-run(radikool の records フォルダを指す)
+radirec ingest --config radirec.json --root "I:\d\radikool\records" --dry-run
+# 問題なければ実行
+radirec ingest --config radirec.json --root "I:\d\radikool\records"
+```
+
+radikool のバージョンごとに `records` フォルダが分かれている場合(例 `radikool4.9.3` /
+`radikool4.9.1` / `radikool`)は、**同じ台帳・出力先のまま `--root` を替えて順に実行**すれば、
+版をまたぐ同一回は同一性キーで**自動的に重複排除**される(先に取り込んだ版が残り、後は「済」でスキップ)。
+版フォルダの構造は `{局コード}/file.mp3` の 1 階層と `{局コード}/{番組}/file.mp3` の 2 階層が混在するが、
+番組名・放送日は**ファイル名から**採るためどちらも取り込める。
+
+radikool 固有の扱い:
+
+- **放送局は ID3 の `genre` タグが権威**(局コードフォルダは誤分類がありうるため信用しない。
+  `genre` の表記ゆれは `stations.json` の alias で吸収)。番組名はファイル名 stem。時刻は持たない。
+- **同日重複マーカー `(N)`**(例 `…_20200223(2).mp3`)は、中身の違う同日別録音として
+  **両方**取り込み、`-N` / `track` / `title (N)` で区別します([ADR-0004](adr/0004-part-index-dedup-for-timeless-sources.md))。
+- radikool 元タグ(`comment` の和文日付など)は案A で上書き/除去し、`artist`(出演者)は維持します。
+- **番組名の表記ゆれ統合・らじれことのアルバム統合は M4-C(未実装)**。現状は radikool の番組名ごとに
+  別アルバムとして入ります(例 `欅坂46`/`櫻坂46` は別アルバム)。局の正規化(配置)は今スライスで行います。
+
 ## 4. 取り込みの挙動
 
 - **非破壊**: らじれこ原本(`RadioRoot`)は読むだけで変更しません。整理済みは `OutputRoot` にコピーされます。
@@ -91,6 +120,8 @@ radirec refresh --config radirec.json
 - **冪等(import-once)**: アルバムのグルーピングは `(放送局, 番組, 放送日)` 単位ですが、**取り込みの
   重複判定は放送時刻も見ます**([ADR-0002](adr/0002-same-day-tiebreak-by-time.md))。同日でも時刻が
   異なる別放送(時間帯分割番組のパート等)は両方取り込まれ、同時刻の再取り込みだけがスキップされます。
+  時刻を持たないソース(radikool)の同日重複はパート序数で区別します
+  ([ADR-0004](adr/0004-part-index-dedup-for-timeless-sources.md))。
   台帳(`LedgerPath`)に記録し、再実行しても重複しません。
 
 ## 5. アルバムの束ね方・表示名の整え方

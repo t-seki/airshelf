@@ -5,7 +5,8 @@
   "StabilitySeconds": 15,
   "Genre": "ラジオ",
   "SkipPatterns": [
-    "この時間はＮＨＫネットラジオでは"
+    "この時間はＮＨＫネットラジオでは",
+    "この時間はNHKネットラジオでは"
   ],
   "KnownRecordingKinds": [
     "TimeFree"

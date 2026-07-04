@@ -23,4 +23,17 @@ public sealed record ParsedSource
 
     /// <summary>放送局をフォルダ名から採ったか(ファイル名に <c>[...]</c> が無い場合 true)。</summary>
     public bool StationFromFolder { get; init; }
+
+    /// <summary>
+    /// 同日重複の判別子(パート序数)。時刻を持たないソース(radikool)がファイル名の重複マーカー
+    /// <c>(N)</c> から採る(マーカー無し = null)。時刻ありソース(らじれこ)は null のまま
+    /// (統合フォルダ由来の part は正規化解決側で決まる)。ADR-0004。
+    /// </summary>
+    public int? PartIndex { get; init; }
+
+    /// <summary>
+    /// 出演者(タグ由来で識別前に得られた場合)。radikool は局=genre タグを読む際に同時取得する。
+    /// らじれこは null(識別後に遅延読取する。ADR-0003 の性能最適化)。
+    /// </summary>
+    public string? Artist { get; init; }
 }

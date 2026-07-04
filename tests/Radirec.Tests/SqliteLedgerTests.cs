@@ -18,13 +18,15 @@ public sealed class SqliteLedgerTests : IDisposable
 
     private string DbPath => Path.Combine(_dir, "ledger.db");
 
-    private static LedgerEntry Entry(IdentityKey key, string source = "/in/a.m4a", TimeOnly? time = null) => new()
+    private static LedgerEntry Entry(
+        IdentityKey key, string source = "/in/a.m4a", TimeOnly? time = null, int part = 0) => new()
     {
         IdentityKey = key.Value,
         Station = key.CanonicalStation,
         Program = key.CanonicalProgram,
         BroadcastDate = key.BroadcastDate,
         BroadcastTime = time,
+        PartIndex = part,
         SourcePath = source,
         OutputPath = "/out/a.m4a",
         RuleVersion = NormalizationRuleVersion.Current,
@@ -43,9 +45,9 @@ public sealed class SqliteLedgerTests : IDisposable
 
         ledger.Record(Entry(key, source: "/in/x.m4a"));
 
-        Assert.True(ledger.Contains(key, null));
+        Assert.True(ledger.Contains(key, null, 0));
         Assert.True(ledger.ContainsSource("/in/x.m4a"));
-        Assert.False(ledger.Contains(Key("別番組"), null));
+        Assert.False(ledger.Contains(Key("別番組"), null, 0));
         Assert.False(ledger.ContainsSource("/in/other.m4a"));
     }
 
@@ -58,7 +60,7 @@ public sealed class SqliteLedgerTests : IDisposable
         ledger.Record(Entry(key));
         ledger.Record(Entry(key)); // 例外なく無視される
 
-        Assert.True(ledger.Contains(key, null));
+        Assert.True(ledger.Contains(key, null, 0));
     }
 
     [Fact]
@@ -71,7 +73,7 @@ public sealed class SqliteLedgerTests : IDisposable
         }
 
         using var reopened = new SqliteLedger(DbPath);
-        Assert.True(reopened.Contains(key, null));
+        Assert.True(reopened.Contains(key, null, 0));
     }
 
     [Fact]
@@ -84,7 +86,7 @@ public sealed class SqliteLedgerTests : IDisposable
         ledger.Record(Entry(Key()));
 
         Assert.True(File.Exists(nested));
-        Assert.True(ledger.Contains(Key(), null));
+        Assert.True(ledger.Contains(Key(), null, 0));
     }
 
     // ---- 同日 tie-break(ADR-0002)----
@@ -99,15 +101,53 @@ public sealed class SqliteLedgerTests : IDisposable
 
         ledger.Record(Entry(key, source: "/in/p1.m4a", time: t0830));
 
-        Assert.True(ledger.Contains(key, t0830));    // 同時刻は取込済み
-        Assert.False(ledger.Contains(key, t1000));   // 別時刻はまだ未取込 → 取り込める
+        Assert.True(ledger.Contains(key, t0830, 0));    // 同時刻は取込済み
+        Assert.False(ledger.Contains(key, t1000, 0));   // 別時刻はまだ未取込 → 取り込める
 
         ledger.Record(Entry(key, source: "/in/p2.m4a", time: t1000));
-        Assert.True(ledger.Contains(key, t1000));    // 2件目も別レコードとして記録される
+        Assert.True(ledger.Contains(key, t1000, 0));    // 2件目も別レコードとして記録される
     }
 
-    // 旧スキーマ(broadcast_time 列なし)の台帳に 1 行入れて作る
-    private void CreateLegacyDb(IdentityKey key, string source)
+    [Fact]
+    public void TimelessQuery_DoesNotMatchTimeBearingRow_NoWildcard()
+    {
+        // ADR-0004 でワイルドカードを撤去したことをロックする(#11 の再発防止)。
+        // 旧実装では時刻なし照会が時刻ありの行に一致して誤スキップしていた。
+        using var ledger = new SqliteLedger(DbPath);
+        var key = Key();
+        ledger.Record(Entry(key, source: "/in/a.m4a", time: new TimeOnly(8, 30, 0), part: 0));
+
+        Assert.False(ledger.Contains(key, null, 0));               // 時刻なし照会は時刻あり行に一致しない
+        Assert.False(ledger.Contains(key, new TimeOnly(8, 30), 1)); // part が違えば一致しない
+        Assert.True(ledger.Contains(key, new TimeOnly(8, 30), 0));  // 完全一致のみ取込済み
+    }
+
+    // ---- 時刻なしソースの同日重複を part で区別(ADR-0004。#11 の回帰防止)----
+
+    [Fact]
+    public void SameKey_NoTime_DifferentPart_AreDistinct_BothRecorded()
+    {
+        // radikool の ANN0(ZERO) 2020-02-23 bare + (2) 相当。時刻なしで同日2録音。
+        // 旧ワイルドカードでは 2 件目が誤スキップされ 1 行しか残らなかった(#11)。
+        using var ledger = new SqliteLedger(DbPath);
+        var key = Key();
+
+        ledger.Record(Entry(key, source: "/in/bare.mp3", time: null, part: 0));
+
+        Assert.True(ledger.Contains(key, null, 0));   // bare は取込済み
+        Assert.False(ledger.Contains(key, null, 2));  // (2) はまだ未取込 → 取り込める(誤スキップしない)
+
+        ledger.Record(Entry(key, source: "/in/2.mp3", time: null, part: 2));
+
+        // 両方が別レコードとして残る。
+        Assert.True(ledger.Contains(key, null, 0));
+        Assert.True(ledger.Contains(key, null, 2));
+        Assert.True(ledger.ContainsSource("/in/bare.mp3"));
+        Assert.True(ledger.ContainsSource("/in/2.mp3"));
+    }
+
+    // 最古スキーマ(broadcast_time / part_index 列なし)の台帳に 1 行入れて作る
+    private void CreateOldestSchemaDb(IdentityKey key, string source)
     {
         using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}");
         conn.Open();
@@ -122,49 +162,80 @@ public sealed class SqliteLedgerTests : IDisposable
         cmd.ExecuteNonQuery();
     }
 
+    // 現行スキーマ(broadcast_time あり・part_index なし = 本番台帳)に 1 行入れて作る
+    private void CreateBroadcastTimeSchemaDb(IdentityKey key, string source, string time)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "CREATE TABLE imports (identity_key TEXT NOT NULL, broadcast_time TEXT NOT NULL DEFAULT '', " +
+            "station TEXT, program TEXT, broadcast_date TEXT, source_path TEXT, output_path TEXT, " +
+            "rule_version TEXT, used_fallback INTEGER, imported_at TEXT, " +
+            "PRIMARY KEY (identity_key, broadcast_time));" +
+            "INSERT INTO imports VALUES ($id,$t,'局','番組','2026-06-12',$src,'/out/a.m4a','m3-1',0,'2026-06-12T00:00:00Z');";
+        cmd.Parameters.AddWithValue("$id", key.Value);
+        cmd.Parameters.AddWithValue("$t", time);
+        cmd.Parameters.AddWithValue("$src", source);
+        cmd.ExecuteNonQuery();
+    }
+
     [Fact]
-    public void Migrates_OldSchema_PreservesExistingRows()
+    public void Migrates_OldestSchema_PreservesExistingRows()
     {
         var key = Key();
-        CreateLegacyDb(key, source: "/in/legacy.m4a");
+        CreateOldestSchemaDb(key, source: "/in/legacy.m4a");
 
         using var ledger = new SqliteLedger(DbPath);
 
-        // 旧行が保持され、取込済みとして扱われる(再取込による出力重複を防ぐ)。
-        Assert.True(ledger.Contains(key, new TimeOnly(8, 30, 0))); // 旧行は時刻なし='' なので一致
-        Assert.True(ledger.ContainsSource("/in/legacy.m4a"));
+        // 旧行は broadcast_time='' / part_index=0 として移送される。厳密一致で取込済み判定。
+        Assert.True(ledger.Contains(key, null, 0));
+        Assert.True(ledger.ContainsSource("/in/legacy.m4a")); // 再取込は source_path で防ぐ
         // 新スキーマとして書き込みも可能
         ledger.Record(Entry(Key("別番組"), time: new TimeOnly(1, 0, 0)));
-        Assert.True(ledger.Contains(Key("別番組"), new TimeOnly(1, 0, 0)));
+        Assert.True(ledger.Contains(Key("別番組"), new TimeOnly(1, 0, 0), 0));
+    }
+
+    [Fact]
+    public void Migrates_BroadcastTimeSchema_AddsPartIndex_PreservesRows()
+    {
+        // 本番台帳(M3 時点 = broadcast_time あり・part_index なし)を part_index 追加へ移送する。
+        var key = Key();
+        CreateBroadcastTimeSchemaDb(key, source: "/in/prod.m4a", time: "083000");
+
+        using var ledger = new SqliteLedger(DbPath);
+
+        // 既存の時刻は保持され、part_index=0 で移送される。
+        Assert.True(ledger.Contains(key, new TimeOnly(8, 30, 0), 0));
+        Assert.True(ledger.ContainsSource("/in/prod.m4a"));
+        // 移送後は part 付きの新規記録が可能。
+        ledger.Record(Entry(key, source: "/in/prod2.mp3", time: null, part: 2));
+        Assert.True(ledger.Contains(key, null, 2));
     }
 
     [Fact]
     public void ReadOnly_OnOldSchema_DoesNotThrow_AndReportsNotContained()
     {
-        CreateLegacyDb(Key(), source: "/in/legacy.m4a");
+        CreateOldestSchemaDb(Key(), source: "/in/legacy.m4a");
 
         // 読み取り専用(dry-run 経路)で旧スキーマを開いても例外にならず、未取込扱いになる。
         using var ledger = new SqliteLedger(DbPath, readOnly: true);
 
-        Assert.False(ledger.Contains(Key(), new TimeOnly(8, 30, 0)));
+        Assert.False(ledger.Contains(Key(), new TimeOnly(8, 30, 0), 0));
         Assert.False(ledger.ContainsSource("/in/legacy.m4a"));
     }
 
     [Fact]
-    public void MissingTime_IsWildcard_ForCrossSource()
+    public void ReadOnly_OnBroadcastTimeSchema_DoesNotThrow_AndReportsNotContained()
     {
-        using var ledger = new SqliteLedger(DbPath);
-        var key = Key();
+        // 本番の現行スキーマ(broadcast_time あり・part_index なし)を dry-run で読み取り専用オープン。
+        // Contains は part_index 列を参照するため、_usable=false で例外を出さず未取込扱いにする
+        // (書き込み実行時に自動マイグレーションされるまでの一時的挙動)。
+        CreateBroadcastTimeSchemaDb(Key(), source: "/in/prod.m4a", time: "083000");
 
-        // らじれこ(時刻あり)を記録
-        ledger.Record(Entry(key, time: new TimeOnly(8, 30, 0)));
+        using var ledger = new SqliteLedger(DbPath, readOnly: true);
 
-        // 時刻なし(radikool 相当)の照会は同日どの時刻とも一致(重複排除)
-        Assert.True(ledger.Contains(key, null));
-
-        // 逆向き: 時刻なしを記録済みなら、時刻ありの照会も一致
-        var key2 = Key("別番組");
-        ledger.Record(Entry(key2, source: "/in/rk.m4a", time: null));
-        Assert.True(ledger.Contains(key2, new TimeOnly(1, 23, 45)));
+        Assert.False(ledger.Contains(Key(), new TimeOnly(8, 30, 0), 0));
+        Assert.False(ledger.ContainsSource("/in/prod.m4a"));
     }
 }
