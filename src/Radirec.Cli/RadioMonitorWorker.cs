@@ -5,7 +5,7 @@ using Microsoft.Win32;
 using Radirec.Core.Ingestion;
 using Radirec.Hosting;
 
-namespace Radirec.Service;
+namespace Radirec.Cli;
 
 /// <summary>
 /// I: を監視し録音を検知即取り込みする常駐ワーカー。正しさはキャッチアップ + import-once 冪等で

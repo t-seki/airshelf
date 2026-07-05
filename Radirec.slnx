@@ -3,7 +3,6 @@
     <Project Path="src/Radirec.Cli/Radirec.Cli.csproj" />
     <Project Path="src/Radirec.Core/Radirec.Core.csproj" />
     <Project Path="src/Radirec.Hosting/Radirec.Hosting.csproj" />
-    <Project Path="src/Radirec.Service/Radirec.Service.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Radirec.Tests/Radirec.Tests.csproj" />

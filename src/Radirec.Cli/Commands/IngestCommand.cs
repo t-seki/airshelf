@@ -12,9 +12,8 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandOption("-c|--config <PATH>")]
-        [Description("設定ファイル(radirec.json)のパス")]
-        [DefaultValue("radirec.json")]
-        public string Config { get; init; } = "radirec.json";
+        [Description(@"設定ファイル(radirec.json)のパス。省略時は %ProgramData%\radirec\radirec.json")]
+        public string? Config { get; init; }
 
         [CommandOption("--dry-run")]
         [Description("副作用なしで取り込み予定を表示する")]
@@ -28,9 +27,10 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        if (!File.Exists(settings.Config))
+        var configPath = ConfigPaths.Resolve(settings.Config);
+        if (!File.Exists(configPath))
         {
-            AnsiConsole.MarkupLineInterpolated($"[red]設定ファイルが見つかりません:[/] {settings.Config}");
+            AnsiConsole.MarkupLineInterpolated($"[red]設定ファイルが見つかりません:[/] {configPath}");
             return 1;
         }
 
@@ -39,7 +39,9 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
         IDisposable? disposable;
         try
         {
-            config = ConfigLoader.LoadRequired<RadirecConfig>(settings.Config);
+            config = ConfigLoader.LoadRequired<RadirecConfig>(configPath);
+            // 設定内の相対パス(台帳・マスタ)を設定ファイルのディレクトリ基準へ寄せる(ADR-0006)。
+            ConfigPaths.RebaseAgainst(config, configPath);
             (service, disposable) = CompositionRoot.Build(config, settings.DryRun, settings.Root);
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)

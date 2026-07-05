@@ -3,6 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
+    <!-- 版はタグ駆動で CI が Version プロパティを注入する(ADR-0005 / #16)。
+         ローカル/非 CI ビルドはこのフォールバックが radirec の version 出力になる。 -->
+    <Version>0.0.0-dev</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
