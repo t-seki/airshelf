@@ -1,0 +1,39 @@
+using Radirec.Core.Configuration;
+using Radirec.Hosting;
+
+namespace Radirec.Tests;
+
+/// <summary>
+/// install.ps1 が %ProgramData%\radirec\ へ配置する sample 設定が ConfigLoader で解析できることを保証する。
+/// sample は配布物の一部で「初回生成の種」になるため、壊れると新規インストールが起動時に失敗する。
+/// </summary>
+public class SampleConfigTests
+{
+    private static string SamplePath(string name) =>
+        Path.Combine(AppContext.BaseDirectory, "Samples", name);
+
+    [Fact]
+    public void Radirecサンプルが解析できパスは相対で入る()
+    {
+        var config = ConfigLoader.LoadRequired<RadirecConfig>(SamplePath("radirec.sample.json"));
+
+        // 相対パス(ADR-0006。config ディレクトリ基準で解決される前提の裸名)。
+        Assert.Equal("ledger.db", config.LedgerPath);
+        Assert.Equal("stations.json", config.StationsFile);
+        Assert.Equal("programs.json", config.ProgramsFile);
+    }
+
+    [Fact]
+    public void 放送局マスタサンプルが解析できる()
+    {
+        var stations = ConfigLoader.LoadRequired<StationMasterConfig>(SamplePath("stations.sample.json"));
+        Assert.NotNull(stations);
+    }
+
+    [Fact]
+    public void 番組aliasサンプルが解析できる()
+    {
+        var programs = ConfigLoader.LoadRequired<ProgramMasterConfig>(SamplePath("programs.sample.json"));
+        Assert.NotNull(programs);
+    }
+}
