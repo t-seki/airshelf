@@ -33,12 +33,16 @@ public static class ConfigPaths
             : Path.Combine(baseDir, path);
 
     /// <summary>
-    /// 設定内の相対パス(台帳・放送局マスタ・番組 alias)を、設定ファイルのあるディレクトリ基準へ寄せる。
+    /// 設定内の相対パス(監視ルート・出力先・台帳・放送局マスタ・番組 alias)を、
+    /// 設定ファイルのあるディレクトリ基準へ寄せる。CWD(サービスでは System32)基準の解決を排する。
+    /// 本番はいずれも絶対パス(UNC 含む)のため実質 no-op = 後方互換。
     /// </summary>
     public static void RebaseAgainst(RadirecConfig config, string configFilePath)
     {
         var dir = Path.GetDirectoryName(Path.GetFullPath(configFilePath))
                   ?? Directory.GetCurrentDirectory();
+        config.RadioRoot = Rebase(dir, config.RadioRoot);
+        config.OutputRoot = Rebase(dir, config.OutputRoot);
         config.LedgerPath = Rebase(dir, config.LedgerPath);
         config.StationsFile = Rebase(dir, config.StationsFile);
         config.ProgramsFile = Rebase(dir, config.ProgramsFile);

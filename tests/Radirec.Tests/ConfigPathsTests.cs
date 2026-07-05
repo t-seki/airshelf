@@ -39,13 +39,17 @@ public class ConfigPathsTests
         var absoluteLedger = Path.Combine(dir, "sub", "ledger.db");
         var config = new RadirecConfig
         {
-            LedgerPath = absoluteLedger,   // 絶対 → 不変
-            StationsFile = "stations.json", // 相対 → 寄せる
-            ProgramsFile = "programs.json", // 相対 → 寄せる
+            RadioRoot = "recordings",         // 相対 → 寄せる
+            OutputRoot = absoluteLedger,      // 絶対 → 不変(UNC/ドライブ相当)
+            LedgerPath = absoluteLedger,      // 絶対 → 不変
+            StationsFile = "stations.json",   // 相対 → 寄せる
+            ProgramsFile = "programs.json",   // 相対 → 寄せる
         };
 
         ConfigPaths.RebaseAgainst(config, configPath);
 
+        Assert.Equal(Path.Combine(dir, "recordings"), config.RadioRoot);
+        Assert.Equal(absoluteLedger, config.OutputRoot);
         Assert.Equal(absoluteLedger, config.LedgerPath);
         Assert.Equal(Path.Combine(dir, "stations.json"), config.StationsFile);
         Assert.Equal(Path.Combine(dir, "programs.json"), config.ProgramsFile);

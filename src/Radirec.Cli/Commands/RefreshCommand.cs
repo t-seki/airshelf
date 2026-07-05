@@ -19,23 +19,9 @@ public sealed class RefreshCommand : AsyncCommand<RefreshCommand.Settings>
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var configPath = ConfigPaths.Resolve(settings.Config);
-        if (!File.Exists(configPath))
-        {
-            AnsiConsole.MarkupLineInterpolated($"[red]設定ファイルが見つかりません:[/] {configPath}");
+        var config = ConfigLoading.Load(settings.Config);
+        if (config is null)
             return 1;
-        }
-
-        RadirecConfig config;
-        try
-        {
-            config = ConfigLoader.LoadRequired<RadirecConfig>(configPath);
-        }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
-        {
-            AnsiConsole.MarkupLineInterpolated($"[red]設定の読み込みに失敗しました:[/] {ex.Message}");
-            return 1;
-        }
 
         var (refresher, disposable) = CompositionRoot.BuildRefresher(config);
         if (refresher is NullLibraryRefresher)

@@ -3,8 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.EventLog;
-using Radirec.Hosting;
-using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace Radirec.Cli.Commands;
@@ -17,25 +15,28 @@ public sealed class ServiceCommand : AsyncCommand<ServiceCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
+        // 位置引数でも設定パスを受ける。旧 Radirec.Service.exe は config を位置引数で受けており、
+        // 既存の登録形式 `"...\radirec.exe" service "C:\...\radirec.json"` を黙殺しないため。
+        [CommandArgument(0, "[CONFIG]")]
+        [Description("設定ファイルのパス(位置引数。--config でも指定可)")]
+        public string? ConfigArgument { get; init; }
+
         [CommandOption("-c|--config <PATH>")]
         [Description(@"設定ファイル(radirec.json)のパス。省略時は %ProgramData%\radirec\radirec.json")]
         public string? Config { get; init; }
+
+        /// <summary>--config を優先し、無ければ位置引数を使う。</summary>
+        public string? EffectiveConfig => Config ?? ConfigArgument;
     }
 
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var configPath = ConfigPaths.Resolve(settings.Config);
-        if (!File.Exists(configPath))
-        {
-            AnsiConsole.MarkupLineInterpolated($"[red]設定ファイルが見つかりません:[/] {configPath}");
+        // 設定の発見・読み込み・相対パス rebase(ADR-0006)は共通ヘルパに集約。
+        // サービスの既定 CWD は System32 のため、相対指定の解決基準を誤らないことが要。
+        var config = ConfigLoading.Load(settings.EffectiveConfig);
+        if (config is null)
             return 1;
-        }
-
-        var config = ConfigLoader.LoadRequired<RadirecConfig>(configPath);
-        // 設定内の相対パス(台帳・マスタ)を設定ファイルのディレクトリ基準へ寄せる(ADR-0006)。
-        // サービスの既定 CWD は System32 のため、CWD 基準では相対指定が破綻する。
-        ConfigPaths.RebaseAgainst(config, configPath);
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddWindowsService(options => options.ServiceName = "Radirec");

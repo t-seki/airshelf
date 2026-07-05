@@ -17,7 +17,10 @@ internal static class VersionInfo
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                 ?? "0.0.0-dev";
             var plus = info.IndexOf('+');
-            return plus >= 0 ? info[..plus] : info;
+            if (plus >= 0)
+                info = info[..plus];
+            // 版部分が空(例: "+abc123" のようにセマンティック版が無い)なら実用値へフォールバック。
+            return string.IsNullOrEmpty(info) ? "0.0.0-dev" : info;
         }
     }
 }
