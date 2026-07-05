@@ -12,9 +12,8 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandOption("-c|--config <PATH>")]
-        [Description("設定ファイル(radirec.json)のパス")]
-        [DefaultValue("radirec.json")]
-        public string Config { get; init; } = "radirec.json";
+        [Description(@"設定ファイル(radirec.json)のパス。省略時は %ProgramData%\radirec\radirec.json")]
+        public string? Config { get; init; }
 
         [CommandOption("--dry-run")]
         [Description("副作用なしで取り込み予定を表示する")]
@@ -28,22 +27,20 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        if (!File.Exists(settings.Config))
-        {
-            AnsiConsole.MarkupLineInterpolated($"[red]設定ファイルが見つかりません:[/] {settings.Config}");
+        var config = ConfigLoading.Load(settings.Config);
+        if (config is null)
             return 1;
-        }
 
-        RadirecConfig config;
         IngestService service;
         IDisposable? disposable;
         try
         {
-            config = ConfigLoader.LoadRequired<RadirecConfig>(settings.Config);
             (service, disposable) = CompositionRoot.Build(config, settings.DryRun, settings.Root);
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
         {
+            // 台帳オープンや stations/programs の読み込みで失敗した場合(radirec.json 本体の
+            // 解析失敗は ConfigLoading.Load 側で処理済み)。
             AnsiConsole.MarkupLineInterpolated($"[red]設定の読み込みに失敗しました:[/] {ex.Message}");
             return 1;
         }
