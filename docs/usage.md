@@ -60,6 +60,10 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 `--config` を省略すると **`%ProgramData%\radirec\radirec.json`**(デプロイ時のデータルート)を使います
 (ADR-0006)。開発時に別の場所の設定を使うなら `--config <path>` で明示します。
 
+> ⚠️ 以前はカレントディレクトリの `radirec.json` が既定でした。**`radirec ingest` を `--config` 無しで
+> 呼ぶ既存のスケジュールタスク / バッチがあれば、`--config <path>` を明示**してください(さもないと
+> 別のデータルート・別台帳を参照し、取りこぼしや再スキャンを招きます)。
+
 ### 結果テーブルの見方
 
 | 表示 | 意味 |
@@ -240,10 +244,12 @@ M4-A まで運用していた「実行体・台帳・設定を `C:\radirec\` に
 
 > ⚠️ **台帳が生命線**: `ledger.db` は取り込み冪等(import-once)の唯一の記録です。新データルートへ
 > **無傷で運ばない**と、次回スキャンで全放送回が「未取込」判定になり、NAS へ**再コピーが爆発**します。
-> 稼働中の DB を WAL ごとコピーすると破損しうるため、**必ずサービスを停止してから** `db`+`-wal`+`-shm`
-> の 3 点セットで移動します(SQLite は次回 open 時に WAL を replay)。
+> 稼働中の DB を WAL ごとコピーすると破損しうるため、**必ずサービスを停止してから**扱います。
+> 以下は **`Copy-Item`(移動ではなくコピー)** を使い、旧 `C:\radirec\` を検証完了まで**無傷のバックアップ
+> として残します**。ロールバックが必要になっても台帳を失いません。
 
-**管理者 PowerShell** で(旧 `C:\radirec\` は検証が済むまで消さずバックアップとして残す):
+**このスクリプトは新 Release を展開して `install.ps1` を実行する「前」に、管理者 PowerShell で実行**します
+(空のデータルートへコピーするため衝突しません)。台帳コピーは失敗を握り潰さず、成否を検証します。
 
 ```powershell
 $old = 'C:\radirec'
@@ -252,20 +258,37 @@ $data = "$env:ProgramData\radirec"
 # 1. 旧サービスを停止・削除(WAL 生存中のコピーを避ける)
 Stop-Service Radirec -ErrorAction SilentlyContinue
 sc.exe delete Radirec
+Start-Sleep -Seconds 2   # ファイルハンドル解放を待つ
 
-# 2. データルートを作成し、台帳(3点セット)とマスタ・設定を移動
+# 2. データルートを作成
 New-Item -ItemType Directory -Path $data -Force | Out-Null
-Move-Item "$old\ledger.db","$old\ledger.db-wal","$old\ledger.db-shm" $data -ErrorAction SilentlyContinue
-Move-Item "$old\stations.json","$old\programs.json","$old\radirec.json" $data
 
-# 3. 移した radirec.json の LedgerPath/StationsFile/ProgramsFile を裸のファイル名に書き換える
-#    (config ディレクトリ基準で解決される。RadioRoot/OutputRoot の絶対パスはそのまま)
-#    例: "C:\\radirec\\ledger.db" → "ledger.db"、"C:\\radirec\\stations.json" → "stations.json"
-notepad "$data\radirec.json"
+# 3. 台帳をコピー(必須成功)。sidecar(-wal/-shm)は無いこともあるので任意。
+Copy-Item "$old\ledger.db" $data          # 失敗すれば例外で停止(握り潰さない)
+Copy-Item "$old\ledger.db-wal","$old\ledger.db-shm" $data -ErrorAction SilentlyContinue
+
+# 4. マスタ・設定をコピー
+Copy-Item "$old\stations.json","$old\programs.json","$old\radirec.json" $data
+
+# 5. 移した radirec.json のパスを裸のファイル名へ決定的に書き換える(config ディレクトリ基準で解決。
+#    RadioRoot/OutputRoot の絶対パスはそのまま)。手編集ミスを避けるため置換で行う。
+$cfg = Join-Path $data 'radirec.json'
+(Get-Content $cfg -Raw) `
+  -replace '"C:\\\\radirec\\\\ledger\.db"', '"ledger.db"' `
+  -replace '"C:\\\\radirec\\\\stations\.json"', '"stations.json"' `
+  -replace '"C:\\\\radirec\\\\programs\.json"', '"programs.json"' |
+  Set-Content $cfg -Encoding UTF8
+
+# 6. 検証: 台帳が新ルートに存在し、空でないこと(0 byte や欠落なら中止して原因調査)
+$ledger = Join-Path $data 'ledger.db'
+if (-not (Test-Path $ledger) -or (Get-Item $ledger).Length -eq 0) {
+    throw "台帳の移行に失敗しています($ledger)。install.ps1 を実行せず原因を調べてください。"
+}
+Write-Host "台帳を移行しました: $ledger ($((Get-Item $ledger).Length) bytes)"
 ```
 
 その後、新 Release を展開して `deploy\install.ps1` を実行します。設定は既存を**温存**する(生成しない)ため、
-移した `radirec.json` がそのまま使われます。
+コピーした `radirec.json` がそのまま使われます。
 
 ```powershell
 cd <展開先>\deploy
@@ -275,4 +298,4 @@ Get-EventLog -LogName Application -Source Radirec -Newest 20   # 取り込みが
 ```
 
 移行が正しく効いていれば、既存の全放送回は台帳にあるため**再取り込みは起きません**(新規録音のみ処理)。
-確認後に旧 `C:\radirec\`(および `ledger.db.bak`)を削除します。
+**再コピーが起きていないことを EventLog で確認してから**、旧 `C:\radirec\`(および `ledger.db.bak`)を削除します。

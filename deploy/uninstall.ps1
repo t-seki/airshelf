@@ -49,12 +49,25 @@ if ([System.Diagnostics.EventLog]::SourceExists($ServiceName)) {
     Write-Host "[skip] EventLog ソース '$ServiceName' は未登録"
 }
 
-# 3. 実行体削除
-if (Test-Path $InstallDir) {
-    Remove-Item -Path $InstallDir -Recurse -Force
-    Write-Host "[OK] 実行体 $InstallDir を削除しました"
+# 3. 実行体削除(radirec.exe のみ)。
+#    InstallDir を丸ごと Remove-Item -Recurse すると、旧同居レイアウト(exe と台帳が同一
+#    フォルダ)や InstallDir==DataDir の指定時に、-PurgeData 無しでも台帳を巻き添え削除してしまう。
+$installFull = [System.IO.Path]::GetFullPath($InstallDir)
+$dataFull = [System.IO.Path]::GetFullPath($DataDir)
+$exePath = Join-Path $InstallDir 'radirec.exe'
+if ($installFull -eq $dataFull) {
+    Write-Host "[warn] InstallDir が DataDir と同一。radirec.exe のみ削除し、データは温存します: $InstallDir" -ForegroundColor Yellow
+}
+if (Test-Path $exePath) {
+    Remove-Item -Path $exePath -Force
+    Write-Host "[OK] radirec.exe を削除しました"
+    # InstallDir が(データと別で)空になったらディレクトリも片付ける。
+    if ($installFull -ne $dataFull -and -not (Get-ChildItem -Path $InstallDir -Force -ErrorAction SilentlyContinue)) {
+        Remove-Item -Path $InstallDir -Force
+        Write-Host "[OK] 空になった $InstallDir を削除しました"
+    }
 } else {
-    Write-Host "[skip] 実行体 $InstallDir は存在しない"
+    Write-Host "[skip] $exePath は存在しない"
 }
 
 # 4. データ(既定は保持)
