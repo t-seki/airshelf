@@ -279,10 +279,18 @@ $cfg = Join-Path $data 'radirec.json'
   -replace '"C:\\\\radirec\\\\programs\.json"', '"programs.json"' |
   Set-Content $cfg -Encoding UTF8
 
-# 6. 検証: 台帳が新ルートに存在し、空でないこと(0 byte や欠落なら中止して原因調査)
+# 6. 検証(install.ps1 を実行する前の門番):
+#    (a) 台帳が新ルートに非空で存在する
 $ledger = Join-Path $data 'ledger.db'
 if (-not (Test-Path $ledger) -or (Get-Item $ledger).Length -eq 0) {
     throw "台帳の移行に失敗しています($ledger)。install.ps1 を実行せず原因を調べてください。"
+}
+#    (b) パス書換が効いたこと。Copy(移動でなく)なので旧 C:\radirec\ledger.db は残存し、書換が
+#        漏れても LedgerPath が旧絶対パスを指したまま起動が通ってしまう(旧 C:\radirec を後で消した
+#        瞬間に空 DB → 再コピー爆発)。正規の値は I:\... / UNC \\... / 裸名のみなので、C:\radirec 参照が
+#        残っていれば書換ミス。
+if ((Get-Content $cfg -Raw) -match 'C:\\+radirec') {
+    throw "radirec.json に旧 C:\radirec のパスが残っています(書換が未反映)。install.ps1 を実行しないでください。"
 }
 Write-Host "台帳を移行しました: $ledger ($((Get-Item $ledger).Length) bytes)"
 ```
