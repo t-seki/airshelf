@@ -67,7 +67,10 @@ public sealed class LocalFolderTargetTests
 
         var final = await sut.WriteAsync(Source(), Episode(), Tags());
 
-        var partial = final[..^".m4a".Length] + ".partial.m4a"; // 拡張子を保った .partial 名
+        // .partial 名は製品と同じ Path 操作で組み立てる(OS のパス区切り差で崩れないように)。
+        var partial = fs.Path.Combine(
+            fs.Path.GetDirectoryName(final)!,
+            fs.Path.GetFileNameWithoutExtension(final) + ".partial" + fs.Path.GetExtension(final));
         Assert.True(fs.File.Exists(final));                    // 最終ファイルができる
         Assert.False(fs.File.Exists(partial));                 // .partial は残らない
         Assert.True(fs.File.Exists(SourcePath));               // 原本は非破壊

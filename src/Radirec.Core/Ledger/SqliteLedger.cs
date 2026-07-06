@@ -56,6 +56,10 @@ public sealed class SqliteLedger : ILedger, IDisposable
         {
             DataSource = databasePath,
             Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWriteCreate,
+            // 台帳は寿命いっぱい単一接続を保持するためプールは無益。無効化して Dispose 時に OS の
+            // ファイルハンドルを決定的に解放する(Windows では Close 後もプールがハンドルを保持し、
+            // ファイル削除/移動が「使用中」で失敗する。移行時の Copy にも好都合)。
+            Pooling = false,
         }.ToString());
         _connection.Open();
 
