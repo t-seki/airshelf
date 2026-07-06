@@ -12,6 +12,10 @@ public sealed class SqliteLedgerTests : IDisposable
 
     public void Dispose()
     {
+        // Windows: プールに残る接続が ledger.db のハンドルを保持し Directory.Delete を阻む。
+        // 旧スキーマ seed 用の生 SqliteConnection 由来も含め、削除前に全プールを解放する
+        //(SqliteLedger 本体は Pooling=false だが、seed 接続はプールされうる)。
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (Directory.Exists(_dir))
             Directory.Delete(_dir, recursive: true);
     }
