@@ -29,12 +29,13 @@ dotnet test  Radirec.slnx --filter "FullyQualifiedName~RajirekoImporter"  # 絞�
 
 ```
 src/Radirec.Core/    ドメインロジック(OS 非依存・テスト可能)
-src/Radirec.Cli/     Spectre.Console.Cli の薄い入口(合成ルート + コマンド)
+src/Radirec.Hosting/ 合成ルート + 環境設定・パス解決(Core 依存)
+src/Radirec.Cli/     単一 exe radirec.exe。Spectre.Console.Cli の入口 + service verb(常駐)
 tests/Radirec.Tests/ xUnit
 ```
 
-将来 `Radirec.Service`(Windows サービス, M3)/ `Radirec.Gui`(配布フロントエンド, M5)を
-Core のみ依存で追加します。参照は単方向(`Cli → Core` / `Tests → Core`)。
+CLI と常駐サービスは単一 exe `radirec.exe` に統合済み(`ingest`/`refresh`/`service`。[ADR-0005](adr/0005-single-exe-cli-service-merge.md))。
+参照は単方向(`Cli → Hosting → Core` / `Tests → Core, Hosting`)。将来 `Radirec.Gui`(配布フロントエンド, M5)を追加予定。
 
 ### Radirec.Core の主な型
 

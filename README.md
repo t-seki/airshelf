@@ -41,14 +41,14 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 
 - C# / .NET 10(実行は Windows ネイティブ)
 - タグ操作: TagLib# / 台帳: SQLite / CLI: Spectre.Console.Cli
-- ファイル監視: FileSystemWatcher(Windows サービス, M3 予定)/ Jellyfin 連携: REST API(M2 予定)
+- ファイル監視: FileSystemWatcher(Windows サービス, M3)/ Jellyfin 連携: REST API(M2)
 
 ## 構成
 
 | プロジェクト | 役割 | 状態 |
 |------|------|------|
 | `Radirec.Core` | ドメインロジック(パース/正規化/import-once/タグ/出力ターゲット) | 実装済み |
-| `Radirec.Cli` | 単発実行・開発・バッチ入口 | 実装済み |
-| `Radirec.Service` | Windows サービス(I: 常時監視・本番) | 予定(M3) |
+| `Radirec.Hosting` | 合成ルート + 環境設定・パス解決(Core と入口の橋渡し) | 実装済み |
+| `Radirec.Cli` | 単一 exe `radirec.exe`(CLI + 常駐サービス。`ingest`/`refresh`/`service`) | 実装済み |
 | `Radirec.Gui` | 配布フロントエンド兼編集 UI | 予定(M5) |
 | `Radirec.Tests` | 単体・統合テスト | 実装済み |

@@ -1,7 +1,13 @@
 {
   "RadioRoot": "I:\\radio\\tmp",
   "OutputRoot": "\\\\192.168.11.121\\share\\media\\radio",
-  "LedgerPath": "C:\\ProgramData\\radirec\\ledger.db",
+
+  // 相対パスは radirec.json のあるディレクトリ基準で解決される(ADR-0006)。
+  // 既定では ledger / stations / programs は %ProgramData%\radirec\ に同居する。
+  "LedgerPath": "ledger.db",
+  "StationsFile": "stations.json",
+  "ProgramsFile": "programs.json",
+
   "StabilitySeconds": 15,
   "Genre": "ラジオ",
   "SkipPatterns": [
@@ -11,8 +17,6 @@
   "KnownRecordingKinds": [
     "TimeFree"
   ],
-  "StationsFile": "config/stations.json",
-  "ProgramsFile": "config/programs.json",
 
   "JellyfinUrl": "",
   "JellyfinApiKey": "",
