@@ -1,0 +1,72 @@
+name: release
+
+# タグ push で成果物をビルドし GitHub Release へ添付する(ADR-0005 / ADR-0007。#16)。
+# セキュリティ上・機能上ともタグ push のみをトリガにする(PR ビルドは self-hosted で走らせない)。
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Release 作成に必要な最小権限。
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # 母艦 Windows PC の self-hosted runner(runner-svc 実行)。homelab runbook のラベルに合わせる。
+    runs-on: [self-hosted, windows, x64, homelab]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Derive version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}" -replace '^v', ''
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "version = $v"
+
+      - name: Test
+        shell: pwsh
+        run: dotnet test Radirec.slnx -c Release --nologo
+
+      - name: Publish single-file exe
+        shell: pwsh
+        run: >
+          dotnet publish src/Radirec.Cli -c Release
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o publish
+
+      - name: Assemble release package
+        id: pkg
+        shell: pwsh
+        run: |
+          $stage = "radirec-${{ steps.ver.outputs.version }}-win-x64"
+          New-Item -ItemType Directory -Path "$stage/deploy", "$stage/config" -Force | Out-Null
+          # 配布物: 単一 exe + 運用スクリプト + sample 設定のみ。実 config・pdb は含めない。
+          Copy-Item publish/radirec.exe "$stage/"
+          Copy-Item deploy/*.ps1 "$stage/deploy/"
+          Copy-Item config/*.sample.json "$stage/config/"
+          $zip = "$stage.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force
+          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.pkg.outputs.zip }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
