@@ -41,10 +41,12 @@ GitHub Release へ添付、まで自動化する。以後の配布は Release �
 [usage.md §6](usage.md)、更新は `update.ps1`)。
 
 **ランナー**: `runs-on: [self-hosted, windows, x64, homelab]`(母艦 Windows PC の self-hosted runner)。
-トリガはタグ push のみ(PR ビルドは self-hosted で走らせない)。ランナーの導入は homelab の runbook
-`docs/runbooks/github-actions-runner.md`(repo ごとに `C:\actions-runner\radirec-tool\` へ展開し
-`--labels "self-hosted,windows,x64,homelab" --runasservice` で登録。`actions/checkout` のため
-Git for Windows を PATH に置く)。
+トリガはタグ push のみ(PR ビルドは self-hosted で走らせない)。ランナーの導入手順は **別リポジトリ
+`t-seki/homelab`** の runbook にある(このリポジトリには無い):
+<https://github.com/t-seki/homelab/blob/main/docs/runbooks/github-actions-runner.md>。
+要点は repo ごとに `C:\actions-runner\radirec-tool\` へ runner を展開し
+`--labels "self-hosted,windows,x64,homelab" --runasservice` で登録、`actions/checkout` のため
+Git for Windows を PATH に置く、こと。
 
 ## プロジェクト構成
 
