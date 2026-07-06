@@ -69,21 +69,25 @@
 - **WSL からは NAS のマップ済みドライブが見えない**ため実行ホストは Windows。開発/ビルドも
   Windows(.NET SDK)で行う(§11)。
 
-### 3.1 実行形態(Windows サービス + CLI 併用)【確定】
+### 3.1 実行形態(単一 exe:常駐サービス + 単発 CLI)【確定】
 
-本番形態は **`Radirec.Service`(Worker Service / BackgroundService)**。同一の取り込みエンジン
-(`Radirec.Core`)を、常駐サービスと単発 CLI の 2 通りで動かす。
+本番形態は **単一 exe `radirec.exe`**。同一の取り込みエンジン(`Radirec.Core`)を、常駐サービスと
+単発 CLI の 2 通りで動かす。両者は 1 つの実行体に **verb** で統合し、配布物を 1 本化して Core
+バージョン不一致事故を構造的に防ぐ([ADR-0005](adr/0005-single-exe-cli-service-merge.md))。
+実行体とデータは分離配置する(実行体 = `C:\Program Files\radirec\`、データ = `%ProgramData%\radirec\`。
+[ADR-0006](adr/0006-binary-data-separation-and-path-resolution.md))。
 
-- **`Radirec.Service`(常時監視・本番)**: I: を FileSystemWatcher 監視し検知即取り込み。
-  自動起動・自動再起動。コンソールが無いためログはファイル/イベントログへ。
-- **`Radirec.Cli`(単発・開発・バッチ)**: `radirec ingest --once` / `--dry-run`。手動実行・
-  開発検証・サービスを入れずの動作確認に使う。Task Scheduler での定期実行も可(軽量代替)。
+- **`radirec.exe service`(常時監視・本番)**: I: を FileSystemWatcher 監視し検知即取り込み。
+  `Microsoft.Extensions.Hosting.WindowsServices` で Windows サービスとして自動起動・自動再起動。
+  コンソールが無いためログはイベントログへ。
+- **`radirec.exe ingest` / `refresh`(単発・開発・バッチ)**: `ingest --dry-run` / `ingest` /
+  `refresh`。手動実行・開発検証・サービスを入れずの動作確認に使う。Task Scheduler での定期実行も可。
 - **★ NAS は UNC(`\\192.168.11.121\share`)でアクセス。ドライブレター `Z:` は使わない。**
   理由: マップ済みネットワークドライブはユーザー単位で、**サービスアカウントからは不可視**。
   config は UNC を正とする(§3)。
-- **サービスアカウント/資格情報**: NAS 共有(UNC)へ書ける権限を付与(専用アカウント / 資格情報
-  マネージャ / gMSA 等)。ローカル I: 読取は LocalSystem でも可。
-- 台帳(SQLite)はサービスと CLI/GUI から同時アクセスされうる → **WAL 等で並行アクセスを許容**。
+- **サービスアカウント/資格情報**: NAS(UNC)へ書ける **自分の Windows アカウント**で実行する
+  (`install.ps1` が `-Credential` で登録し、`SeServiceLogonRight` を付与。[ADR-0007](adr/0007-distribution-via-powershell-scripts.md))。
+- 台帳(SQLite)はサービスと CLI から同時アクセスされうる → **WAL 等で並行アクセスを許容**。
 
 ### 3.2 らじれこ自動スリープとの連携(★重要な運用前提)
 
@@ -373,10 +377,10 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - **ソリューション構成**(レイヤ分離を .NET プロジェクトに対応、§10):
   - `Radirec.Core` — クラスライブラリ。ドメインロジック(importer / 正規化 / タグ書込 /
     import-once 台帳 / 出力ターゲット抽象 / Jellyfin 連携)。**クロスプラットフォームでテスト可能**。
-  - `Radirec.Cli` — コンソールアプリ(`System.CommandLine`)。M1〜M3 の入口。
-  - `Radirec.Service` — **Windows サービス(Worker Service / BackgroundService)。本番の常時監視**。
-    UNC + サービスアカウントで NAS へ書く(§3.1)。
-  - `Radirec.Gui` — 【後回し】WinUI 3 / WPF 等。配布フロントエンド兼編集 UI。
+  - `Radirec.Hosting` — 合成ルート + 環境設定・パス解決(Core と入口の橋渡し)。
+  - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。単発 CLI(`ingest`/`refresh`)と
+    常駐サービス(`service` verb)を 1 実行体に統合([ADR-0005])。TFM は `net10.0-windows`。
+  - `Radirec.Gui` — 【後回し】WinUI 3 / WPF 等。配布フロントエンド兼編集 UI(M5)。
   - `Radirec.Tests` — 単体テスト(xUnit 等)。
 - タグ操作: **TagLib#(TagLibSharp)**(MP4/M4A の track/disc/標準フィールド + MP3 ID3 の読み書き)。
   §6 は標準フィールドのみ使用(freeform 不要)。
@@ -429,8 +433,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
    タグ付与(TagLib#)、`Radirec.Cli` に `radirec ingest --once`。まず `--dry-run`、次に実コピー。
    台帳(SQLite)で冪等。UNC 書き込み。**中心価値**。
 2. **M2 Jellyfin リフレッシュ + 疎通**: `HttpClient` でスキャン起動、スマホ配信まで確認。
-3. **M3 常駐化(Windows サービス)**: `Radirec.Service`(Worker Service)で I: を常時監視・
-   検知即取り込み。サービスアカウント/UNC 資格情報を整備。ログ整備。**本番の実行形態**。
+3. **M3 常駐化(Windows サービス)**: `radirec.exe service`(常駐 verb)で I: を常時監視・
+   検知即取り込み。run-as(自分のアカウント)/UNC を整備。ログ整備。**本番の実行形態**。
 4. **M4 radikool 移行 + 一括正規化 CLI**: radikool importer + `radirec migrate`。
    `apply-alias` / 一括タグ編集・リネームの CLI。
 5. **(保留)M5 デスクトップ編集アプリ**: CLI 運用で不足が出たら着手。要否は運用後に判断(§10.1)。
