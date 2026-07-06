@@ -20,6 +20,11 @@ jobs:
     # 母艦 Windows PC の self-hosted runner(runner-svc 実行)。homelab runbook のラベルに合わせる。
     runs-on: [self-hosted, windows, x64, homelab]
 
+    env:
+      # runner は非管理者(runner-svc)で動くため、setup-dotnet の既定 C:\Program Files\dotnet に
+      # 書けない。runner が書けるジョブ一時領域へ SDK を入れる(setup-dotnet が PATH に前置する)。
+      DOTNET_INSTALL_DIR: ${{ runner.temp }}\dotnet
+
     steps:
       # self-hosted + contents:write のため、third-party/first-party とも commit SHA で pin する
       # (可変メジャータグの repoint による供給網 RCE を防ぐ。更新時は SHA を張り替える)。
