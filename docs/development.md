@@ -25,6 +25,29 @@ dotnet test  Radirec.slnx --filter "FullyQualifiedName~RajirekoImporter"  # 絞�
 > ソリューションは新形式 `Radirec.slnx`(.NET 10 既定)です。NuGet は Central Package Management
 > (`Directory.Packages.props`)で版を一元管理、共通ビルド設定は `Directory.Build.props`。
 
+## リリース(タグ → GitHub Release)
+
+配布はタグ駆動の CI(`.github/workflows/release.yml`)で行う([ADR-0005](adr/0005-single-exe-cli-service-merge.md) /
+[ADR-0007](adr/0007-distribution-via-powershell-scripts.md))。**版はタグが唯一の源**で、CI が
+`-p:Version=<tag>` を注入する(タグ無しのローカルビルドは `Directory.Build.props` の `0.0.0-dev`)。
+
+```bash
+git tag v1.2.0 && git push origin v1.2.0   # → workflow が発火
+```
+
+ワークフローは `dotnet test` → `dotnet publish`(win-x64 自己完結・単一 exe)→ zip 化
+(`radirec.exe` + `deploy/*.ps1` + `config/*.sample.json`。実 config・pdb は含めない)→
+GitHub Release へ添付、まで自動化する。以後の配布は Release から取得する(利用手順は
+[usage.md §6](usage.md)、更新は `update.ps1`)。
+
+**ランナー**: `runs-on: [self-hosted, windows, x64, homelab]`(母艦 Windows PC の self-hosted runner)。
+トリガはタグ push のみ(PR ビルドは self-hosted で走らせない)。ランナーの導入手順は **別リポジトリ
+`t-seki/homelab`** の runbook にある(このリポジトリには無い):
+<https://github.com/t-seki/homelab/blob/main/docs/runbooks/github-actions-runner.md>。
+要点は repo ごとに `C:\actions-runner\radirec-tool\` へ runner を展開し
+`--labels "self-hosted,windows,x64,homelab" --runasservice` で登録、`actions/checkout` のため
+Git for Windows を PATH に置く、こと。
+
 ## プロジェクト構成
 
 ```
