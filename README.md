@@ -10,16 +10,37 @@
 
 ## ステータス
 
-**M1(コア + CLI 取り込み)実装済み**。`radirec ingest --once / --dry-run` を提供。
-Jellyfin リフレッシュ(M2)/ Windows サービス常駐(M3)/ radikool 移行(M4)/ GUI(M5)は未実装。
+**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M3(Windows サービス常駐)/ M4-A(radikool 移行)実装済み**。
+単一 exe + install スクリプト + タグ駆動 Release を提供([最新リリース](https://github.com/t-seki/radirec-tool/releases))。
+ソース跨ぎのアルバム統合(M4-C)/ GUI 配布(M5)は未実装。
 
-## クイックスタート
+## インストール・更新(Windows・運用)
+
+常駐運用は [Releases](https://github.com/t-seki/radirec-tool/releases) の zip を使います(ランタイム不要の単一 exe。
+実行体 = `C:\Program Files\radirec\`、データ = `%ProgramData%\radirec\`)。zip を展開し、**管理者 PowerShell** で:
+
+```powershell
+# 新規: EventLog 登録 → 設定生成 → サービス登録(自分のアカウント。冪等)
+.\deploy\install.ps1
+# → %ProgramData%\radirec\radirec.json を編集して Start-Service Radirec
+
+# 更新: 停止 → radirec.exe 差し替え → 再開(認証不要・設定/台帳はそのまま)
+.\deploy\update.ps1
+
+# 削除: サービス/EventLog/exe を削除(データは残す。-PurgeData で全消し)
+.\deploy\uninstall.ps1
+```
+
+新版は `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z` で CI が Release に zip を自動添付します。
+導入・更新・移行の詳細は [利用ガイド §6–8](docs/usage.md)。
+
+## 開発時の実行(SDK から)
 
 ```bash
-# サンプル設定をコピーして自分の環境に合わせて編集
+# サンプル設定をコピー(相対パスは radirec.json のあるディレクトリ基準で解決される)
 cp config/radirec.sample.json  radirec.json
-cp config/stations.sample.json config/stations.json
-cp config/programs.sample.json config/programs.json
+cp config/stations.sample.json stations.json
+cp config/programs.sample.json programs.json
 
 # まず dry-run(副作用なしで取り込み予定を確認)→ 実行
 dotnet run --project src/Radirec.Cli -- ingest --config radirec.json --dry-run
