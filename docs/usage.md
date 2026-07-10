@@ -37,6 +37,7 @@ config/programs.sample.json  → config/programs.json (番組 alias)
 | `JellyfinApiKey` | Jellyfin API キー(ダッシュボード → API キー) | `xxxxxxxx…` |
 | `ScanIntervalSeconds` | 常駐サービスの定期(安全網)スキャン間隔・秒 | `120` |
 | `WatchDebounceSeconds` | 検知後スキャンまでのデバウンス秒 | `10` |
+| `NotificationsEnabled` | 新規取込時に取込要約シグナル(EventLog EventID 1001)を発行(受け手 GUI が通知表示。ADR-0008) | `true` |
 
 > 設定ファイルは JSON ですが、`//` コメントと末尾カンマを許容します。
 >
