@@ -15,12 +15,13 @@ Status: proposed(#19 取込通知・サービス側先行実装)
   ```json
   { "schemaVersion": 1, "totalImported": 7, "truncated": false,
     "albums": [ { "station": "ニッポン放送", "program": "オールナイトニッポン0",
-      "episodes": [ { "broadcastDate": "2026-07-09", "partIndex": 0 } ] } ] }
+      "episodes": [ { "broadcastDate": "2026-07-09", "broadcastTime": "03:00", "partIndex": 0 } ] } ] }
   ```
 
-  `albums` は先頭 20 件・各 `episodes` は先頭 20 件を上限とし、超過時 `truncated=true`(`totalImported` は実数を保持)。イベントメッセージの ~32KB 制約に対しサイズを有界化する。
+  `broadcastTime`(`HH:mm`・取得不能なら null)は同日別時刻の別放送を区別する識別子([ADR-0002](0002-same-day-tiebreak-by-time.md))。単一フォルダ番組は `partIndex=0` なので、これが無いと同日2回が受け手で重複表示になる。`albums` は先頭 20 件・各 `episodes` は先頭 20 件を上限とし、超過時 `truncated=true`(`totalImported` は実数を保持)。イベントメッセージの文字数上限(~31839)に対し、件数キャップに加え **CJK を `\uXXXX` へ escape しない**(`UnsafeRelaxedJsonEscaping`)ことで日本語名の膨張を抑えサイズを有界化する。
 - **発行ロジックは Core に置く。** `IIngestSummaryPublisher`(transport 非依存の interface)と `IngestSummary`(番組単位グループの domain record)を Core に定義し、`IngestService` に注入。`refresh` の直後・`Imported≥1` のときだけ発行し、**失敗はログのみ・取込は巻き戻さない**([ADR-0003](0003-catchup-over-sleep-race.md) の `ILibraryRefresher` と同方針)。EventLog 実装(`EventLogIngestSummaryPublisher`)は Hosting 側に置き、Core は EventLog を知らない。
 - **有効/無効は `radirec.json` の `NotificationsEnabled`(bool・既定 `true`)で切替える。**
+- **発行は常駐サービス経路のみ**(`CompositionRoot.Build(..., notify: true)` を渡すのは `RadioMonitorWorker` だけ)。手動 `radirec ingest` は対話コマンドで受け手 GUI へ通知する意味が無く、サービス未起動機ではソース未登録により `WriteEntry` が失敗する(非 admin では自動作成不可)ため発行しない。通知は「サービスがバックグラウンドで取り込んだ」ことを意味する不変条件を保つ。
 - **受け手(GUI)** は Application ログを `Source=Radirec & EventID=1001` でフィルタし `EventLogWatcher` で購読、ペイロードを parse してネイティブトーストを表示する(#5 で実装)。深リンクは GUI 側で番組名から Jellyfin を引いて解決する将来課題(本 ADR のペイロードには含めない)。
 
 ## なぜ EventLog か(pipe でない理由)

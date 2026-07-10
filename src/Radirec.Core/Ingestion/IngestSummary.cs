@@ -57,6 +57,7 @@ public sealed record IngestSummary
             episodes.Add(new IngestSummaryEpisode
             {
                 BroadcastDate = e.BroadcastDate,
+                BroadcastTime = e.BroadcastTime,
                 PartIndex = e.PartIndex ?? 0,
             });
         }
@@ -89,5 +90,9 @@ public sealed record IngestSummaryAlbum
 public sealed record IngestSummaryEpisode
 {
     public required DateOnly BroadcastDate { get; init; }
+
+    /// <summary>放送時刻(JST。取得不能なら null)。同日別時刻の別放送を区別するための識別子(ADR-0002)。</summary>
+    public TimeOnly? BroadcastTime { get; init; }
+
     public required int PartIndex { get; init; }
 }

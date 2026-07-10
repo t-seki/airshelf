@@ -32,7 +32,8 @@ public sealed class RadioMonitorWorker : BackgroundService
     {
         _config = config;
         _log = log;
-        (_ingest, _resources) = CompositionRoot.Build(config, dryRun: false);
+        // 常駐サービスのみ取込要約シグナルを発行する(ADR-0008)。
+        (_ingest, _resources) = CompositionRoot.Build(config, dryRun: false, notify: true);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

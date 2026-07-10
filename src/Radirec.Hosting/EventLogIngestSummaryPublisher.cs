@@ -1,40 +1,46 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Radirec.Core.Ingestion;
 
 namespace Radirec.Hosting;
 
 /// <summary>
-/// 取込要約シグナルを Windows イベントログ(Application / Source <c>Radirec</c>)へ
+/// 取込要約シグナルを Windows イベントログ(Application / Source <see cref="RadirecEventLog.SourceName"/>)へ
 /// 専用 EventID で書き出す(ADR-0008)。ILogger には相乗りせず、logging 設定から独立させる。
 /// 受け手(GUI/常駐)は <c>Source=Radirec &amp; EventID=1001</c> でフィルタ購読する。
 /// </summary>
-[SupportedOSPlatform("windows")]
-public sealed class EventLogIngestSummaryPublisher(string sourceName = "Radirec") : IIngestSummaryPublisher
+public sealed class EventLogIngestSummaryPublisher(string sourceName = RadirecEventLog.SourceName)
+    : IIngestSummaryPublisher
 {
-    /// <summary>取込要約シグナルに予約した EventID(1000 番台を将来シグナル用に確保)。</summary>
-    public const int IngestSummaryEventId = 1001;
+    // CJK を \uXXXX(1 文字→6 文字)へ escape させず素の 1 文字で出す。EventLog メッセージの
+    // 文字数上限(~31839)に効くため、日本語の局名・番組名でペイロードを膨らませない。
+    // 受け手は自前 GUI なので HTML 文脈の relaxed escaping で安全。
+    private static readonly JsonSerializerOptions PayloadOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
-    /// <summary>ペイロード JSON envelope のスキーマ版(前方進化用)。</summary>
-    public const int SchemaVersion = 1;
-
+    // EventLog は Windows 専用。呼び出しは CompositionRoot の OperatingSystem.IsWindows() ガードで保護。
+    [SupportedOSPlatform("windows")]
     public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
     {
         EventLog.WriteEntry(
-            sourceName, BuildPayload(summary), EventLogEntryType.Information, IngestSummaryEventId);
+            sourceName, BuildPayload(summary),
+            EventLogEntryType.Information, RadirecEventLog.IngestSummaryEventId);
         return Task.CompletedTask;
     }
 
     /// <summary>
     /// 受け手(GUI)が parse するワイヤ契約の JSON envelope を組み立てる(EventLog 非依存・純粋)。
-    /// 放送日は ISO 8601 日付(<c>yyyy-MM-dd</c>)。
+    /// 放送日は ISO 8601 日付(<c>yyyy-MM-dd</c>)、放送時刻は <c>HH:mm</c>(取得不能なら null)。
     /// </summary>
     public static string BuildPayload(IngestSummary summary)
     {
         var payload = new
         {
-            schemaVersion = SchemaVersion,
+            schemaVersion = RadirecEventLog.SummarySchemaVersion,
             totalImported = summary.TotalImported,
             truncated = summary.Truncated,
             albums = summary.Albums.Select(a => new
@@ -44,11 +50,12 @@ public sealed class EventLogIngestSummaryPublisher(string sourceName = "Radirec"
                 episodes = a.Episodes.Select(e => new
                 {
                     broadcastDate = e.BroadcastDate.ToString("yyyy-MM-dd"),
+                    broadcastTime = e.BroadcastTime?.ToString("HH:mm"),
                     partIndex = e.PartIndex,
                 }),
             }),
         };
 
-        return JsonSerializer.Serialize(payload);
+        return JsonSerializer.Serialize(payload, PayloadOptions);
     }
 }

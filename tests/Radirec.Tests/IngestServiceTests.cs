@@ -335,6 +335,7 @@ public sealed class IngestServiceTests
         Assert.Equal("LOGISTEEDRADIONOMICS", album.Program);
         var episode = Assert.Single(album.Episodes);
         Assert.Equal(new DateOnly(2026, 6, 12), episode.BroadcastDate);
+        Assert.Equal(new TimeOnly(22, 30, 0), episode.BroadcastTime);
         Assert.Equal(0, episode.PartIndex);
     }
 
@@ -355,6 +356,9 @@ public sealed class IngestServiceTests
         Assert.Equal(2, summary.TotalImported);
         var album = Assert.Single(summary.Albums);
         Assert.Equal(2, album.Episodes.Count);
+        // 同日・単一フォルダ(part=0)でも放送時刻で区別できること(ADR-0002。受け手が重複表示しない)。
+        Assert.Equal(new TimeOnly(8, 30, 0), album.Episodes[0].BroadcastTime);
+        Assert.Equal(new TimeOnly(10, 0, 0), album.Episodes[1].BroadcastTime);
     }
 
     [Fact]

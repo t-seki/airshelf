@@ -19,9 +19,13 @@ public static class CompositionRoot
     /// 監視ルートの上書き(radikool 一括移行の一度きり実行で <c>--root</c> から渡す)。
     /// null なら <see cref="RadirecConfig.RadioRoot"/> を使う。
     /// </param>
+    /// <param name="notify">
+    /// 取込要約シグナルを発行するか。**常駐サービス経路のみ true**(ADR-0008)。手動 <c>ingest</c> は
+    /// 対話コマンドで受け手 GUI へ通知する意味が無く、未登録ソースへの書込失敗も招くため false。
+    /// </param>
     /// <returns>サービスと、破棄すべきリソース(台帳。NullLedger 時は null)。</returns>
     public static (IngestService Service, IDisposable? Disposable) Build(
-        RadirecConfig config, bool dryRun, string? rootOverride = null)
+        RadirecConfig config, bool dryRun, string? rootOverride = null, bool notify = false)
     {
         var fileSystem = new FileSystem();
 
@@ -40,9 +44,9 @@ public static class CompositionRoot
         if (!dryRun)
             (refresher, refresherDisposable) = BuildRefresher(config);
 
-        // dry-run / 通知無効 / 非 Windows は発行しない(EventLog は Windows 専用)。
+        // 発行はサービス経路のみ(notify)。dry-run / 通知無効 / 非 Windows は発行しない。
         IIngestSummaryPublisher summaryPublisher = new NullIngestSummaryPublisher();
-        if (!dryRun && config.NotificationsEnabled && OperatingSystem.IsWindows())
+        if (notify && !dryRun && config.NotificationsEnabled && OperatingSystem.IsWindows())
             summaryPublisher = new EventLogIngestSummaryPublisher();
 
         // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> radirec.json の Genre > 既定。
