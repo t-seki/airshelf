@@ -41,4 +41,10 @@ public sealed class RadirecConfig
 
     /// <summary>検知後スキャンまでのデバウンス秒(書き込み中の連続イベントを束ねる)。</summary>
     public int WatchDebounceSeconds { get; set; } = 10;
+
+    /// <summary>
+    /// 新規取込時に取込要約シグナル(EventLog EventID 1001)を発行するか(ADR-0008)。
+    /// 受け手(GUI/常駐)がこれを購読しデスクトップ通知を表示する。既定 true。
+    /// </summary>
+    public bool NotificationsEnabled { get; set; } = true;
 }

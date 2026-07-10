@@ -40,6 +40,11 @@ public static class CompositionRoot
         if (!dryRun)
             (refresher, refresherDisposable) = BuildRefresher(config);
 
+        // dry-run / 通知無効 / 非 Windows は発行しない(EventLog は Windows 専用)。
+        IIngestSummaryPublisher summaryPublisher = new NullIngestSummaryPublisher();
+        if (!dryRun && config.NotificationsEnabled && OperatingSystem.IsWindows())
+            summaryPublisher = new EventLogIngestSummaryPublisher();
+
         // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> radirec.json の Genre > 既定。
         var genre = string.IsNullOrWhiteSpace(programs.Defaults.Genre)
             ? config.Genre
@@ -68,7 +73,8 @@ public static class CompositionRoot
             ledger,
             TimeProvider.System,
             genre,
-            refresher);
+            refresher,
+            summaryPublisher);
 
         return (service, Combine(ledgerDisposable, refresherDisposable));
     }

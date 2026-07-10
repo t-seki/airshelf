@@ -22,7 +22,8 @@ public sealed class IngestService(
     ILedger ledger,
     TimeProvider clock,
     string genre,
-    ILibraryRefresher refresher)
+    ILibraryRefresher refresher,
+    IIngestSummaryPublisher summaryPublisher)
 {
     /// <summary>中断で残った孤児テンポラリを掃除する(サービス起動時に呼ぶ。ADR-0003)。</summary>
     public int CleanupOrphans() => target.CleanupOrphans();
@@ -37,13 +38,43 @@ public sealed class IngestService(
         }
 
         var (refreshed, refreshError) = await MaybeRefreshLibraryAsync(items, dryRun, cancellationToken);
+        var (notified, notifyError) = await MaybePublishSummaryAsync(items, dryRun, cancellationToken);
         return new IngestReport
         {
             Items = items,
             DryRun = dryRun,
             LibraryRefreshed = refreshed,
             RefreshError = refreshError,
+            NotificationPublished = notified,
+            NotificationError = notifyError,
         };
+    }
+
+    // 取込が1件以上あった実行のみ取込要約シグナルを発行(dry-run は発行しない)。
+    // refresh の直後に出す。発行失敗で取り込み成功は巻き戻さない(refresh と同方針)。
+    private async Task<(bool Published, string? Error)> MaybePublishSummaryAsync(
+        IReadOnlyList<IngestItemResult> items, bool dryRun, CancellationToken cancellationToken)
+    {
+        if (dryRun)
+            return (false, null);
+
+        var imported = items
+            .Where(i => i.Outcome == IngestOutcome.Imported && i.Episode is not null)
+            .Select(i => i.Episode!)
+            .ToList();
+        if (imported.Count == 0)
+            return (false, null);
+
+        try
+        {
+            await summaryPublisher.PublishAsync(IngestSummary.From(imported), cancellationToken);
+            return (true, null);
+        }
+        // 真のキャンセルは伝播、それ以外(EventLog 書込失敗等)は握って報告する。
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            return (false, ex.Message);
+        }
     }
 
     // 取込が1件以上あった実行のみライブラリ更新を起動(dry-run は起動しない)。

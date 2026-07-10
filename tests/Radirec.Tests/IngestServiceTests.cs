@@ -91,9 +91,24 @@ public sealed class IngestServiceTests
         }
     }
 
+    private sealed class FakePublisher : IIngestSummaryPublisher
+    {
+        public int Calls { get; private set; }
+        public IngestSummary? Last { get; private set; }
+        public Exception? Throws { get; set; }
+
+        public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            Last = summary;
+            return Throws is null ? Task.CompletedTask : throw Throws;
+        }
+    }
+
     private readonly FakeLedger _ledger = new();
     private readonly FakeOutputTarget _target = new();
     private readonly FakeRefresher _refresher = new();
+    private readonly FakePublisher _publisher = new();
     private readonly FakeTagReader _tagReader = new("出演者");
 
     private IngestService Build(
@@ -112,7 +127,8 @@ public sealed class IngestServiceTests
             _ledger,
             new FixedClock(Now),
             genre: "ラジオ",
-            _refresher);
+            _refresher,
+            _publisher);
 
     private static RecordingFile Rec(
         string name, string station = "J-WAVE", string program = "LOGISTEEDRADIONOMICS",
@@ -298,5 +314,78 @@ public sealed class IngestServiceTests
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
         Assert.False(report.LibraryRefreshed);
         Assert.Equal("timeout", report.RefreshError);
+    }
+
+    [Fact]
+    public async Task Run_WithImport_PublishesSummary_WithProgramDateAndPart()
+    {
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, _publisher.Calls);
+        Assert.True(report.NotificationPublished);
+        Assert.Null(report.NotificationError);
+
+        Assert.NotNull(_publisher.Last);
+        var summary = _publisher.Last!;
+        Assert.Equal(1, summary.TotalImported);
+        Assert.False(summary.Truncated);
+        var album = Assert.Single(summary.Albums);
+        Assert.Equal("J-WAVE", album.Station);
+        // 番組名はフォルダ権威(ADR-0001)。Rec の既定 ProgramFolder = "LOGISTEEDRADIONOMICS"。
+        Assert.Equal("LOGISTEEDRADIONOMICS", album.Program);
+        var episode = Assert.Single(album.Episodes);
+        Assert.Equal(new DateOnly(2026, 6, 12), episode.BroadcastDate);
+        Assert.Equal(0, episode.PartIndex);
+    }
+
+    [Fact]
+    public async Task Run_MultipleEpisodesSameProgram_AreGroupedIntoOneAlbum()
+    {
+        // 同一番組・同日の別時刻2パート → 1 アルバムに 2 放送回。
+        var files = new[]
+        {
+            Rec("[TBSラジオ]番組(TimeFree)_20240101083000.m4a", station: "TBSラジオ", program: "番組"),
+            Rec("[TBSラジオ]番組(TimeFree)_20240101100000.m4a", station: "TBSラジオ", program: "番組"),
+        };
+
+        await Build(files).RunOnceAsync(dryRun: false);
+
+        Assert.NotNull(_publisher.Last);
+        var summary = _publisher.Last!;
+        Assert.Equal(2, summary.TotalImported);
+        var album = Assert.Single(summary.Albums);
+        Assert.Equal(2, album.Episodes.Count);
+    }
+
+    [Fact]
+    public async Task DryRun_DoesNotPublishSummary()
+    {
+        await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true);
+
+        Assert.Equal(0, _publisher.Calls);
+    }
+
+    [Fact]
+    public async Task Run_NoImports_DoesNotPublishSummary()
+    {
+        var junk = Rec("この時間はＮＨＫネットラジオでは_20241021200956.m4a");
+        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(0, _publisher.Calls);
+        Assert.False(report.NotificationPublished);
+    }
+
+    [Fact]
+    public async Task Run_PublishFailure_DoesNotFailImport_ButReportsError()
+    {
+        _publisher.Throws = new InvalidOperationException("event log full");
+
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+
+        // 取り込みは成功(台帳記録済み)。発行失敗は報告するが巻き戻さない。
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.Single(_ledger.Keys);
+        Assert.False(report.NotificationPublished);
+        Assert.Equal("event log full", report.NotificationError);
     }
 }
