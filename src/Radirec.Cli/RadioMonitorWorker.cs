@@ -32,7 +32,8 @@ public sealed class RadioMonitorWorker : BackgroundService
     {
         _config = config;
         _log = log;
-        (_ingest, _resources) = CompositionRoot.Build(config, dryRun: false);
+        // 常駐サービスのみ取込要約シグナルを発行する(ADR-0008)。
+        (_ingest, _resources) = CompositionRoot.Build(config, dryRun: false, notify: true);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -113,9 +114,10 @@ public sealed class RadioMonitorWorker : BackgroundService
             if (imported > 0 || failed > 0)
             {
                 var refresh = report.LibraryRefreshed ? "起動" : report.RefreshError ?? "-";
+                var notify = report.NotificationPublished ? "発行" : report.NotificationError ?? "-";
                 _log.LogInformation(
-                    "{Trigger}スキャン: 取込 {Imported} / 失敗 {Failed} / Jellyfin更新 {Refresh}",
-                    trigger, imported, failed, refresh);
+                    "{Trigger}スキャン: 取込 {Imported} / 失敗 {Failed} / Jellyfin更新 {Refresh} / 通知 {Notify}",
+                    trigger, imported, failed, refresh, notify);
             }
         }
         catch (OperationCanceledException)

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.EventLog;
+using Radirec.Hosting;
 using Spectre.Console.Cli;
 
 namespace Radirec.Cli.Commands;
@@ -44,7 +45,8 @@ public sealed class ServiceCommand : AsyncCommand<ServiceCommand.Settings>
         builder.Services.AddHostedService<RadioMonitorWorker>();
 
         // コンソール無し前提: Windows イベントログへ出力(対話実行時はコンソールにも出る)。
-        builder.Logging.AddEventLog(eventLog => eventLog.SourceName = "Radirec");
+        // ソース名は取込要約シグナルの publisher と共有する(ADR-0008)。
+        builder.Logging.AddEventLog(eventLog => eventLog.SourceName = RadirecEventLog.SourceName);
         // EventLog プロバイダの既定は Warning 以上。サービスの動作(取込件数等)を Information で残す。
         builder.Logging.AddFilter<EventLogLoggerProvider>(null, LogLevel.Information);
 

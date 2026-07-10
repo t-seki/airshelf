@@ -50,5 +50,11 @@ public sealed record IngestReport
     /// <summary>ライブラリ更新に失敗したときのメッセージ(成功・未起動時は null)。</summary>
     public string? RefreshError { get; init; }
 
+    /// <summary>取込要約シグナルを発行できたか(取込0件・dry-run・通知無効時は false)。</summary>
+    public bool NotificationPublished { get; init; }
+
+    /// <summary>シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>
+    public string? NotificationError { get; init; }
+
     public int Count(IngestOutcome outcome) => Items.Count(i => i.Outcome == outcome);
 }
