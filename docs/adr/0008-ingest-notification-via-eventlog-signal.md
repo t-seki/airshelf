@@ -44,6 +44,7 @@ Status: proposed(#19 取込通知・サービス側先行実装)
 ## Consequences
 
 - **要実機検証(Windows / self-hosted runner)**: サービスは既に ILogger EventLog プロバイダで **同じ Source `Radirec`** に `Information` ログ(「スキャン: 取込 N…」)を書いている。Event Viewer にこの既存行が出ていれば**ソース登録は実証済み**で、同一 Source への生 `WriteEntry` も成功する。残る新規未知は「**カスタム EventID=1001 がフィルタ可能に現れるか**」の 1 点のみ(明示 `eventID` オーバーロードの本来の役割であり、却下した ILogger 経路の曖昧点だった EventID マップとは別)。既存 Information 行が Event Viewer で見えているかを確認すれば残余リスクはほぼ無い。既存 ScanAsync ログは EventId 未指定(=0)なので、受け手の `EventID=1001` フィルタは通常ログと衝突しない。Application ログは一般ユーザーが読めるため受け手側 ACL は問題にならない見込み。
+- **要実機確認(自動テスト不可)**: `notify` ゲート(サービスのみ発行)は非 Windows では `OperatingSystem.IsWindows()` が短絡し publisher が常に `Null` になるため Linux CI で検証できない。Windows 実機で **① サービス経由の自動取込で EventID 1001 が出る ② 手動 `radirec ingest` では EventID 1001 が出ない** の両方を確認する。
 - Core に副作用依存が 1 つ増える(`IIngestSummaryPublisher`)。既存の `ILibraryRefresher` と対称なので設計上の異物感はない。
 - ペイロード schema は `schemaVersion` で前方進化させる。GUI 実装(#5)はこの EventID と schema を契約として購読する。
 - GUI→サービスの制御チャネルは本 ADR の対象外。別 issue で設計する。

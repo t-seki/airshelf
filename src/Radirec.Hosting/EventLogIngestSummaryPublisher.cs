@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.Versioning;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -49,8 +50,10 @@ public sealed class EventLogIngestSummaryPublisher(string sourceName = RadirecEv
                 program = a.Program,
                 episodes = a.Episodes.Select(e => new
                 {
-                    broadcastDate = e.BroadcastDate.ToString("yyyy-MM-dd"),
-                    broadcastTime = e.BroadcastTime?.ToString("HH:mm"),
+                    // ワイヤ契約なのでカルチャ非依存で書く("HH:mm" の ':' は time separator に
+                    // 置換されうるため InvariantCulture 必須)。
+                    broadcastDate = e.BroadcastDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    broadcastTime = e.BroadcastTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
                     partIndex = e.PartIndex,
                 }),
             }),

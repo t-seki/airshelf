@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Radirec.Core.Ingestion;
 using Radirec.Core.Model;
@@ -61,5 +62,34 @@ public sealed class EventLogSummaryPayloadTests
         var episode = doc.RootElement.GetProperty("albums")[0].GetProperty("episodes")[0];
 
         Assert.Equal(JsonValueKind.Null, episode.GetProperty("broadcastTime").ValueKind);
+    }
+
+    [Fact]
+    public void 時刻書式はカルチャ非依存()
+    {
+        // time separator が ':' でないカルチャ(fi-FI は '.')でも HH:mm を保つ。
+        var original = Thread.CurrentThread.CurrentCulture;
+        Thread.CurrentThread.CurrentCulture = new CultureInfo("fi-FI");
+        try
+        {
+            var summary = IngestSummary.From(
+            [
+                new Episode
+                {
+                    Identity = new IdentityKey("局", "番組", new DateOnly(2026, 1, 1)),
+                    BroadcastTime = new TimeOnly(3, 0, 0),
+                },
+            ]);
+
+            using var doc = JsonDocument.Parse(EventLogIngestSummaryPublisher.BuildPayload(summary));
+            var episode = doc.RootElement.GetProperty("albums")[0].GetProperty("episodes")[0];
+
+            Assert.Equal("03:00", episode.GetProperty("broadcastTime").GetString());
+            Assert.Equal("2026-01-01", episode.GetProperty("broadcastDate").GetString());
+        }
+        finally
+        {
+            Thread.CurrentThread.CurrentCulture = original;
+        }
     }
 }
