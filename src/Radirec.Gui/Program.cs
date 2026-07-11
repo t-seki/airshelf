@@ -17,30 +17,45 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
 
-        // ログオン自動起動を自己登録(冪等)。
-        var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
-        StartupRegistrar.Register(exePath);
-
-        using var subscriber = new EventLogSummarySubscriber();
-        var presenter = new ToastPresenter();
-
-        // Show() が投げても subscriber 側の try/catch が握るため(Warning に流れる)、ここは素直に呼ぶ。
-        subscriber.SummaryReceived += payload => presenter.Show(payload);
-        subscriber.Warning += TrayLog.Warn;
-        TrayLog.Info("Radirec 取込通知トレイを起動");
-
-        using var trayIcon = new NotifyIcon
+        // 起動シーケンス(購読開始・自己登録・トレイ生成)は WinExe でコンソールが無く、失敗すると
+        // 無痕跡でトレイが現れないだけになる。ログに残して初回起動失敗を診断可能にする。
+        EventLogSummarySubscriber subscriber;
+        NotifyIcon trayIcon;
+        try
         {
-            Icon = SystemIcons.Application, // TODO(実機): 専用アイコンに差し替え
-            Text = "Radirec 取込通知",
-            Visible = true,
-            ContextMenuStrip = BuildMenu(),
-        };
+            var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
+            StartupRegistrar.Register(exePath); // ログオン自動起動を自己登録(冪等)
 
-        subscriber.Start();
-        Application.Run();
+            subscriber = new EventLogSummarySubscriber();
+            var presenter = new ToastPresenter();
 
-        trayIcon.Visible = false;
+            // Show() が投げても subscriber 側の try/catch が握るため(Warning に流れる)、ここは素直に呼ぶ。
+            subscriber.SummaryReceived += payload => presenter.Show(payload);
+            subscriber.Warning += TrayLog.Warn;
+
+            trayIcon = new NotifyIcon
+            {
+                Icon = SystemIcons.Application, // TODO(実機): 専用アイコンに差し替え
+                Text = "Radirec 取込通知",
+                Visible = true,
+                ContextMenuStrip = BuildMenu(),
+            };
+
+            subscriber.Start();
+            TrayLog.Info("Radirec 取込通知トレイを起動");
+        }
+        catch (Exception ex)
+        {
+            TrayLog.Warn($"トレイ起動に失敗: {ex}");
+            return;
+        }
+
+        using (subscriber)
+        using (trayIcon)
+        {
+            Application.Run();
+            trayIcon.Visible = false;
+        }
     }
 
     private static ContextMenuStrip BuildMenu()
