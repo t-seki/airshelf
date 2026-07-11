@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 受け手 GUI のクロスプラットフォームな核(取込要約シグナルの JSON 契約 parse + トースト文面の
+       組み立て)。WPF シェル(Radirec.Gui)はこれを薄く包むだけ。Windows 依存を持たず単体テスト可能。
+       TFM は Directory.Build.props の net10.0 を継承(WPF/WinRT には依存しない)。 -->
+</Project>
