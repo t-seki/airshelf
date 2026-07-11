@@ -12,10 +12,6 @@ namespace Radirec.Gui;
 [SupportedOSPlatform("windows")]
 public sealed class EventLogSummarySubscriber : IDisposable
 {
-    // 発行側の契約(ADR-0008)。ソース名・EventID は Hosting.RadirecEventLog と一致させる。
-    private const string SourceName = "Radirec";
-    private const int IngestSummaryEventId = 1001;
-
     private readonly EventLogWatcher _watcher;
 
     /// <summary>解析に成功した取込要約を通知する。</summary>
@@ -26,8 +22,10 @@ public sealed class EventLogSummarySubscriber : IDisposable
 
     public EventLogSummarySubscriber()
     {
+        // ソース名・EventID は受け手契約(Gui.Core)から。発行側 Hosting.RadirecEventLog との一致は契約テストで保証。
         var query = new EventLogQuery("Application", PathType.LogName,
-            $"*[System[Provider[@Name='{SourceName}'] and EventID={IngestSummaryEventId}]]");
+            $"*[System[Provider[@Name='{NotificationContract.SourceName}'] "
+            + $"and EventID={NotificationContract.IngestSummaryEventId}]]");
 
         // readExistingEvents:false = 今から先だけ。ログオン時に過去トーストが大量に出るのを避ける。
         _watcher = new EventLogWatcher(query, bookmark: null, readExistingEvents: false);
@@ -38,32 +36,42 @@ public sealed class EventLogSummarySubscriber : IDisposable
 
     private void OnEventWritten(object? sender, EventRecordWrittenEventArgs e)
     {
-        if (e.EventException is not null)
+        // このハンドラは EventLogWatcher のスレッドプールスレッドで走る。ここから例外を漏らすと
+        // 常駐トレイプロセスごと落ちるため、レコード読取・parse・購読者(トースト表示)まで含め
+        // すべてを包んで握り、Warning に流す(通知の取りこぼしはあってもプロセスは生かす)。
+        try
         {
-            Warning?.Invoke($"イベント購読エラー: {e.EventException.Message}");
-            return;
+            if (e.EventException is not null)
+            {
+                Warning?.Invoke($"イベント購読エラー: {e.EventException.Message}");
+                return;
+            }
+
+            if (e.EventRecord is null)
+                return;
+
+            using var record = e.EventRecord;
+
+            // WriteEntry の生メッセージは挿入文字列 Properties[0] に入る。カスタム EventID は message
+            // リソース未登録で FormatDescription() が「説明が見つかりません」を返しうるため Properties を優先。
+            var json = record.Properties.FirstOrDefault()?.Value?.ToString();
+            if (string.IsNullOrWhiteSpace(json))
+                json = record.FormatDescription();
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                Warning?.Invoke("空のイベントメッセージ");
+                return;
+            }
+
+            if (IngestSummaryPayloadReader.TryParse(json, out var payload, out var error))
+                SummaryReceived?.Invoke(payload!);
+            else
+                Warning?.Invoke(error ?? "解析失敗");
         }
-
-        if (e.EventRecord is null)
-            return;
-
-        using var record = e.EventRecord;
-
-        // WriteEntry の生メッセージは挿入文字列 Properties[0] に入る。カスタム EventID は message
-        // リソース未登録で FormatDescription() が「説明が見つかりません」を返しうるため Properties を優先。
-        var json = record.Properties.FirstOrDefault()?.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(json))
-            json = record.FormatDescription();
-        if (string.IsNullOrWhiteSpace(json))
+        catch (Exception ex)
         {
-            Warning?.Invoke("空のイベントメッセージ");
-            return;
+            Warning?.Invoke($"通知処理で例外: {ex.Message}");
         }
-
-        if (IngestSummaryPayloadReader.TryParse(json, out var payload, out var error))
-            SummaryReceived?.Invoke(payload!);
-        else
-            Warning?.Invoke(error ?? "解析失敗");
     }
 
     public void Dispose()

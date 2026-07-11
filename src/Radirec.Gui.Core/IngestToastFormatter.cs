@@ -1,33 +1,33 @@
 namespace Radirec.Gui.Core;
 
-/// <summary>取込要約ペイロードからトーストの表題・本文を組み立てる(表示専用・純粋。ADR-0009)。</summary>
+/// <summary>取込要約ペイロードからトーストの表題・本文行を組み立てる(表示専用・純粋。ADR-0009)。</summary>
 public static class IngestToastFormatter
 {
-    /// <summary>本文に列挙する番組行の上限。超過分は「…ほか」に畳む。</summary>
+    /// <summary>本文行の上限。WinRT トーストの text 要素数制約に収めるため小さく保つ(表題 + 本文で計 4 以内)。</summary>
     public const int MaxLines = 3;
 
-    /// <summary>ペイロードから (表題, 本文) を組み立てる。</summary>
-    public static (string Title, string Body) Format(IngestSummaryPayload payload)
+    /// <summary>ペイロードから表題と本文行(改行なしの文字列群)を組み立てる。受け手は行ごとに表示する。</summary>
+    public static (string Title, IReadOnlyList<string> Lines) Format(IngestSummaryPayload payload)
     {
         var title = $"新規取込 {payload.TotalImported}件";
 
-        var lines = new List<string>();
-        foreach (var album in payload.Albums.Take(MaxLines))
-        {
-            lines.Add(FormatAlbum(album));
-        }
+        var hasMore = payload.Albums.Count > MaxLines || payload.Truncated;
+        // 「…ほか」を出すなら 1 行分空ける。
+        var albumsToShow = hasMore ? MaxLines - 1 : Math.Min(payload.Albums.Count, MaxLines);
 
-        // 表示上限で溢れた、または発行側で件数キャップされた場合は「ほか」を添える。
-        if (payload.Albums.Count > MaxLines || payload.Truncated)
-        {
+        var lines = payload.Albums.Take(albumsToShow).Select(FormatAlbum).ToList();
+        if (hasMore)
             lines.Add("…ほか");
-        }
 
-        return (title, string.Join("\n", lines));
+        return (title, lines);
     }
 
     private static string FormatAlbum(IngestSummaryAlbumPayload album)
     {
+        // 発行側の不変条件では album は必ず 1 回以上を持つが、防御的に空も扱う(番組名のみ)。
+        if (album.Episodes.Count == 0)
+            return $"{album.Program}（{album.Station}）";
+
         if (album.Episodes.Count == 1)
         {
             var e = album.Episodes[0];

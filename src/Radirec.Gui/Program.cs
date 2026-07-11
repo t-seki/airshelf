@@ -24,8 +24,10 @@ internal static class Program
         using var subscriber = new EventLogSummarySubscriber();
         var presenter = new ToastPresenter();
 
+        // Show() が投げても subscriber 側の try/catch が握るため(Warning に流れる)、ここは素直に呼ぶ。
         subscriber.SummaryReceived += payload => presenter.Show(payload);
-        subscriber.Warning += message => Console.Error.WriteLine($"[warn] {message}");
+        subscriber.Warning += TrayLog.Warn;
+        TrayLog.Info("Radirec 取込通知トレイを起動");
 
         using var trayIcon = new NotifyIcon
         {

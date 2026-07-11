@@ -72,6 +72,30 @@ public sealed class IngestSummaryPayloadReaderTests
     }
 
     [Fact]
+    public void albumsがnullでも空に正規化する_常駐を守る()
+    {
+        // STJ は明示 null で init の `= []` 既定を上書きするため、下流 NRE を防ぐよう空へ正規化。
+        var json = """{"schemaVersion":1,"totalImported":0,"truncated":false,"albums":null}""";
+
+        Assert.True(IngestSummaryPayloadReader.TryParse(json, out var payload, out var error), error);
+        Assert.NotNull(payload!.Albums);
+        Assert.Empty(payload.Albums);
+    }
+
+    [Fact]
+    public void episodesがnullでも空に正規化する()
+    {
+        var json = """
+        {"schemaVersion":1,"totalImported":0,"truncated":false,
+         "albums":[{"station":"局","program":"番組","episodes":null}]}
+        """;
+
+        Assert.True(IngestSummaryPayloadReader.TryParse(json, out var payload, out _));
+        Assert.NotNull(payload!.Albums[0].Episodes);
+        Assert.Empty(payload.Albums[0].Episodes);
+    }
+
+    [Fact]
     public void 未知フィールドは無視して前方互換()
     {
         // 発行側が将来フィールドを足しても(schemaVersion 据え置きの範囲で)壊れない。

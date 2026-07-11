@@ -14,11 +14,13 @@ public sealed class ToastPresenter
 {
     public void Show(IngestSummaryPayload payload)
     {
-        var (title, body) = IngestToastFormatter.Format(payload);
+        var (title, lines) = IngestToastFormatter.Format(payload);
 
-        new ToastContentBuilder()
-            .AddText(title)
-            .AddText(body)
-            .Show();
+        // WinRT トーストの <text> は埋め込み改行を折り返さないため、行ごとに AddText する。
+        var builder = new ToastContentBuilder().AddText(title);
+        foreach (var line in lines)
+            builder.AddText(line);
+
+        builder.Show();
     }
 }
