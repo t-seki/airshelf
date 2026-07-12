@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 取込通知の受け手(トレイ常駐)。非パッケージ WPF + 従来 WinRT トースト(ADR-0009)。
+       WinRT トースト API のため Windows SDK バージョン付き TFM が必要。NotifyIcon(トレイ)のため
+       WinForms も併用。ビルド/実行は Windows のみ(WSL では検証不可)。 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>Radirec.Gui</RootNamespace>
+    <AssemblyName>Radirec.Gui</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- WPF/WinForms を含む Windows ターゲットを非 Windows(WSL/Linux CI)でもビルド可能にする。
+         Windows 実機ビルドでは無害。実行/トースト表示は Windows のみ。 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <!-- 配布は Cli と同じく単一自己完結 exe(ADR-0005 / 0009)。Release 時のみ重い publish 設定。 -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Radirec.Gui.Core\Radirec.Gui.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.WinUI.Notifications" />
+  </ItemGroup>
+
+</Project>
