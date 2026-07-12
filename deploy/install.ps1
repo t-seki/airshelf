@@ -6,10 +6,11 @@
 .DESCRIPTION
   バイナリを Program Files へ、データ(設定・台帳・マスタ)を %ProgramData%\radirec\ へ分離配置する
   (ADR-0006)。EventLog ソース登録・設定の初回生成・Windows サービス登録(run-as 自分のアカウント)
-  までを一括で行う。再実行しても壊れない:
+  と、取込通知トレイ(Radirec.Gui。ADR-0009)の配置・起動までを一括で行う。再実行しても壊れない:
     - EventLog ソースは存在すればスキップ
     - 設定は存在すれば温存(上書きしない)
     - サービスが存在すればバイナリは触らずスキップ('-Force' で停止・削除・再登録)
+    - 取込通知トレイは毎回配置・起動(自身を HKCU Run へ自己登録し次回ログオンから自動常駐)
 
   更新(バイナリ差し替え)は update.ps1、削除は uninstall.ps1 を使う。
 
@@ -44,6 +45,11 @@ $ExeSource = Join-Path $SourceRoot 'radirec.exe'
 $ConfigSampleDir = Join-Path $SourceRoot 'config'
 $ExeTarget = Join-Path $InstallDir 'radirec.exe'
 $ConfigPath = Join-Path $DataDir 'radirec.json'
+
+# 取込通知トレイ(Radirec.Gui)。サービスとは独立したユーザーセッションの常駐アプリ(ADR-0009)。
+$GuiExeSource = Join-Path $SourceRoot 'Radirec.Gui.exe'
+$GuiExeTarget = Join-Path $InstallDir 'Radirec.Gui.exe'
+$GuiProcessName = 'Radirec.Gui'
 
 if (-not (Test-Path $ExeSource)) {
     throw "radirec.exe が見つかりません: $ExeSource(Release zip 内の deploy/ から実行してください)"
@@ -122,6 +128,22 @@ foreach ($sample in $configMap.Keys) {
         Copy-Item -Path $src -Destination $dst
         Write-Host "[OK] $($configMap[$sample]) を sample から生成しました"
     }
+}
+
+# --- 取込通知トレイ(Radirec.Gui)配置・起動(サービス状態に依存しない。ADR-0009)---
+# サービス登録の有無(下の early return)より前に置き、再実行でもトレイを配置・更新できるようにする。
+if (Test-Path $GuiExeSource) {
+    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+    # 稼働中トレイは自分の exe をロックするため、差し替え前に停止する。
+    Get-Process -Name $GuiProcessName -ErrorAction SilentlyContinue | Stop-Process -Force
+    Copy-Item -Path $GuiExeSource -Destination $GuiExeTarget -Force
+    Write-Host "[OK] Radirec.Gui.exe を配置しました"
+    # 初回起動で自身を HKCU\...\Run へ自己登録し、以降ログオンで自動常駐する(ADR-0009)。
+    Start-Process -FilePath $GuiExeTarget
+    Write-Host "[OK] 取込通知トレイを起動しました(次回ログオンから自動起動)"
+    Write-Host "     ※ 管理者 PowerShell から起動したため今回は昇格実行です。通知の最終確認は通常ログオンで。" -ForegroundColor DarkGray
+} else {
+    Write-Host "[skip] Radirec.Gui.exe が zip に無いため通知トレイは配置しません(サービスのみ)"
 }
 
 # --- サービス登録 ---

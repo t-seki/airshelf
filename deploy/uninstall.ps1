@@ -4,7 +4,8 @@
   Radirec を削除する(冪等)。既定でデータは残す。
 
 .DESCRIPTION
-  サービスを停止・削除し、EventLog ソースを解除し、実行体を削除する。
+  サービスを停止・削除し、EventLog ソースを解除し、実行体を削除する。取込通知トレイ(Radirec.Gui。
+  ADR-0009)も停止・削除し、ログオン自動起動(HKCU Run)を解除する。
   データ(設定・台帳・マスタ)は既定で残す(誤削除防止)。'-PurgeData' で明示削除する。
   各手順は対象が既に無くてもエラーにしない(冪等)。
 
@@ -28,6 +29,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $ServiceName = 'Radirec'
+$GuiProcessName = 'Radirec.Gui'
+$GuiExePath = Join-Path $InstallDir 'Radirec.Gui.exe'
+$GuiRunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$GuiRunValue = 'RadirecTray'
 
 Write-Host "== Radirec アンインストール ==" -ForegroundColor Cyan
 
@@ -49,7 +54,25 @@ if ([System.Diagnostics.EventLog]::SourceExists($ServiceName)) {
     Write-Host "[skip] EventLog ソース '$ServiceName' は未登録"
 }
 
-# 3. 実行体削除(radirec.exe のみ)。
+# 3. 取込通知トレイ(Radirec.Gui)停止・削除・自動起動解除(ADR-0009)
+Get-Process -Name $GuiProcessName -ErrorAction SilentlyContinue | Stop-Process -Force
+if (Test-Path $GuiExePath) {
+    Remove-Item -Path $GuiExePath -Force
+    Write-Host "[OK] Radirec.Gui.exe を削除しました"
+} else {
+    Write-Host "[skip] $GuiExePath は存在しない"
+}
+# HKCU Run の自己登録を解除(GUI が自己登録した値。実行ユーザーのハイブから消す)。
+if (Get-ItemProperty -Path $GuiRunKey -Name $GuiRunValue -ErrorAction SilentlyContinue) {
+    Remove-ItemProperty -Path $GuiRunKey -Name $GuiRunValue
+    Write-Host "[OK] ログオン自動起動(HKCU Run '$GuiRunValue')を解除しました"
+} else {
+    Write-Host "[skip] HKCU Run '$GuiRunValue' は未登録"
+}
+# トースト用のスタートメニューショートカット(ToastNotificationManagerCompat 生成)は
+# ユーザーの Start Menu に残りうるが無害。気になる場合は手動削除。
+
+# 4. 実行体削除(radirec.exe のみ)。
 #    InstallDir を丸ごと Remove-Item -Recurse すると、旧同居レイアウト(exe と台帳が同一
 #    フォルダ)や InstallDir==DataDir の指定時に、-PurgeData 無しでも台帳を巻き添え削除してしまう。
 $installFull = [System.IO.Path]::GetFullPath($InstallDir)
@@ -70,7 +93,7 @@ if (Test-Path $exePath) {
     Write-Host "[skip] $exePath は存在しない"
 }
 
-# 4. データ(既定は保持)
+# 5. データ(既定は保持)
 if ($PurgeData) {
     if (Test-Path $DataDir) {
         Remove-Item -Path $DataDir -Recurse -Force

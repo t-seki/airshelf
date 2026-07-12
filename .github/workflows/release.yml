@@ -61,7 +61,11 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
-        run: dotnet publish src/Radirec.Cli -c Release -p:Version=$env:VERSION -o publish
+        run: |
+          # サービス/CLI(radirec.exe)と取込通知トレイ(Radirec.Gui.exe)を別ディレクトリへ publish。
+          # 両者とも単一自己完結 exe(ADR-0005 / 0009)。GUI は Windows ランナー上で WPF がビルドされる。
+          dotnet publish src/Radirec.Cli -c Release -p:Version=$env:VERSION -o publish/cli
+          dotnet publish src/Radirec.Gui -c Release -p:Version=$env:VERSION -o publish/gui
 
       - name: Assemble release package
         id: pkg
@@ -71,8 +75,10 @@ jobs:
         run: |
           $stage = "radirec-$env:VERSION-win-x64"
           New-Item -ItemType Directory -Path "$stage/deploy", "$stage/config" -Force | Out-Null
-          # 配布物: 単一 exe + 運用スクリプト + sample 設定のみ。実 config・pdb は含めない。
-          Copy-Item publish/radirec.exe "$stage/"
+          # 配布物: 2 つの単一 exe(サービス/CLI + 取込通知トレイ)+ 運用スクリプト + sample 設定のみ。
+          # 実 config・pdb は含めない。
+          Copy-Item publish/cli/radirec.exe "$stage/"
+          Copy-Item publish/gui/Radirec.Gui.exe "$stage/"
           Copy-Item deploy/*.ps1 "$stage/deploy/"
           Copy-Item config/*.sample.json "$stage/config/"
           $zip = "$stage.zip"
