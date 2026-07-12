@@ -20,16 +20,20 @@
 実行体 = `C:\Program Files\radirec\`、データ = `%ProgramData%\radirec\`)。zip を展開し、**管理者 PowerShell** で:
 
 ```powershell
-# 新規: EventLog 登録 → 設定生成 → サービス登録(自分のアカウント。冪等)
+# 新規: EventLog 登録 → 設定生成 → サービス登録 + 取込通知トレイ配置・起動(自分のアカウント。冪等)
 .\deploy\install.ps1
 # → %ProgramData%\radirec\radirec.json を編集して Start-Service Radirec
 
-# 更新: 停止 → radirec.exe 差し替え → 再開(認証不要・設定/台帳はそのまま)
+# 更新: 停止 → radirec.exe / Radirec.Gui.exe 差し替え → 再開(認証不要・設定/台帳はそのまま)
 .\deploy\update.ps1
 
-# 削除: サービス/EventLog/exe を削除(データは残す。-PurgeData で全消し)
+# 削除: サービス/EventLog/exe/通知トレイ(自動起動含む)を削除(データは残す。-PurgeData で全消し)
 .\deploy\uninstall.ps1
 ```
+
+新規取込があると、常駐サービスが発するシグナルを **取込通知トレイ(Radirec.Gui)** が受けてデスクトップに
+トースト表示します(ADR-0008 / 0009)。トレイは初回起動でログオン自動起動に自己登録され、無効化は
+`radirec.json` の `NotificationsEnabled: false`(発行側)またはトレイ終了で行えます。
 
 新版は `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z` で CI が Release に zip を自動添付します。
 導入・更新・移行の詳細は [利用ガイド §6–8](docs/usage.md)。

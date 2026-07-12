@@ -12,7 +12,7 @@ Status: proposed(#19 の受け手 GUI / #5 の tracer slice)
 - **トースト = 従来 WinRT(`CommunityToolkit.WinUI.Notifications` の `ToastNotificationManagerCompat` / `ToastContentBuilder`)**。非パッケージ Win32 デスクトップから動く前提の API で、初回 `Show()` 時に **AUMID + スタートメニューショートカット**を自前生成する。
 - **WindowsAppSDK `AppNotificationManager` は採らない**。API は素直だが **Singleton MSIX パッケージに依存**し、self-contained アプリでは追加考慮(依存 MSIX の扱い)が要る([MS Learn](https://learn.microsoft.com/en-us/windows/windows-app-sdk/notifications/app-notifications/) 参照)。単一自己完結 exe(ADR-0005)と衝突する。
 - **表示専用に割り切る**。トーストのタップで Jellyfin アルバムを開く深リンクは #19 でも任意。**タップ activation を実装しなければ COM activator の登録が不要**になり、AUMID + ショートカットだけでトースト**表示**が成立する。深リンクは #5 本体で後載せ。
-- **自動起動 = 自己登録(HKCU Run)**。トレイアプリが初回起動時に `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` へ自分を登録し、以降ログオンで自動常駐。admin/PowerShell 不要でタスクマネージャの「スタートアップ」から可視・ON/OFF 可能。登録ロジックはアプリ内に閉じる(EventLog ソース登録の教訓と同様、機構をコードに寄せる)。`install.ps1` は exe 配置 + 初回起動のみ担う。
+- **自動起動 = HKCU Run**。トレイアプリは初回起動時に `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` へ自分を登録する(アプリ内自己登録)。加えて `install.ps1` も同じ値を冪等登録して、昇格インストールでも自動起動を確実にする。以降ログオンで自動常駐し、タスクマネージャの「スタートアップ」から可視・ON/OFF 可能。`install.ps1` は起動中の健全なトレイを止めない(冪等再実行で常駐を壊さない)。**単一ユーザー homelab 前提**: 昇格スクリプトは操作者の HKCU/セッションを対象にするため「操作者 = 通知ユーザー」を仮定する。split-privilege 構成では通知ユーザー自身のセッションでトレイを一度起動する(`deploy/_TrayCommon.ps1` に注記)。
 - **キャッチアップ = 今から先だけ(`readExistingEvents: false`)**。起動時は新規 1001 のみ購読し、過去分は再生しない。トレイ停止中の取込トーストは取りこぼすが、トーストは「今起きた」揮発シグナルで、取込自体は完了・Event Viewer に記録が残る。ログオン時に過去トーストが大量に出る失敗モードを回避する。
 - **ペイロード契約は JSON で疎結合**。受け手は EventLog メッセージの JSON を**自前の DTO** にデシリアライズし、`schemaVersion` で互換を判定する。Core/Hosting の C# 型を跨プロセスで共有しない(型共有よりバージョン付き JSON 契約 + 両側テストの方が壊れにくい)。
 

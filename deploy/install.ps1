@@ -6,10 +6,11 @@
 .DESCRIPTION
   バイナリを Program Files へ、データ(設定・台帳・マスタ)を %ProgramData%\radirec\ へ分離配置する
   (ADR-0006)。EventLog ソース登録・設定の初回生成・Windows サービス登録(run-as 自分のアカウント)
-  までを一括で行う。再実行しても壊れない:
+  と、取込通知トレイ(Radirec.Gui。ADR-0009)の配置・起動までを一括で行う。再実行しても壊れない:
     - EventLog ソースは存在すればスキップ
     - 設定は存在すれば温存(上書きしない)
     - サービスが存在すればバイナリは触らずスキップ('-Force' で停止・削除・再登録)
+    - 取込通知トレイは毎回配置・起動(自身を HKCU Run へ自己登録し次回ログオンから自動常駐)
 
   更新(バイナリ差し替え)は update.ps1、削除は uninstall.ps1 を使う。
 
@@ -38,12 +39,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# 取込通知トレイ(Radirec.Gui)の定数・ヘルパ(単一ユーザー前提の注記含む。ADR-0009)。
+. (Join-Path $PSScriptRoot '_TrayCommon.ps1')
+
 $ServiceName = 'Radirec'
 $SourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ExeSource = Join-Path $SourceRoot 'radirec.exe'
 $ConfigSampleDir = Join-Path $SourceRoot 'config'
 $ExeTarget = Join-Path $InstallDir 'radirec.exe'
 $ConfigPath = Join-Path $DataDir 'radirec.json'
+
+# 取込通知トレイ。サービスとは独立したユーザーセッションの常駐アプリ(ADR-0009)。
+$GuiExeSource = Join-Path $SourceRoot $GuiExeName
+$GuiExeTarget = Join-Path $InstallDir $GuiExeName
 
 if (-not (Test-Path $ExeSource)) {
     throw "radirec.exe が見つかりません: $ExeSource(Release zip 内の deploy/ から実行してください)"
@@ -122,6 +130,34 @@ foreach ($sample in $configMap.Keys) {
         Copy-Item -Path $src -Destination $dst
         Write-Host "[OK] $($configMap[$sample]) を sample から生成しました"
     }
+}
+
+# --- 取込通知トレイ(Radirec.Gui)配置・起動(サービス状態に依存しない。ADR-0009)---
+# サービス登録の有無(下の early return)より前に置き、再実行でもトレイを配置できるようにする。
+if (Test-Path $GuiExeSource) {
+    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+
+    # 起動中の健全なトレイは触らない(冪等な再実行で常駐を止め昇格再起動しないため。F3)。
+    # exe の差し替えは update.ps1 の役割。停止中のときだけ配置する。
+    if (Test-TrayRunning) {
+        Write-Host "[skip] 取込通知トレイは起動中。exe 差し替えは update.ps1 を使ってください"
+    } else {
+        Copy-Item -Path $GuiExeSource -Destination $GuiExeTarget -Force
+        Write-Host "[OK] Radirec.Gui.exe を配置しました"
+    }
+
+    # ログオン自動起動を操作者の HKCU Run へ冪等登録(アプリ側の自己登録と等価。単一ユーザー前提)。
+    Register-TrayAutostart -ExePath $GuiExeTarget
+    Write-Host "[OK] ログオン自動起動を登録しました"
+
+    # 停止中なら今すぐ起動(次回ログオンからは非昇格で自動起動)。
+    if (-not (Test-TrayRunning)) {
+        Start-Process -FilePath $GuiExeTarget
+        Write-Host "[OK] 取込通知トレイを起動しました" -NoNewline
+        Write-Host "(※今回は管理者起動のため昇格実行。定常はログオン時に非昇格で自動起動)" -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host "[skip] $GuiExeName が zip に無いため通知トレイは配置しません(サービスのみ)"
 }
 
 # --- サービス登録 ---

@@ -4,7 +4,8 @@
   Radirec を削除する(冪等)。既定でデータは残す。
 
 .DESCRIPTION
-  サービスを停止・削除し、EventLog ソースを解除し、実行体を削除する。
+  サービスを停止・削除し、EventLog ソースを解除し、実行体を削除する。取込通知トレイ(Radirec.Gui。
+  ADR-0009)も停止・削除し、ログオン自動起動(HKCU Run)を解除する。
   データ(設定・台帳・マスタ)は既定で残す(誤削除防止)。'-PurgeData' で明示削除する。
   各手順は対象が既に無くてもエラーにしない(冪等)。
 
@@ -27,7 +28,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# 取込通知トレイ(Radirec.Gui)の定数・ヘルパ(ADR-0009)。
+. (Join-Path $PSScriptRoot '_TrayCommon.ps1')
+
 $ServiceName = 'Radirec'
+$GuiExePath = Join-Path $InstallDir $GuiExeName
 
 Write-Host "== Radirec アンインストール ==" -ForegroundColor Cyan
 
@@ -49,7 +54,26 @@ if ([System.Diagnostics.EventLog]::SourceExists($ServiceName)) {
     Write-Host "[skip] EventLog ソース '$ServiceName' は未登録"
 }
 
-# 3. 実行体削除(radirec.exe のみ)。
+# 3. 取込通知トレイ(Radirec.Gui)停止・削除・自動起動解除(ADR-0009)。
+#    停止は操作者と同一セッションに限定し、exe ロック解放まで待つ(F2 / F4)。
+Stop-Tray
+if (Test-Path $GuiExePath) {
+    Remove-Item -Path $GuiExePath -Force
+    Write-Host "[OK] $GuiExeName を削除しました"
+} else {
+    Write-Host "[skip] $GuiExePath は存在しない"
+}
+# HKCU Run の自己登録を解除(操作者のハイブ。単一ユーザー前提。split-privilege では通知
+# ユーザー自身のセッションで解除が必要 → _TrayCommon.ps1 の注記参照)。
+if (Unregister-TrayAutostart) {
+    Write-Host "[OK] ログオン自動起動(HKCU Run '$GuiRunValue')を解除しました"
+} else {
+    Write-Host "[skip] HKCU Run '$GuiRunValue' は未登録"
+}
+# トースト用のスタートメニューショートカット(ToastNotificationManagerCompat 生成)は
+# ユーザーの Start Menu に残りうるが無害。気になる場合は手動削除。
+
+# 4. 実行体削除(radirec.exe)。
 #    InstallDir を丸ごと Remove-Item -Recurse すると、旧同居レイアウト(exe と台帳が同一
 #    フォルダ)や InstallDir==DataDir の指定時に、-PurgeData 無しでも台帳を巻き添え削除してしまう。
 $installFull = [System.IO.Path]::GetFullPath($InstallDir)
@@ -61,16 +85,19 @@ if ($installFull -eq $dataFull) {
 if (Test-Path $exePath) {
     Remove-Item -Path $exePath -Force
     Write-Host "[OK] radirec.exe を削除しました"
-    # InstallDir が(データと別で)空になったらディレクトリも片付ける。
-    if ($installFull -ne $dataFull -and -not (Get-ChildItem -Path $InstallDir -Force -ErrorAction SilentlyContinue)) {
-        Remove-Item -Path $InstallDir -Force
-        Write-Host "[OK] 空になった $InstallDir を削除しました"
-    }
 } else {
     Write-Host "[skip] $exePath は存在しない"
 }
 
-# 4. データ(既定は保持)
+# 5. 空になった InstallDir を掃除(radirec.exe / トレイ exe の有無に依らず実行。F5)。
+#    データと別ディレクトリのときだけ。DataDir と同一なら台帳巻き添えを避けて温存する。
+if ($installFull -ne $dataFull -and (Test-Path $InstallDir) -and
+    -not (Get-ChildItem -Path $InstallDir -Force -ErrorAction SilentlyContinue)) {
+    Remove-Item -Path $InstallDir -Force
+    Write-Host "[OK] 空になった $InstallDir を削除しました"
+}
+
+# 6. データ(既定は保持)
 if ($PurgeData) {
     if (Test-Path $DataDir) {
         Remove-Item -Path $DataDir -Recurse -Force
