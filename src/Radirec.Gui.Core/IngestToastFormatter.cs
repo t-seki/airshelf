@@ -1,25 +1,36 @@
 namespace Radirec.Gui.Core;
 
-/// <summary>取込要約ペイロードからトーストの表題・本文行を組み立てる(表示専用・純粋。ADR-0009)。</summary>
+/// <summary>取込要約ペイロードからトーストの text 要素列(表題 + 本文行)を組み立てる(表示専用・純粋。ADR-0009)。</summary>
 public static class IngestToastFormatter
 {
-    /// <summary>本文行の上限。WinRT トーストの text 要素数制約に収めるため小さく保つ(表題 + 本文で計 4 以内)。</summary>
-    public const int MaxLines = 3;
+    /// <summary>
+    /// トーストの &lt;text&gt; 要素(表題を含む)の硬い上限。これを超えると
+    /// <c>ToastContentBuilder</c> が "We have reached max lines allowed (4) per toast" で失敗する
+    /// (実機確認: 4 要素で例外)。安全側で総 3 要素に抑える。**この値が唯一の権威**。
+    /// </summary>
+    public const int MaxToastTextElements = 3;
 
-    /// <summary>ペイロードから表題と本文行(改行なしの文字列群)を組み立てる。受け手は行ごとに表示する。</summary>
-    public static (string Title, IReadOnlyList<string> Lines) Format(IngestSummaryPayload payload)
+    /// <summary>本文行の上限(表題 1 要素を除いた残り)。<see cref="MaxToastTextElements"/> から導出する。</summary>
+    public const int MaxLines = MaxToastTextElements - 1;
+
+    /// <summary>
+    /// トーストに渡す text 要素列を返す(先頭 = 表題、以降 = 本文行)。<see cref="MaxToastTextElements"/> に
+    /// 切り詰め済みで、受け手はこれを順に AddText するだけでよい(要素数上限を受け手が意識しなくて済む)。
+    /// </summary>
+    public static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload)
     {
-        var title = $"新規取込 {payload.TotalImported}件";
+        var texts = new List<string> { $"新規取込 {payload.TotalImported}件" };
 
         var hasMore = payload.Albums.Count > MaxLines || payload.Truncated;
         // 「…ほか」を出すなら 1 行分空ける。
         var albumsToShow = hasMore ? MaxLines - 1 : Math.Min(payload.Albums.Count, MaxLines);
 
-        var lines = payload.Albums.Take(albumsToShow).Select(FormatAlbum).ToList();
+        texts.AddRange(payload.Albums.Take(albumsToShow).Select(FormatAlbum));
         if (hasMore)
-            lines.Add("…ほか");
+            texts.Add("…ほか");
 
-        return (title, lines);
+        // 硬い上限(実機の text 要素上限)。formatter ロジックが将来変わっても超えないための最終ガード。
+        return texts.Take(MaxToastTextElements).ToList();
     }
 
     private static string FormatAlbum(IngestSummaryAlbumPayload album)
