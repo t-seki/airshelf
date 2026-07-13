@@ -82,6 +82,20 @@ public sealed class IngestToastFormatterTests
     }
 
     [Fact]
+    public void 大量番組でもトースト要素上限を超えない()
+    {
+        // 表題 + 本文行 が WinRT の text 要素上限(4)を超えないこと(実機で 4 は例外)。
+        var albums = Enumerable.Range(1, 50)
+            .Select(i => Album($"局{i}", $"番組{i}", Ep("2026-01-01", "10:00")))
+            .ToArray();
+
+        var (_, lines) = IngestToastFormatter.Format(Payload(albums.Length, false, albums));
+
+        Assert.True(lines.Count <= IngestToastFormatter.MaxLines);
+        Assert.True(1 + lines.Count <= 4, "表題を含め text 要素は 4 以内であること");
+    }
+
+    [Fact]
     public void truncatedはほかを添える()
     {
         var (_, lines) = IngestToastFormatter.Format(

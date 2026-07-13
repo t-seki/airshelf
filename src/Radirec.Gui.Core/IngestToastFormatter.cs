@@ -3,8 +3,12 @@ namespace Radirec.Gui.Core;
 /// <summary>取込要約ペイロードからトーストの表題・本文行を組み立てる(表示専用・純粋。ADR-0009)。</summary>
 public static class IngestToastFormatter
 {
-    /// <summary>本文行の上限。WinRT トーストの text 要素数制約に収めるため小さく保つ(表題 + 本文で計 4 以内)。</summary>
-    public const int MaxLines = 3;
+    /// <summary>
+    /// 本文行の上限。WinRT トーストは text 要素(表題含む)が多いと
+    /// "We have reached max lines allowed (4) per toast" で失敗する(実機確認: 4 要素で例外)。
+    /// 表題 1 + 本文 2 = 計 3 要素に抑える。
+    /// </summary>
+    public const int MaxLines = 2;
 
     /// <summary>ペイロードから表題と本文行(改行なしの文字列群)を組み立てる。受け手は行ごとに表示する。</summary>
     public static (string Title, IReadOnlyList<string> Lines) Format(IngestSummaryPayload payload)
