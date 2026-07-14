@@ -15,6 +15,8 @@ public sealed class ControlChannelTests
     private sealed class FakeControl : IServiceControl
     {
         public int RescanCount;
+        public int ReloadCount;
+        public ReloadResult ReloadResult { get; init; } = ReloadResult.Ok();
         public ServiceStatusSnapshot Snapshot { get; init; } = new()
         {
             Version = "9.9.9-test",
@@ -25,6 +27,12 @@ public sealed class ControlChannelTests
 
         public void RequestRescan() => Interlocked.Increment(ref RescanCount);
         public ServiceStatusSnapshot GetStatus() => Snapshot;
+
+        public ReloadResult RequestReload()
+        {
+            Interlocked.Increment(ref ReloadCount);
+            return ReloadResult;
+        }
     }
 
     private static async Task<ControlResponse> RoundTripAsync(
@@ -66,6 +74,27 @@ public sealed class ControlChannelTests
         Assert.Equal(control.Snapshot.RadioRoot, status.RadioRoot);
         Assert.Equal(control.Snapshot.Watching, status.Watching);
         Assert.Equal(control.Snapshot.StartedUtc, status.StartedUtc);
+    }
+
+    [Fact]
+    public async Task reload_受理はdispatchされ受理を返す()
+    {
+        var control = new FakeControl { ReloadResult = ReloadResult.Ok() };
+        var response = await RoundTripAsync(control, ControlContract.Commands.Reload, UniquePipeName());
+
+        Assert.True(response.Ok);
+        Assert.Equal(1, control.ReloadCount);
+    }
+
+    [Fact]
+    public async Task reload_検証失敗はエラー応答として往復する()
+    {
+        var control = new FakeControl { ReloadResult = ReloadResult.Failed("設定の読み込みに失敗しました: bad json") };
+        var response = await RoundTripAsync(control, ControlContract.Commands.Reload, UniquePipeName());
+
+        Assert.False(response.Ok);
+        Assert.Contains("bad json", response.Error);
+        Assert.Equal(1, control.ReloadCount);
     }
 
     [Fact]

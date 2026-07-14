@@ -114,6 +114,12 @@ public sealed class ControlPipeServer(
             case ControlContract.Commands.Status:
                 return ControlResponse.Success(control.GetStatus());
 
+            case ControlContract.Commands.Reload:
+                var reload = control.RequestReload();
+                return reload.Accepted
+                    ? ControlResponse.Success(new { accepted = true })
+                    : ControlResponse.Failure(reload.Error ?? "設定リロードに失敗しました");
+
             default:
                 return ControlResponse.Failure($"未知のコマンド: {request.Command}");
         }

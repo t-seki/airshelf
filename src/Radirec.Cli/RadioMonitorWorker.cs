@@ -11,34 +11,45 @@ namespace Radirec.Cli;
 /// <summary>
 /// I: を監視し録音を検知即取り込みする常駐ワーカー。正しさはキャッチアップ + import-once 冪等で
 /// 担保する(ADR-0003)。トリガ①FileSystemWatcher ②スリープ復帰(電源イベント)③起動時 ④定期
-/// ⑤手動(制御チャネル)はすべて単一の要求チャネルへ投げ、ExecuteAsync 内の**単一直列コンシューマ**が
-/// 順に取り込む。これにより fire-and-forget を排し、停止時に在中スキャンをまたいでリソースを破棄する
-/// レースを避ける。制御チャネル(ADR-0010)の <see cref="IServiceControl"/> 実装も兼ね、rescan は要求
-/// チャネルへ、status はスレッドセーフな状態スナップショットを直接返す(直列チャネルを介さない)。
+/// ⑤手動(制御チャネル)⑥リロードはすべて単一の要求チャネルへ投げ、ExecuteAsync 内の**単一直列
+/// コンシューマ**が順に処理する。これにより fire-and-forget を排し、停止時に在中スキャンをまたいで
+/// リソースを破棄するレースを避ける。制御チャネル(ADR-0010)の <see cref="IServiceControl"/> 実装も
+/// 兼ね、rescan は要求チャネルへ、status はスレッドセーフな状態スナップショットを直接返し、reload は
+/// **config 由来ランタイム一式(グラフ + watcher + タイマー)をプロセス内で丸ごと再構築**する
+/// (部分 hot-swap はしない)。
 /// </summary>
 public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 {
-    private readonly RadirecConfig _config;
     private readonly ILogger<RadioMonitorWorker> _log;
-    private readonly IngestService _ingest;
-    private readonly IDisposable? _resources;
+    private readonly string _configPath;
 
-    // 制御チャネルの status が読む状態。immutable record を volatile 参照で差し替える(単一書き手 =
-    // ExecuteAsync スレッド、読み手 = listener スレッド)。ADR-0010。
+    // config 由来のランタイム。reload で丸ごと差し替わるため readonly ではない(書き手は直列ループのみ)。
+    private RadirecConfig _config;
+    private IngestService _ingest;
+    private IDisposable? _resources;
+
+    // 制御チャネルの status が読む状態。immutable record を差し替える(単一書き手 = ExecuteAsync
+    // スレッド、読み手 = listener スレッド)。ADR-0010。
     private volatile ServiceStatusSnapshot _status;
 
     // 容量1・満杯時は書き捨て = 複数トリガを1回のスキャンに束ねる(コアレス)。
     private readonly Channel<string> _requests = Channel.CreateBounded<string>(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
 
+    // reload は冪等でないため上の DropWrite チャネルには乗せず、取りこぼさないスロットで運ぶ(ADR-0010)。
+    // 起こしはトリガチャネルへの書き込み。set 後に必ずループが 1 回起きて Take するので取りこぼさない。
+    private readonly PendingReloadSlot<RadirecConfig> _pendingReload;
+
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer; // 書き込み中の連続イベントを束ねる(単一の再利用タイマー)
     private Timer? _periodicTimer; // 定期(安全網)
 
-    public RadioMonitorWorker(RadirecConfig config, ILogger<RadioMonitorWorker> log)
+    public RadioMonitorWorker(RadirecConfig config, ServiceRuntimeOptions options, ILogger<RadioMonitorWorker> log)
     {
         _config = config;
+        _configPath = options.ConfigPath;
         _log = log;
+        _pendingReload = new PendingReloadSlot<RadirecConfig>(() => Request("リロード"));
         // 常駐サービスのみ取込要約シグナルを発行する(ADR-0008)。
         (_ingest, _resources) = CompositionRoot.Build(config, dryRun: false, notify: true);
         _status = new ServiceStatusSnapshot
@@ -58,6 +69,20 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// <summary>ライブ状態のスナップショット(在中スキャン中でも直列チャネルを介さず即応)。</summary>
     public ServiceStatusSnapshot GetStatus() => _status;
 
+    /// <summary>
+    /// 設定リロード。新 config の読込+構文検証だけ**同期実行**(グラフに触れない)し、妥当なら再構築を
+    /// スロットへ投入して即「受理」、不正なら旧構成を維持して失敗を返す。実グラフ差し替えは在中スキャン
+    /// 完了後に直列ループ上で <see cref="ApplyReload"/> が行う(ADR-0010)。
+    /// </summary>
+    public ReloadResult RequestReload()
+    {
+        if (!ConfigLoading.TryLoad(_configPath, out var newConfig, out var error))
+            return ReloadResult.Failed(error!);
+
+        _pendingReload.Set(newConfig!);
+        return ReloadResult.Ok();
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _log.LogInformation("Radirec サービス開始。監視ルート: {Root}", _config.RadioRoot);
@@ -67,11 +92,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             _log.LogInformation("中断で残った .partial を {Count} 件掃除しました", orphans);
 
         StartWatcher();
+        StartPeriodicTimer();
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
-        _periodicTimer = new Timer(
-            _ => Request("定期"), null,
-            TimeSpan.FromSeconds(Math.Max(10, _config.ScanIntervalSeconds)),
-            TimeSpan.FromSeconds(Math.Max(10, _config.ScanIntervalSeconds)));
 
         Request("起動時");
 
@@ -79,7 +101,13 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         {
             // 単一直列コンシューマ。停止時はこのループが在中スキャン完了後に抜ける(StopAsync が待つ)。
             await foreach (var trigger in _requests.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+            {
+                // 在中スキャン完了後(= 反復の先頭)にのみ reload を適用する。ADR-0010 の直列不変条件を保つ。
+                if (_pendingReload.Take() is { } newConfig)
+                    ApplyReload(newConfig);
+
                 await ScanAsync(trigger, stoppingToken);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -93,11 +121,42 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 
     private void Request(string trigger) => _requests.Writer.TryWrite(trigger);
 
+    // config 由来ランタイムを新 config で丸ごと再構築する(部分 hot-swap はしない。ADR-0010)。
+    // 新グラフを**先に**構築し、成功したときだけ旧構成を破棄して差し替える(build-new-first)。
+    // 構築失敗(SQLite オープンや stations/programs 読込等)時は旧構成を無傷で維持し、稼働を継続する。
+    private void ApplyReload(RadirecConfig newConfig)
+    {
+        IngestService newIngest;
+        IDisposable? newResources;
+        try
+        {
+            (newIngest, newResources) = CompositionRoot.Build(newConfig, dryRun: false, notify: true);
+        }
+        catch (Exception ex)
+        {
+            // 旧構成(グラフ + watcher + タイマー)は無傷。reload だけ失敗し、サービスは死なせない。
+            _log.LogError(ex, "設定リロード: 新グラフの構築に失敗しました。旧構成を維持して継続します");
+            return;
+        }
+
+        // 新グラフ構築成功 → 旧 config 由来ランタイムを破棄し、watcher/タイマーも新 config で張り直す。
+        TeardownConfigRuntime();
+        _ingest = newIngest;
+        _resources = newResources;
+        _config = newConfig;
+        StartWatcher();       // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
+        StartPeriodicTimer(); // 新 ScanIntervalSeconds で定期タイマーを張り直す。
+
+        _log.LogInformation("設定リロード完了。監視ルート: {Root}", _config.RadioRoot);
+        Request("リロード後"); // 新構成で 1 回走査(新ルートの既存録音をキャッチアップ)。
+    }
+
     private void StartWatcher()
     {
         if (!Directory.Exists(_config.RadioRoot))
         {
             _log.LogWarning("監視ルートが存在しません: {Root}(定期スキャンのみで継続)", _config.RadioRoot);
+            _status = _status with { RadioRoot = _config.RadioRoot, Watching = false };
             return;
         }
 
@@ -113,7 +172,27 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         _watcher.Changed += (_, _) => NudgeDebounce();
         _watcher.Error += (_, e) => _log.LogWarning(e.GetException(), "FileSystemWatcher エラー(定期スキャンで回収)");
         _watcher.EnableRaisingEvents = true;
-        _status = _status with { Watching = true };
+        _status = _status with { RadioRoot = _config.RadioRoot, Watching = true };
+    }
+
+    private void StartPeriodicTimer()
+    {
+        var interval = TimeSpan.FromSeconds(Math.Max(10, _config.ScanIntervalSeconds));
+        _periodicTimer = new Timer(_ => Request("定期"), null, interval, interval);
+    }
+
+    // config 由来ランタイム(watcher + タイマー + 台帳/HTTP 資源)を破棄する。直列ループとトリガチャネルは
+    // 生かしたまま(reload をまたいでコンシューマは生存する)。
+    private void TeardownConfigRuntime()
+    {
+        _watcher?.Dispose();
+        _watcher = null;
+        _debounceTimer?.Dispose();
+        _debounceTimer = null;
+        _periodicTimer?.Dispose();
+        _periodicTimer = null;
+        _resources?.Dispose();
+        _resources = null;
     }
 
     // イベントごとに単一タイマーを再スタート = 最後のイベントから静穏 WatchDebounceSeconds 秒後に発火。
@@ -172,11 +251,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
-        // コンシューマループ(ExecuteAsync)は StopAsync で完了済み。ここでは資源のみ解放。
-        _watcher?.Dispose();
-        _debounceTimer?.Dispose();
-        _periodicTimer?.Dispose();
-        _resources?.Dispose();
+        // コンシューマループ(ExecuteAsync)は StopAsync で完了済み。ここでは現行の config 由来資源を解放。
+        TeardownConfigRuntime();
         base.Dispose();
     }
 }

@@ -40,9 +40,13 @@ public sealed class ServiceCommand : AsyncCommand<ServiceCommand.Settings>
         if (config is null)
             return 1;
 
+        // 設定リロードで起動時と同じファイルを再読込するため、解決済み絶対パスを保持する(ADR-0010)。
+        var configPath = ConfigPaths.Resolve(settings.EffectiveConfig);
+
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddWindowsService(options => options.ServiceName = "Radirec");
         builder.Services.AddSingleton(config);
+        builder.Services.AddSingleton(new ServiceRuntimeOptions(configPath));
 
         // worker は取込ワーカー兼 制御チャネルの IServiceControl。同一インスタンスを
         // HostedService と IServiceControl(listener が参照)で共有する(ADR-0010)。
