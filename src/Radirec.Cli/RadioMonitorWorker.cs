@@ -32,6 +32,10 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     // スレッド、読み手 = listener スレッド)。ADR-0010。
     private volatile ServiceStatusSnapshot _status;
 
+    // 直列コンシューマループが reload を処理できる状態か。起動〜稼働中は true(ループ開始前の reload も
+    // チャネルにバッファされ処理される)、ループ終了(停止)後に false。停止後の reload を誤受理しないため。
+    private volatile bool _running = true;
+
     // 容量1・満杯時は書き捨て = 複数トリガを1回のスキャンに束ねる(コアレス)。
     private readonly Channel<string> _requests = Channel.CreateBounded<string>(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
@@ -76,6 +80,10 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// </summary>
     public ReloadResult RequestReload()
     {
+        // 停止処理中は直列ループが要求を Take しない(誤って「受理」を返さない)。
+        if (!_running)
+            return ReloadResult.Failed("サービスが停止処理中のため受理できません");
+
         if (!ConfigLoading.TryLoad(_configPath, out var newConfig, out var error))
             return ReloadResult.Failed(error!);
 
@@ -115,6 +123,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         }
         finally
         {
+            _running = false; // 以降の reload 要求は受理しない(誤成功を返さない)。
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         }
     }
@@ -140,12 +149,29 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         }
 
         // 新グラフ構築成功 → 旧 config 由来ランタイムを破棄し、watcher/タイマーも新 config で張り直す。
-        TeardownConfigRuntime();
-        _ingest = newIngest;
-        _resources = newResources;
-        _config = newConfig;
-        StartWatcher();       // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
-        StartPeriodicTimer(); // 新 ScanIntervalSeconds で定期タイマーを張り直す。
+        // この swap 相は直列ループスレッド上。ここで throw を漏らすと BackgroundService が fault し、
+        // 既定の StopHost でサービス全体が落ちる(旧構成 teardown 済み)ため、必ず捕捉して継続する。
+        // StartWatcher は非 throw 化済みだが、想定外の例外でもサービスを死なせない最後の砦。
+        try
+        {
+            TeardownConfigRuntime();
+            _ingest = newIngest;
+            _resources = newResources;
+            _config = newConfig;
+            StartWatcher();       // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
+            StartPeriodicTimer(); // 新 ScanIntervalSeconds で定期タイマーを張り直す。
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "設定リロードの適用中に想定外の例外。定期スキャンで継続を試みます");
+            // 自動走査を絶やさないよう、最低限の定期タイマーを確保する(監視は次回起動 or 再 reload で回収)。
+            if (_periodicTimer is null)
+            {
+                try { StartPeriodicTimer(); }
+                catch (Exception ex2) { _log.LogError(ex2, "定期タイマーの再確保にも失敗しました"); }
+            }
+            return;
+        }
 
         // 新構成での走査は、この reload を起こしたトリガ(wake or coalesce された既存トリガ)を
         // 直列ループが本反復でそのまま ScanAsync に流すため、ここで追加要求はしない(二重走査を避ける)。
@@ -161,19 +187,34 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             return;
         }
 
-        // 書き込み中の連続イベントを束ね、静穏化してから1回スキャンを要求(安定判定は取り込み側でも実施)。
-        _debounceTimer = new Timer(_ => Request("検知"), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-
-        _watcher = new FileSystemWatcher(_config.RadioRoot)
+        // FileSystemWatcher の生成は Directory.Exists を通っても失敗しうる(長すぎるパス・TOCTOU で
+        // 直後に消えた等)。ここで throw すると reload の swap 相を巻き込みサービスを落とすため、
+        // 失敗は定期スキャンのみへの degrade として扱い、throw しない(watcher は次回起動/再 reload で回収)。
+        try
         {
-            IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
-        };
-        _watcher.Created += (_, _) => NudgeDebounce();
-        _watcher.Changed += (_, _) => NudgeDebounce();
-        _watcher.Error += (_, e) => _log.LogWarning(e.GetException(), "FileSystemWatcher エラー(定期スキャンで回収)");
-        _watcher.EnableRaisingEvents = true;
-        _status = _status with { RadioRoot = _config.RadioRoot, Watching = true };
+            // 書き込み中の連続イベントを束ね、静穏化してから1回スキャンを要求(安定判定は取り込み側でも実施)。
+            _debounceTimer = new Timer(_ => Request("検知"), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+            _watcher = new FileSystemWatcher(_config.RadioRoot)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+            _watcher.Created += (_, _) => NudgeDebounce();
+            _watcher.Changed += (_, _) => NudgeDebounce();
+            _watcher.Error += (_, e) => _log.LogWarning(e.GetException(), "FileSystemWatcher エラー(定期スキャンで回収)");
+            _watcher.EnableRaisingEvents = true;
+            _status = _status with { RadioRoot = _config.RadioRoot, Watching = true };
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "FileSystemWatcher の生成に失敗しました: {Root}(定期スキャンのみで継続)", _config.RadioRoot);
+            _debounceTimer?.Dispose();
+            _debounceTimer = null;
+            _watcher?.Dispose();
+            _watcher = null;
+            _status = _status with { RadioRoot = _config.RadioRoot, Watching = false };
+        }
     }
 
     private void StartPeriodicTimer()

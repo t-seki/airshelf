@@ -98,6 +98,25 @@ public sealed class ControlChannelTests
     }
 
     [Fact]
+    public async Task ハンドラ例外は失敗応答に正規化される_接続を落とさない()
+    {
+        // 回帰: コマンドハンドラ(IServiceControl 実装)が throw しても応答を返さず接続を落とすと、
+        // クライアントが誤って「サービス応答なし」になる。失敗応答へ正規化されること。
+        var control = new ThrowingControl();
+        var response = await RoundTripAsync(control, ControlContract.Commands.Reload, UniquePipeName());
+
+        Assert.False(response.Ok);
+        Assert.Contains("boom", response.Error);
+    }
+
+    private sealed class ThrowingControl : IServiceControl
+    {
+        public void RequestRescan() => throw new InvalidOperationException("boom");
+        public ServiceStatusSnapshot GetStatus() => throw new InvalidOperationException("boom");
+        public ReloadResult RequestReload() => throw new InvalidOperationException("boom");
+    }
+
+    [Fact]
     public async Task 未知コマンドはエラー応答_dispatchはされない()
     {
         var control = new FakeControl();

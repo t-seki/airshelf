@@ -47,7 +47,11 @@ internal static class ConfigLoading
             error = null;
             return true;
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+        // JsonException / IOException に限らず、UnauthorizedAccessException(権限)・
+        // InvalidOperationException(内容が null 等)含むあらゆる読込失敗を「クリーンな失敗」に正規化する。
+        // reload はこの戻り値を listener スレッドで ReloadResult.Failed に変換するため、ここで throw を
+        // 漏らすと制御チャネルが応答を返せず誤って「サービス応答なし」になる(ADR-0010)。
+        catch (Exception ex)
         {
             error = $"設定の読み込みに失敗しました: {ex.Message}";
             return false;

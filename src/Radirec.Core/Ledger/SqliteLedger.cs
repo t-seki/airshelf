@@ -63,14 +63,25 @@ public sealed class SqliteLedger : ILedger, IDisposable
         }.ToString());
         _connection.Open();
 
-        if (!readOnly)
+        // Open 後の migration/スキーマ確認が throw したら、開いた接続を確実に破棄してからエラーを返す。
+        // これを怠ると(Pooling=false で)接続ハンドルがリークする。reload は Build を繰り返し呼ぶため、
+        // 失敗のたびにハンドルが漏れると長時間稼働でファイルロックの温床になる。
+        try
         {
-            MigrateOrCreate();
-            _usable = true;
+            if (!readOnly)
+            {
+                MigrateOrCreate();
+                _usable = true;
+            }
+            else
+            {
+                _usable = TableExists("imports") && ColumnExists("imports", "part_index");
+            }
         }
-        else
+        catch
         {
-            _usable = TableExists("imports") && ColumnExists("imports", "part_index");
+            _connection.Dispose();
+            throw;
         }
     }
 
