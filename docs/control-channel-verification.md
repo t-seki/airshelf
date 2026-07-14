@@ -37,8 +37,8 @@ ACL(`PipeSecurity` は `PlatformNotSupported`)・実サービスの listener+wor
 | # | 項目 | スクリプトの検査 |
 |---|---|---|
 | ① | status/rescan/reload が稼働サービスに繋がり応答 | 各 verb の exit 0 + 期待出力 |
-| ② | pipe ACL に広いアクセスが無い | `Get-Acl \\.\pipe\radirec-control` で Everyone/Users/Authenticated Users の Allow が無いことを確認(**接続拒否の本体は下記手動**) |
-| ③a | reload で RadioRoot 変更が反映 | 一時ルートへ変更→reload→status が新ルートを反映するまでポーリング |
+| ② | 認可(別ユーザー拒否) | **自動判定しない**(named pipe の DACL は PowerShell から確実に読めず、`Get-Acl` は pipe パス非対応・成功しても SID/日本語グループ名の取りこぼしで誤 PASS になりうる)。SKIP を出し、下記**手動手順 ②**へ誘導する |
+| ③a | reload で RadioRoot 変更が反映 | 一時ルートへ変更→reload→status が新ルートを反映するまでポーリング(表の折返しに強い正規化照合) |
 | ③b | 不正 config は拒否・サービス生存・旧構成維持 | 壊れた JSON を書いて reload→exit 1+「拒否」・サービス Running・status が旧ルートのまま |
 | ⑤ | listener がパイプ churn で永久停止しない | status を 30 連打し全応答(dispose→再生成の窓を通す) |
 | ⑥ | ファイル着信 in-flight 中の reload で落ちない | 監視ルートへ junk ファイルを高速生成し続けながら reload 連打→サービス Running + status 応答 |
