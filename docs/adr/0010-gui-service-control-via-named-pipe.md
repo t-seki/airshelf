@@ -58,7 +58,7 @@ ADR-0008 は「受け手なしのサービス側発行のみ」を EventLog で�
 
 ## Consequences
 
-- **要実機検証(Windows / self-hosted runner)**: WSL では named pipe が Unix ソケット実装で Windows ACL 非対応、`PipeSecurity` は `PlatformNotSupported`。ADR-0008 の notify ゲートと同様、**#33 完了条件「認可がローカル同一ユーザーに限定」は Windows 実機検証項目**になる。① `radirec.exe status`/`rescan`/`reload` が稼働サービスに繋がり応答すること、② 別ユーザー/ACL 外からは繋がらないこと、③ reload で config 由来ランタイム一式(グラフ + watcher + タイマー)が在中スキャン完了後に反映され RadioRoot 変更が即時検知に効くこと・不正 config で旧構成が維持されること、④ split-privilege(`-ServiceAccount` に専用アカウント)構成でも操作者本人の CLI が繋がること、を実機で確認する。
+- **要実機検証(Windows / self-hosted runner)**: WSL では named pipe が Unix ソケット実装で Windows ACL 非対応、`PipeSecurity` は `PlatformNotSupported`。ADR-0008 の notify ゲートと同様、**#33 完了条件「認可がローカル同一ユーザーに限定」は Windows 実機検証項目**になる。① `radirec.exe status`/`rescan`/`reload` が稼働サービスに繋がり応答すること、② 別ユーザー/ACL 外からは繋がらないこと、③ reload で config 由来ランタイム一式(グラフ + watcher + タイマー)が在中スキャン完了後に反映され RadioRoot 変更が即時検知に効くこと・不正 config で旧構成が維持されること、④ split-privilege(`-ServiceAccount` に専用アカウント)構成でも操作者本人の CLI が繋がること(既定は自 SID 限定で足りるが split-privilege ACL は #40 で対応)、⑤ listener がパイプ生成の一過性失敗(dispose→再生成の窓での "all pipe instances busy" 等)で永久停止せず backoff 再試行で listen を継続すること、を実機で確認する。
 - `RadioMonitorWorker` に観測可能状態(スナップショット)と、**config 由来ランタイム(グラフ + FileSystemWatcher + 定期/debounce タイマー)を一括で破棄→再構築できるリファクタ**(`CompositionRoot.Build` と `StartWatcher`/タイマー生成を ctor から `ExecuteAsync` 側の再入可能な組立へ移す)が入る。reload 要求は cap-1 DropWrite チャネルとは別の取りこぼさない経路で届ける。listener が触れる面は狭い `IServiceControl` 相当の interface に限定する。
 - 契約 schema は `schemaVersion` で前方進化させる。GUI(#5)はこの JSON 契約に自前 DTO で追従し、両側 golden テストで守る。
 - GUI からの制御送出 UI(#5)・深リンク・リモート制御(非目標)は本 ADR の対象外。

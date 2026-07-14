@@ -20,6 +20,9 @@ public sealed class ControlPipeServer(
     // 接続だけして送ってこないクライアントで accept ループを固めないための read 期限。
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(5);
 
+    // パイプ生成の一過性失敗(Windows の "all pipe instances busy" 等)からの回復待ち。
+    private static readonly TimeSpan CreateRetryDelay = TimeSpan.FromSeconds(1);
+
     private readonly string _pipeName = pipeName ?? ControlContract.PipeName;
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -33,9 +36,18 @@ public sealed class ControlPipeServer(
             }
             catch (Exception ex)
             {
-                // パイプ生成自体の失敗(ACL/名前衝突等)は継続不能。報告して抜ける。
+                // パイプ生成の失敗(dispose→再生成の窓での一過性 busy 等)で listen を永久停止しない。
+                // 報告して短い backoff 後に再試行する(「1 接続の失敗で listen を止めない」基準の徹底)。
                 onConnectionError?.Invoke(ex);
-                return;
+                try
+                {
+                    await Task.Delay(CreateRetryDelay, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                continue;
             }
 
             try
@@ -118,7 +130,7 @@ public sealed class ControlPipeServer(
 
     // 既定インストールではサービス = 操作者(install.ps1 の -ServiceAccount 既定 .\$USERNAME)なので
     // 自 SID(実行中プロセスのユーザー)への許可で「ローカル同一ユーザー限定」が成立する(ADR-0010)。
-    // split-privilege(専用サービスアカウント)では操作者 SID を別途許可する必要があり、別 issue で対応する。
+    // split-privilege(専用サービスアカウント)では操作者 SID を別途許可する必要がある(#40 で対応)。
     [SupportedOSPlatform("windows")]
     private static NamedPipeServerStream CreateSecuredServer(string pipeName)
     {
