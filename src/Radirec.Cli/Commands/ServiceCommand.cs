@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.EventLog;
 using Radirec.Hosting;
+using Radirec.Hosting.Control;
 using Spectre.Console.Cli;
 
 namespace Radirec.Cli.Commands;
@@ -42,7 +43,15 @@ public sealed class ServiceCommand : AsyncCommand<ServiceCommand.Settings>
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddWindowsService(options => options.ServiceName = "Radirec");
         builder.Services.AddSingleton(config);
-        builder.Services.AddHostedService<RadioMonitorWorker>();
+
+        // worker は取込ワーカー兼 制御チャネルの IServiceControl。同一インスタンスを
+        // HostedService と IServiceControl(listener が参照)で共有する(ADR-0010)。
+        builder.Services.AddSingleton<RadioMonitorWorker>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<RadioMonitorWorker>());
+        builder.Services.AddSingleton<IServiceControl>(sp => sp.GetRequiredService<RadioMonitorWorker>());
+
+        // 制御チャネル listener(サービス経路のみ。ADR-0010)。
+        builder.Services.AddHostedService<ControlListenerService>();
 
         // コンソール無し前提: Windows イベントログへ出力(対話実行時はコンソールにも出る)。
         // ソース名は取込要約シグナルの publisher と共有する(ADR-0008)。

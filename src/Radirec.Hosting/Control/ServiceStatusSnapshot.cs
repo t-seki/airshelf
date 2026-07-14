@@ -1,0 +1,32 @@
+namespace Radirec.Hosting.Control;
+
+/// <summary>
+/// 常駐サービスのライブ状態(状態取得コマンドの結果)。worker がスレッドセーフに publish し、
+/// listener が直列チャネルを介さず直接読む(ADR-0010)。immutable record を volatile 参照で差し替える。
+/// </summary>
+public sealed record ServiceStatusSnapshot
+{
+    /// <summary>サービスの版。</summary>
+    public required string Version { get; init; }
+
+    /// <summary>サービス(worker)起動時刻(UTC)。</summary>
+    public required DateTimeOffset StartedUtc { get; init; }
+
+    /// <summary>現在の監視ルート。</summary>
+    public required string RadioRoot { get; init; }
+
+    /// <summary>FileSystemWatcher が有効か(false = ルート不在で定期スキャンのみ)。</summary>
+    public required bool Watching { get; init; }
+
+    /// <summary>最後にスキャンを完了した時刻(UTC)。未走査なら null。</summary>
+    public DateTimeOffset? LastScanCompletedUtc { get; init; }
+
+    /// <summary>最後のスキャンのトリガ種別(検知/定期/起動時/スリープ復帰/手動)。未走査なら null。</summary>
+    public string? LastScanTrigger { get; init; }
+
+    /// <summary>最後のスキャンで取り込んだ件数。</summary>
+    public int LastImported { get; init; }
+
+    /// <summary>最後のスキャンで失敗した件数。</summary>
+    public int LastFailed { get; init; }
+}
