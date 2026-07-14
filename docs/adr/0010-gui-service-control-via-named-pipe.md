@@ -14,7 +14,9 @@ Status: proposed(#33 GUI→サービス制御チャネル・サービス側先�
 
 - **listener は `service` verb のホストのみに載せる。** `RadioMonitorWorker` とは別の HostedService として登録し、対話 `ingest` / `refresh` verb には載せない(ADR-0008 の「サービス経路のみ」と一貫)。listener は worker の内部実装ではなく、DI singleton の**狭い仲介 interface**(`IServiceControl` 相当)だけに依存する。worker がそこへ状態を publish しチャネル書込口を expose、listener がそこを参照する。
 
-- **認可 = 自 SID 限定の `PipeSecurity`。** サービスは操作者自身のアカウントで実行される(NAS の UNC 書込のため。`deploy/install.ps1` の `-Credential $ServiceAccount`)ので、サービス = GUI = 同一ユーザーが成立し「ローカル同一ユーザー限定」がほぼ自明に満たされる。`NamedPipeServerStream` を、`WindowsIdentity.GetCurrent().User`(= 自 SID)に FullControl・他は暗黙拒否の ACL で作る。固定 SID(`WellKnownSidType`)ではなく実行中プロセスの SID を動的に使うことで split-privilege 構成でも向きが正しい。サーバ成りすまし(pipe squatting)対策のクライアント側サーバ所有者 SID 照合は単一ユーザー homelab では脅威が低く**任意**。
+- **認可 = 操作者 SID を許可する `PipeSecurity`。** 既定インストール(`deploy/install.ps1` の `-ServiceAccount`。既定 `.\$env:USERNAME`、内部で `New-Service -Credential $cred` を呼ぶ)ではサービスも操作者自身のアカウントで走るため、サービス = GUI = 同一ユーザーが成立し「ローカル同一ユーザー限定」がそのまま満たされる。よって既定構成では `NamedPipeServerStream` を `WindowsIdentity.GetCurrent().User`(= 自 SID)に FullControl・他は暗黙拒否の ACL で作れば足りる。
+  - **ただし split-privilege 構成に注意**(ADR-0009 の `_TrayCommon.ps1` 注記と同じ落とし穴): `-ServiceAccount` に NAS 書込用の専用アカウントを指定すると **サービス SID ≠ 対話ログオン中の操作者 SID** になり、自 SID 限定 ACL は**操作者本人の GUI/CLI を自分のパイプから締め出す**。認可の対象は「サービス自身」ではなく「**制御を出す操作者ユーザー**」なので、ACL は**操作者ユーザーの SID に接続許可を与える**のが正。既定構成ではこれが自 SID と一致するため自 SID で足りるが、split-privilege では操作者 SID を明示付与する(設定 or インストール時に操作者アカウントを渡す)必要がある。この差異を実装・配布スクリプトで吸収する。
+  - サーバ成りすまし(pipe squatting)対策のクライアント側サーバ所有者 SID 照合は単一ユーザー homelab では脅威が低く**任意**。
 
 - **契約 = `schemaVersion` 付き JSON envelope。** ADR-0008/0009 と一貫。request `{ schemaVersion, command, args }` / response `{ schemaVersion, ok, error, result }`。**型共有ポリシーは相手で分ける**: CLI クライアントは `radirec.exe` と同一バイナリ(ADR-0005)なのでサービス側 C# 型をそのまま共有してよい(同一アセンブリ版でドリフト不能)。別 exe の GUI(#5, ADR-0009)は跨プロセス型を共有せず、JSON 契約に対し自前 DTO を持ち `schemaVersion` で互換判定する。サービス側 request/response 型は `Radirec.Hosting`、GUI 側 DTO は通知契約を持つ `Radirec.Gui.Core` に相乗り。両側に golden JSON の契約テストを置く。
 
@@ -23,9 +25,10 @@ Status: proposed(#33 GUI→サービス制御チャネル・サービス側先�
 - **全コマンドを非閉塞にする(在中スキャンをブロックしない)。**
   - **status**: worker が保持する**スレッドセーフな状態スナップショット**(稼働状態・監視ルート・最終スキャン完了時刻とトリガ種別・直近の取込/失敗件数)を直列チャネルを介さず直接読んで即応。worker は現状最終スキャン時刻を保持しないため、この観測可能状態を新設する。
   - **rescan**: 既存の要求チャネル(`BoundedChannel` 容量1・DropWrite で coalesce・ADR-0003)へ 1 本書いて即「受理」を返す。スキャン完了は待たない。既存の単一直列コンシューマにトリガ種別「手動」が 1 つ増えるだけ。
-  - **reload**: listener スレッドで**新 config の読込+検証だけ同期実行**(グラフに触れない)し、妥当なら差し替え要求を直列ループへ enqueue して即「受理」、不正なら即エラーで**旧グラフ維持**。
+  - **reload**: listener スレッドで**新 config の読込+検証だけ同期実行**(worker のランタイムに触れない)し、妥当なら**再構築を要求してから**即「受理」、不正なら即エラーで**旧構成を維持**。この reload 要求は **rescan と同じ cap-1・DropWrite の要求チャネルには乗せない**(下記)。
 
-- **reload の反映 = worker グラフのプロセス内再構築(部分 hot-swap はしない)。** `radirec.json` のほとんどの項目(`RadioRoot`/`LedgerPath`/`SkipPatterns` 等)はグラフに焼き込まれ、hot-swap は「どの項目で何を作り直すか」の分岐を worker に増やし ADR-0003 の直列不変条件を自壊させる。よって reload は **worker を丸ごと再起動する**セマンティクスに割り切る。実装は `CompositionRoot.Build` を worker ctor から `ExecuteAsync`(または `RebuildGraph()`)へ移し、グラフ参照を差し替え可能にする。差し替えは**在中スキャン完了後に直列ループ上で**行い、新 config 読込に失敗したら旧グラフを維持して稼働継続する。**プロセス終了→SCM 再起動は採らない**(下記)。
+- **reload の反映 = worker の config 由来ランタイムを丸ごとプロセス内で作り直す(部分 hot-swap はしない)。** `radirec.json` の項目はグラフ(`IngestService`)だけでなく **worker が `_config` から直接作る FileSystemWatcher(`RadioRoot`)・定期タイマー(`ScanIntervalSeconds`)・debounce タイマー(`WatchDebounceSeconds`)にも焼き込まれている**。グラフだけ差し替えると watcher/タイマーが旧 config のまま残り**部分反映**になる(新ルートの録音が定期スキャンまで検知されない等)ので、reload は **これら config 由来ランタイム一式(グラフ + watcher + 両タイマー)を破棄→新 config で再構築**する = 本当の「実質再起動相当」にする。項目別の hot-swap は「どの項目で何を作り直すか」の分岐を worker に増やし ADR-0003 の直列不変条件を自壊させるので採らない。
+  - **reload 要求の届け方**: rescan は**冪等**(coalesce されても「1 回スキャンする」意図は満たされる)なので cap-1・DropWrite チャネルで正しいが、reload は**冪等でない** — DropWrite チャネルに乗せると在中スキャンがスロットを占有している間に `TryWrite` が false で**黙って捨てられ、しかも「受理」を返す**サイレント config-loss になる。よって reload は**取りこぼさない別経路**で届ける(専用フラグ/別チャネル/`pending reload config` を差す volatile 参照等、確実に単一直列ループへ伝わる手段)。実際の破棄→再構築は**在中スキャン完了後に直列ループ上で**行い(ADR-0003 の直列不変条件を保つ)、新 config 読込・再構築に失敗したら旧構成を維持して稼働継続する。**プロセス終了→SCM 再起動は採らない**(下記)。
 
 - **フォールバック**: サービス未起動は `Connect(timeout≈2s)` の `TimeoutException`、応答なしは read timeout(≈5s)。CLI は明示メッセージ + 非0 exit。GUI(#5)は制御 UI を無効化し「サービス未接続」表示に degrade し、クラッシュしない。
 
@@ -55,7 +58,7 @@ ADR-0008 は「受け手なしのサービス側発行のみ」を EventLog で�
 
 ## Consequences
 
-- **要実機検証(Windows / self-hosted runner)**: WSL では named pipe が Unix ソケット実装で Windows ACL 非対応、`PipeSecurity` は `PlatformNotSupported`。ADR-0008 の notify ゲートと同様、**#33 完了条件「認可がローカル同一ユーザーに限定」は Windows 実機検証項目**になる。① `radirec.exe status`/`rescan`/`reload` が稼働サービスに繋がり応答すること、② 別ユーザー/ACL 外からは繋がらないこと、③ reload の新 config が在中スキャン完了後に反映され、不正 config で旧グラフが維持されること、を実機で確認する。
-- `RadioMonitorWorker` に観測可能状態(スナップショット)と、グラフをプロセス内で差し替え可能にするリファクタ(`Build` を ctor 外へ)が入る。listener が触れる面は狭い `IServiceControl` 相当の interface に限定する。
+- **要実機検証(Windows / self-hosted runner)**: WSL では named pipe が Unix ソケット実装で Windows ACL 非対応、`PipeSecurity` は `PlatformNotSupported`。ADR-0008 の notify ゲートと同様、**#33 完了条件「認可がローカル同一ユーザーに限定」は Windows 実機検証項目**になる。① `radirec.exe status`/`rescan`/`reload` が稼働サービスに繋がり応答すること、② 別ユーザー/ACL 外からは繋がらないこと、③ reload で config 由来ランタイム一式(グラフ + watcher + タイマー)が在中スキャン完了後に反映され RadioRoot 変更が即時検知に効くこと・不正 config で旧構成が維持されること、④ split-privilege(`-ServiceAccount` に専用アカウント)構成でも操作者本人の CLI が繋がること、を実機で確認する。
+- `RadioMonitorWorker` に観測可能状態(スナップショット)と、**config 由来ランタイム(グラフ + FileSystemWatcher + 定期/debounce タイマー)を一括で破棄→再構築できるリファクタ**(`CompositionRoot.Build` と `StartWatcher`/タイマー生成を ctor から `ExecuteAsync` 側の再入可能な組立へ移す)が入る。reload 要求は cap-1 DropWrite チャネルとは別の取りこぼさない経路で届ける。listener が触れる面は狭い `IServiceControl` 相当の interface に限定する。
 - 契約 schema は `schemaVersion` で前方進化させる。GUI(#5)はこの JSON 契約に自前 DTO で追従し、両側 golden テストで守る。
 - GUI からの制御送出 UI(#5)・深リンク・リモート制御(非目標)は本 ADR の対象外。
