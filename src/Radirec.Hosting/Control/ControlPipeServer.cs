@@ -105,17 +105,32 @@ public sealed class ControlPipeServer(
             return ControlResponse.Failure(
                 $"未対応の schemaVersion={request.SchemaVersion}(対応 {ControlContract.SchemaVersion})");
 
-        switch (request.Command)
+        // コマンドハンドラ(IServiceControl 実装)が想定外に throw しても、応答を返さず接続を落とす
+        // (= クライアントに誤「サービス応答なし」)ことがないよう、失敗応答に正規化する。
+        try
         {
-            case ControlContract.Commands.Rescan:
-                control.RequestRescan();
-                return ControlResponse.Success(new { queued = true });
+            switch (request.Command)
+            {
+                case ControlContract.Commands.Rescan:
+                    control.RequestRescan();
+                    return ControlResponse.Success(new { queued = true });
 
-            case ControlContract.Commands.Status:
-                return ControlResponse.Success(control.GetStatus());
+                case ControlContract.Commands.Status:
+                    return ControlResponse.Success(control.GetStatus());
 
-            default:
-                return ControlResponse.Failure($"未知のコマンド: {request.Command}");
+                case ControlContract.Commands.Reload:
+                    var reload = control.RequestReload();
+                    return reload.Accepted
+                        ? ControlResponse.Success(new { accepted = true })
+                        : ControlResponse.Failure(reload.Error ?? "設定リロードに失敗しました");
+
+                default:
+                    return ControlResponse.Failure($"未知のコマンド: {request.Command}");
+            }
+        }
+        catch (Exception ex)
+        {
+            return ControlResponse.Failure($"コマンド処理中の例外: {ex.Message}");
         }
     }
 

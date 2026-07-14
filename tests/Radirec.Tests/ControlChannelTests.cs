@@ -15,6 +15,8 @@ public sealed class ControlChannelTests
     private sealed class FakeControl : IServiceControl
     {
         public int RescanCount;
+        public int ReloadCount;
+        public ReloadResult ReloadResult { get; init; } = ReloadResult.Ok();
         public ServiceStatusSnapshot Snapshot { get; init; } = new()
         {
             Version = "9.9.9-test",
@@ -25,6 +27,12 @@ public sealed class ControlChannelTests
 
         public void RequestRescan() => Interlocked.Increment(ref RescanCount);
         public ServiceStatusSnapshot GetStatus() => Snapshot;
+
+        public ReloadResult RequestReload()
+        {
+            Interlocked.Increment(ref ReloadCount);
+            return ReloadResult;
+        }
     }
 
     private static async Task<ControlResponse> RoundTripAsync(
@@ -66,6 +74,46 @@ public sealed class ControlChannelTests
         Assert.Equal(control.Snapshot.RadioRoot, status.RadioRoot);
         Assert.Equal(control.Snapshot.Watching, status.Watching);
         Assert.Equal(control.Snapshot.StartedUtc, status.StartedUtc);
+    }
+
+    [Fact]
+    public async Task reload_受理はdispatchされ受理を返す()
+    {
+        var control = new FakeControl { ReloadResult = ReloadResult.Ok() };
+        var response = await RoundTripAsync(control, ControlContract.Commands.Reload, UniquePipeName());
+
+        Assert.True(response.Ok);
+        Assert.Equal(1, control.ReloadCount);
+    }
+
+    [Fact]
+    public async Task reload_検証失敗はエラー応答として往復する()
+    {
+        var control = new FakeControl { ReloadResult = ReloadResult.Failed("設定の読み込みに失敗しました: bad json") };
+        var response = await RoundTripAsync(control, ControlContract.Commands.Reload, UniquePipeName());
+
+        Assert.False(response.Ok);
+        Assert.Contains("bad json", response.Error);
+        Assert.Equal(1, control.ReloadCount);
+    }
+
+    [Fact]
+    public async Task ハンドラ例外は失敗応答に正規化される_接続を落とさない()
+    {
+        // 回帰: コマンドハンドラ(IServiceControl 実装)が throw しても応答を返さず接続を落とすと、
+        // クライアントが誤って「サービス応答なし」になる。失敗応答へ正規化されること。
+        var control = new ThrowingControl();
+        var response = await RoundTripAsync(control, ControlContract.Commands.Reload, UniquePipeName());
+
+        Assert.False(response.Ok);
+        Assert.Contains("boom", response.Error);
+    }
+
+    private sealed class ThrowingControl : IServiceControl
+    {
+        public void RequestRescan() => throw new InvalidOperationException("boom");
+        public ServiceStatusSnapshot GetStatus() => throw new InvalidOperationException("boom");
+        public ReloadResult RequestReload() => throw new InvalidOperationException("boom");
     }
 
     [Fact]

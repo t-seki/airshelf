@@ -18,23 +18,43 @@ internal static class ConfigLoading
     /// </summary>
     public static RadirecConfig? Load(string? explicitPath)
     {
-        var configPath = ConfigPaths.Resolve(explicitPath);
+        if (TryLoad(ConfigPaths.Resolve(explicitPath), out var config, out var error))
+            return config;
+
+        AnsiConsole.MarkupLineInterpolated($"[red]{error}[/]");
+        return null;
+    }
+
+    /// <summary>
+    /// <paramref name="configPath"/>(解決済み絶対パス)から読み込み・rebase する。コンソールに書かず
+    /// 失敗理由を <paramref name="error"/> で返す。設定リロード(制御チャネル。ADR-0010)のように
+    /// 対話コンソールが無い経路で使う。
+    /// </summary>
+    public static bool TryLoad(string configPath, out RadirecConfig? config, out string? error)
+    {
+        config = null;
         if (!File.Exists(configPath))
         {
-            AnsiConsole.MarkupLineInterpolated($"[red]設定ファイルが見つかりません:[/] {configPath}");
-            return null;
+            error = $"設定ファイルが見つかりません: {configPath}";
+            return false;
         }
 
         try
         {
-            var config = ConfigLoader.LoadRequired<RadirecConfig>(configPath);
-            ConfigPaths.RebaseAgainst(config, configPath);
-            return config;
+            var loaded = ConfigLoader.LoadRequired<RadirecConfig>(configPath);
+            ConfigPaths.RebaseAgainst(loaded, configPath);
+            config = loaded;
+            error = null;
+            return true;
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+        // JsonException / IOException に限らず、UnauthorizedAccessException(権限)・
+        // InvalidOperationException(内容が null 等)含むあらゆる読込失敗を「クリーンな失敗」に正規化する。
+        // reload はこの戻り値を listener スレッドで ReloadResult.Failed に変換するため、ここで throw を
+        // 漏らすと制御チャネルが応答を返せず誤って「サービス応答なし」になる(ADR-0010)。
+        catch (Exception ex)
         {
-            AnsiConsole.MarkupLineInterpolated($"[red]設定の読み込みに失敗しました:[/] {ex.Message}");
-            return null;
+            error = $"設定の読み込みに失敗しました: {ex.Message}";
+            return false;
         }
     }
 }

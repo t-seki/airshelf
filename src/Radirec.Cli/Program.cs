@@ -20,6 +20,8 @@ app.Configure(config =>
         .WithDescription("常駐サービスへ手動再スキャンを要求する(制御チャネル)");
     config.AddCommand<StatusCommand>("status")
         .WithDescription("常駐サービスのライブ状態を取得して表示する(制御チャネル)");
+    config.AddCommand<ReloadCommand>("reload")
+        .WithDescription("常駐サービスに radirec.json の再読込を要求する(制御チャネル)");
 });
 
 return await app.RunAsync(args);
