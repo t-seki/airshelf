@@ -147,8 +147,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         StartWatcher();       // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
         StartPeriodicTimer(); // 新 ScanIntervalSeconds で定期タイマーを張り直す。
 
+        // 新構成での走査は、この reload を起こしたトリガ(wake or coalesce された既存トリガ)を
+        // 直列ループが本反復でそのまま ScanAsync に流すため、ここで追加要求はしない(二重走査を避ける)。
         _log.LogInformation("設定リロード完了。監視ルート: {Root}", _config.RadioRoot);
-        Request("リロード後"); // 新構成で 1 回走査(新ルートの既存録音をキャッチアップ)。
     }
 
     private void StartWatcher()
@@ -196,6 +197,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     }
 
     // イベントごとに単一タイマーを再スタート = 最後のイベントから静穏 WatchDebounceSeconds 秒後に発火。
+    // reload/停止の teardown(直列ループ側)がこの threadpool コールバックと並行に _debounceTimer を
+    // dispose→null しうるが安全: null なら no-op、破棄済みタイマーへの Timer.Change は .NET では例外を
+    // 投げず false を返す(実測確認)。取りこぼしは新 watcher / 定期スキャンで回収する。
     private void NudgeDebounce()
         => _debounceTimer?.Change(TimeSpan.FromSeconds(Math.Max(1, _config.WatchDebounceSeconds)), Timeout.InfiniteTimeSpan);
 
