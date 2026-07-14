@@ -15,15 +15,17 @@ namespace Radirec.Hosting.Control;
 public sealed class ControlPipeServer(
     IServiceControl control,
     string? pipeName = null,
-    Action<Exception>? onConnectionError = null)
+    Action<Exception>? onConnectionError = null,
+    TimeSpan? readTimeout = null)
 {
-    // 接続だけして送ってこないクライアントで accept ループを固めないための read 期限。
-    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(5);
+    // 接続だけして送ってこないクライアントで accept ループを固めないための read 期限(テストで短縮可)。
+    private static readonly TimeSpan DefaultReadTimeout = TimeSpan.FromSeconds(5);
 
     // パイプ生成の一過性失敗(Windows の "all pipe instances busy" 等)からの回復待ち。
     private static readonly TimeSpan CreateRetryDelay = TimeSpan.FromSeconds(1);
 
     private readonly string _pipeName = pipeName ?? ControlContract.PipeName;
+    private readonly TimeSpan _readTimeout = readTimeout ?? DefaultReadTimeout;
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -55,13 +57,13 @@ public sealed class ControlPipeServer(
                 await server.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
                 await HandleConnectionAsync(server, cancellationToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                return; // 停止要求。正常終了。
+                return; // 停止要求のみ正常終了。read 期限切れ(下の catch)と区別する。
             }
             catch (Exception ex)
             {
-                // 1 接続の処理失敗は listen を止めない。
+                // 1 接続の処理失敗(read タイムアウト = 停止トークン未発火の OCE を含む)は listen を止めない。
                 onConnectionError?.Invoke(ex);
             }
             finally
@@ -74,7 +76,7 @@ public sealed class ControlPipeServer(
     private async Task HandleConnectionAsync(NamedPipeServerStream server, CancellationToken cancellationToken)
     {
         using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        readCts.CancelAfter(ReadTimeout);
+        readCts.CancelAfter(_readTimeout);
 
         var requestBytes = await ControlWire.ReadFrameAsync(server, readCts.Token).ConfigureAwait(false);
         if (requestBytes is null)

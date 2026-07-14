@@ -80,6 +80,40 @@ public sealed class ControlChannelTests
     }
 
     [Fact]
+    public async Task 無言クライアントのreadタイムアウトでlistenは停止しない()
+    {
+        // 回帰: 接続だけして送らないクライアントの read タイムアウト(OCE)を「停止要求」と誤認して
+        // listener を永久終了させないこと。タイムアウト後の status が繋がれば listener は生きている。
+        var pipe = UniquePipeName();
+        var control = new FakeControl();
+        var errors = 0;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var server = new ControlPipeServer(
+            control, pipe,
+            onConnectionError: _ => Interlocked.Increment(ref errors),
+            readTimeout: TimeSpan.FromMilliseconds(200));
+        var serverTask = server.RunAsync(cts.Token);
+
+        // 接続のみ・無送信で read タイムアウトを誘発。単一インスタンス競合を避けるため、サーバが
+        // タイムアウトを処理して accept ループへ復帰するまで待ってから status を繋ぐ(逐次化)。
+        var silent = new System.IO.Pipes.NamedPipeClientStream(
+            ".", pipe, System.IO.Pipes.PipeDirection.InOut, System.IO.Pipes.PipeOptions.Asynchronous);
+        await silent.ConnectAsync(5000, cts.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(600), cts.Token); // read タイムアウト(200ms)経過を待つ
+        await silent.DisposeAsync();
+
+        // タイムアウト後に status が繋がり成功すること = accept ループが生きている。
+        var response = await ControlClient.SendAsync(
+            ControlContract.Commands.Status, pipe,
+            connectTimeout: TimeSpan.FromSeconds(5), cancellationToken: cts.Token);
+        Assert.True(response.Ok);
+        Assert.True(errors >= 1); // read タイムアウトは「接続エラー(listen 継続)」として扱われた
+
+        cts.Cancel();
+        await serverTask;
+    }
+
+    [Fact]
     public async Task サービス未起動なら接続タイムアウトでControlUnavailable()
     {
         // サーバを立てないパイプ名に短い connect timeout で繋ぐ。

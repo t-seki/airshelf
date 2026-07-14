@@ -20,7 +20,7 @@ Status: proposed(#33 GUI→サービス制御チャネル・サービス側先�
 
 - **契約 = `schemaVersion` 付き JSON envelope。** ADR-0008/0009 と一貫。request `{ schemaVersion, command, args }` / response `{ schemaVersion, ok, error, result }`。**型共有ポリシーは相手で分ける**: CLI クライアントは `radirec.exe` と同一バイナリ(ADR-0005)なのでサービス側 C# 型をそのまま共有してよい(同一アセンブリ版でドリフト不能)。別 exe の GUI(#5, ADR-0009)は跨プロセス型を共有せず、JSON 契約に対し自前 DTO を持ち `schemaVersion` で互換判定する。サービス側 request/response 型は `Radirec.Hosting`、GUI 側 DTO は通知契約を持つ `Radirec.Gui.Core` に相乗り。両側に golden JSON の契約テストを置く。
 
-- **プロトコル = 1 コマンド 1 接続の単発往復。** message-mode で connect → request 1 通 → response 1 通 → close。常設接続・多重化・バックプレッシャは持たない。数コマンド/操作の頻度に対し接続ごとに状態を持たない方が listener が単純で、途中切断は「次の接続で作り直す」だけで済む。listener は 1 接続処理の例外でその接続を閉じるだけで listen を継続し、1 クライアントの不正が本体取込を巻き込まない。
+- **プロトコル = 1 コマンド 1 接続の単発往復。** connect → request 1 通 → response 1 通 → close。1 通は **4 バイト長プレフィックス(big-endian Int32)+ UTF-8 JSON のフレーミング**で区切る。named pipe の Message モードは Unix(WSL 開発/CI)で非対応のため **Byte モード**上の自前フレーミングにし、round-trip をクロスプラットフォームで検証可能にする(ADR-0008 の EventLog と同じ「今日検証できる形」を優先)。常設接続・多重化・バックプレッシャは持たない。数コマンド/操作の頻度に対し接続ごとに状態を持たない方が listener が単純で、途中切断は「次の接続で作り直す」だけで済む。listener は 1 接続処理の例外でその接続を閉じるだけで listen を継続し、1 クライアントの不正が本体取込を巻き込まない。
 
 - **全コマンドを非閉塞にする(在中スキャンをブロックしない)。**
   - **status**: worker が保持する**スレッドセーフな状態スナップショット**(稼働状態・監視ルート・最終スキャン完了時刻とトリガ種別・直近の取込/失敗件数)を直列チャネルを介さず直接読んで即応。worker は現状最終スキャン時刻を保持しないため、この観測可能状態を新設する。

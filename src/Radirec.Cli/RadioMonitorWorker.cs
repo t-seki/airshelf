@@ -163,8 +163,15 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         }
     }
 
+    private int _disposed;
+
     public override void Dispose()
     {
+        // 同一インスタンスを DI で複数スロット(HostedService / IServiceControl)に登録しているため
+        // コンテナが Dispose を複数回呼ぶ。二重解放を避け冪等にする。
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
         // コンシューマループ(ExecuteAsync)は StopAsync で完了済み。ここでは資源のみ解放。
         _watcher?.Dispose();
         _debounceTimer?.Dispose();
