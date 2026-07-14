@@ -54,20 +54,23 @@ ACL の代理検査(②自動)に加え、**別のローカルユーザーから
    - 期待: `ConnectAsync` が ACL で弾かれ、`サービスが起動していません(制御チャネルに接続できません)` 相当で exit 1。
 3. 元の操作者セッションでは同じコマンドが成功することを対比確認。
 
-### ④ split-privilege 構成(#40)
+### ④ split-privilege 構成(対象外・単一ユーザー前提)
 
-`install.ps1 -ServiceAccount` に**専用アカウント**(操作者と別)を指定した構成では、現状の自 SID 限定 ACL は
-操作者本人を締め出す既知の穴([#40](https://github.com/t-seki/radirec-tool/issues/40))。#40 未対応の間は:
+`install.ps1 -ServiceAccount` に**専用アカウント**(操作者と別)を指定した構成では、自 SID 限定 ACL が
+操作者本人を締め出す。ただしこれは**単一ユーザー homelab の前提**(ADR-0009: 「操作者 = 通知ユーザー」)では
+発生せず、[#40](https://github.com/t-seki/radirec-tool/issues/40) は won't-fix でクローズ済み:
 
-- 既定構成(サービス=操作者)で運用する、または
-- 通知ユーザー自身のセッションで検証する(操作者=サービスアカウント)。
+- 既定構成では `install.ps1 -ServiceAccount` は `.\$USERNAME`(インストールした本人)= 操作者。サービス SID =
+  操作者 SID なので自 SID ACL で繋がる。
+- **昇格(管理者権限)は無関係**: UAC 昇格でもユーザー SID(`WindowsIdentity.GetCurrent().User`)は不変。
 
-#40 対応後に「専用アカウント構成でも操作者本人の CLI が繋がる」を本節に追記して検証する。
+将来 split-privilege(専用サービスアカウント)を採る場合のみ #40 を再オープンし、操作者 SID の ACL 付与を
+実装したうえで「専用アカウント構成でも操作者本人の CLI が繋がる」を本節に追記して検証する。
 
 ## #33 完了チェックリスト
 
 - [ ] `verify-control-channel.ps1` が **FAIL=0**(① ②代理 ③ ⑤ ⑥)
 - [ ] 手動 ②: 別ユーザーからの `radirec status` が拒否される
-- [ ] 手動 ④: 既定構成で運用 or 操作者=サービスアカウントを確認(#40 は別途)
+- [x] ④: 既定構成(サービス=操作者)で運用 → split-privilege は対象外(#40 won't-fix)
 
 すべて満たしたら #33 を close してよい。
