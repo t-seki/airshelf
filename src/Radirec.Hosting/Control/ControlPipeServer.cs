@@ -7,9 +7,11 @@ using System.Text.Json;
 namespace Radirec.Hosting.Control;
 
 /// <summary>
-/// 制御チャネルの named pipe サーバ(ADR-0010)。1 コマンド = 1 接続の単発往復を直列に捌く。
-/// 1 接続の処理で例外が出てもその接続を閉じるだけで accept ループを継続し、1 クライアントの不正が
-/// 本体取込を巻き込まない。認可は Windows でのみ <see cref="PipeSecurity"/> ACL を適用する
+/// 制御チャネルの named pipe サーバ(ADR-0010)。1 コマンド = 1 接続の単発往復を、少数(<see
+/// cref="MaxConcurrentConnections"/>)の accept ループで**並行に**捌く(遅いコマンドが他を凍結させない。
+/// #43)。よって <see cref="IServiceControl"/> の各メソッドは**並行に呼ばれうる**(実装はスレッドセーフで
+/// あること)。1 接続の処理で例外が出てもその接続を閉じるだけで accept ループを継続し、1 クライアントの
+/// 不正が本体取込を巻き込まない。認可は Windows でのみ <see cref="PipeSecurity"/> ACL を適用する
 /// (round-trip 自体はクロスプラットフォームで検証可能なよう ACL 適用を隔離する)。
 /// </summary>
 public sealed class ControlPipeServer(
@@ -37,11 +39,11 @@ public sealed class ControlPipeServer(
         // 複数の accept ループを並行実行する。1 接続の処理が長引いても他ループが他コマンドを捌ける。
         var loops = new Task[MaxConcurrentConnections];
         for (var i = 0; i < loops.Length; i++)
-            loops[i] = AcceptLoopAsync(cancellationToken);
+            loops[i] = AcceptLoopAsync(i, cancellationToken);
         await Task.WhenAll(loops).ConfigureAwait(false);
     }
 
-    private async Task AcceptLoopAsync(CancellationToken cancellationToken)
+    private async Task AcceptLoopAsync(int index, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -53,8 +55,10 @@ public sealed class ControlPipeServer(
             catch (Exception ex)
             {
                 // パイプ生成の失敗(dispose→再生成の窓での一過性 busy 等)で listen を永久停止しない。
-                // 報告して短い backoff 後に再試行する(「1 接続の失敗で listen を止めない」基準の徹底)。
-                onConnectionError?.Invoke(ex);
+                // 短い backoff 後に再試行する。恒久失敗時に全ループが各自報告すると警告が並行数ぶん増幅する
+                // ため、生成失敗の報告は 1 ループ(index 0)に集約する(接続処理の失敗は下で各接続ごとに報告)。
+                if (index == 0)
+                    onConnectionError?.Invoke(ex);
                 try
                 {
                     await Task.Delay(CreateRetryDelay, cancellationToken).ConfigureAwait(false);
@@ -89,16 +93,26 @@ public sealed class ControlPipeServer(
 
     private async Task HandleConnectionAsync(NamedPipeServerStream server, CancellationToken cancellationToken)
     {
-        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        readCts.CancelAfter(_readTimeout);
-
-        var requestBytes = await ControlWire.ReadFrameAsync(server, readCts.Token).ConfigureAwait(false);
+        // read の期限は**リクエスト読取のみ**を縛る(無送信クライアントで accept を固めないため)。
+        // Dispatch(同期ハンドラ。reload の config 読込で長引きうる)と応答 write はこの期限で縛らない —
+        // さもないと遅いコマンドの応答が read 期限で先取りキャンセルされ、適用済みでもクライアントに届かない。
+        byte[]? requestBytes;
+        using (var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            readCts.CancelAfter(_readTimeout);
+            requestBytes = await ControlWire.ReadFrameAsync(server, readCts.Token).ConfigureAwait(false);
+        }
         if (requestBytes is null)
             return; // 何も送らず切断。応答不要。
 
         var response = Dispatch(requestBytes);
         var responseBytes = JsonSerializer.SerializeToUtf8Bytes(response, ControlContract.Json);
-        await ControlWire.WriteFrameAsync(server, responseBytes, readCts.Token).ConfigureAwait(false);
+
+        // 応答 write は**ハンドラ完了後を起点とする別期限**で縛る(遅いハンドラでも応答を先取りキャンセル
+        // しない)。停止時は cancellationToken で中断する。
+        using var writeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        writeCts.CancelAfter(_readTimeout);
+        await ControlWire.WriteFrameAsync(server, responseBytes, writeCts.Token).ConfigureAwait(false);
     }
 
     private ControlResponse Dispatch(byte[] requestBytes)
