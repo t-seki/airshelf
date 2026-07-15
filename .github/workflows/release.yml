@@ -92,3 +92,6 @@ jobs:
           files: ${{ steps.pkg.outputs.zip }}
           fail_on_unmatched_files: true
           generate_release_notes: true
+          # prerelease semver(タグ名に '-' を含む。例 v0.3.0-rc1)は prerelease として発行し、
+          # RC が /releases/latest を汚染しないようにする(#45)。安定版(v0.3.0 等)は false。
+          prerelease: ${{ contains(github.ref_name, '-') }}
