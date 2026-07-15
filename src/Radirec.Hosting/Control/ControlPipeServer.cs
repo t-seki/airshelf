@@ -24,10 +24,24 @@ public sealed class ControlPipeServer(
     // パイプ生成の一過性失敗(Windows の "all pipe instances busy" 等)からの回復待ち。
     private static readonly TimeSpan CreateRetryDelay = TimeSpan.FromSeconds(1);
 
+    // 同時に受けられる接続数(= 並行 accept ループ数 = パイプの最大インスタンス数)。1 だと遅いコマンド
+    // (例 reload の同期 config 読込)が他の status/rescan を凍結させる(#43)。少数並行にして凍結を防ぐ。
+    // IServiceControl の各メソッドはスレッドセーフ(rescan=Channel, status=volatile 読み, reload=Interlocked)。
+    private const int MaxConcurrentConnections = 4;
+
     private readonly string _pipeName = pipeName ?? ControlContract.PipeName;
     private readonly TimeSpan _readTimeout = readTimeout ?? DefaultReadTimeout;
 
     public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        // 複数の accept ループを並行実行する。1 接続の処理が長引いても他ループが他コマンドを捌ける。
+        var loops = new Task[MaxConcurrentConnections];
+        for (var i = 0; i < loops.Length; i++)
+            loops[i] = AcceptLoopAsync(cancellationToken);
+        await Task.WhenAll(loops).ConfigureAwait(false);
+    }
+
+    private async Task AcceptLoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -141,7 +155,7 @@ public sealed class ControlPipeServer(
             return CreateSecuredServer(_pipeName);
 
         return new NamedPipeServerStream(
-            _pipeName, PipeDirection.InOut, maxNumberOfServerInstances: 1,
+            _pipeName, PipeDirection.InOut, MaxConcurrentConnections,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
     }
 
@@ -160,7 +174,7 @@ public sealed class ControlPipeServer(
             AccessControlType.Allow));
 
         return NamedPipeServerStreamAcl.Create(
-            pipeName, PipeDirection.InOut, maxNumberOfServerInstances: 1,
+            pipeName, PipeDirection.InOut, MaxConcurrentConnections,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous,
             inBufferSize: 0, outBufferSize: 0, security);
     }
