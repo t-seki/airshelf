@@ -4,6 +4,12 @@ namespace Radirec.Hosting.Control;
 /// listener が常駐 worker へ触れる**狭い仲介面**(ADR-0010)。実装は <c>RadioMonitorWorker</c>。
 /// listener は worker の内部実装ではなくこの interface だけに依存し、結合を最小化する。
 /// DI singleton として worker と同一インスタンスを共有する。
+/// <para>
+/// **スレッド安全性契約**: 制御チャネルは接続を並行に捌く(<c>ControlPipeServer</c> の
+/// <c>MaxConcurrentConnections</c>。#43)ため、本 interface のメソッドは**複数スレッドから同時に**
+/// 呼ばれうる。実装はスレッドセーフであること(非アトミックな可変状態を足さない)。既定実装は
+/// rescan=Channel・status=volatile 参照読み・reload=Interlocked/lock で満たす。
+/// </para>
 /// </summary>
 public interface IServiceControl
 {

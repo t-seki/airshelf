@@ -161,6 +161,57 @@ public sealed class ControlChannelTests
         await serverTask;
     }
 
+    private sealed class BlockingControl : IServiceControl
+    {
+        public readonly ManualResetEventSlim Entered = new(false);
+        public readonly ManualResetEventSlim Release = new(false);
+
+        public void RequestRescan() { }
+        public ServiceStatusSnapshot GetStatus() => new()
+        {
+            Version = "t", StartedUtc = DateTimeOffset.UnixEpoch, RadioRoot = "r", Watching = true,
+        };
+
+        public ReloadResult RequestReload()
+        {
+            Entered.Set();
+            Release.Wait(TimeSpan.FromSeconds(10));
+            return ReloadResult.Ok();
+        }
+    }
+
+    [Fact]
+    public async Task 遅いreloadは並行するstatusをブロックしない()
+    {
+        // 回帰(#43): 単一インスタンスだと遅い reload(同期 config 読込等)が status/rescan を凍結させる。
+        // 並行 accept により、reload ハンドラがブロック中でも status が即応することを検証する。
+        var pipe = UniquePipeName();
+        var control = new BlockingControl();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var server = new ControlPipeServer(control, pipe);
+        var serverTask = server.RunAsync(cts.Token);
+
+        // クライアント A: reload を送るとハンドラがブロックする(ここでは await しない)。
+        var reloadTask = ControlClient.SendAsync(
+            ControlContract.Commands.Reload, pipe,
+            connectTimeout: TimeSpan.FromSeconds(5), readTimeout: TimeSpan.FromSeconds(15), cancellationToken: cts.Token);
+
+        Assert.True(control.Entered.Wait(TimeSpan.FromSeconds(5)), "reload ハンドラに到達しなかった");
+
+        // クライアント B: reload がブロック中でも status が即応する(= 並行に捌けている)。
+        var status = await ControlClient.SendAsync(
+            ControlContract.Commands.Status, pipe,
+            connectTimeout: TimeSpan.FromSeconds(5), cancellationToken: cts.Token);
+        Assert.True(status.Ok);
+
+        control.Release.Set();
+        var reload = await reloadTask;
+        Assert.True(reload.Ok);
+
+        cts.Cancel();
+        await serverTask;
+    }
+
     [Fact]
     public async Task サービス未起動なら接続タイムアウトでControlUnavailable()
     {

@@ -44,6 +44,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     // 起こしはトリガチャネルへの書き込み。set 後に必ずループが 1 回起きて Take するので取りこぼさない。
     private readonly PendingReloadSlot<RadirecConfig> _pendingReload;
 
+    // 並行 reload の「読込→Set」を直列化する門(#43)。適用順序 = 受理順序を保つ。
+    private readonly object _reloadGate = new();
+
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer; // 書き込み中の連続イベントを束ねる(単一の再利用タイマー)
     private Timer? _periodicTimer; // 定期(安全網)
@@ -84,11 +87,17 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         if (!_running)
             return ReloadResult.Failed("サービスが停止処理中のため受理できません");
 
-        if (!ConfigLoading.TryLoad(_configPath, out var newConfig, out var error))
-            return ReloadResult.Failed(error!);
+        // 制御チャネルは並行に捌かれる(#43)ので reload も同時に来うる。読込→Set を lock で直列化し、
+        // 「最後に受理した reload の config が適用される」順序保証を保つ(読込と Set の間に別 reload が
+        // 割り込んで古い内容が最終値になるドリフトを防ぐ)。読込は速く lock 競合は実害にならない。
+        lock (_reloadGate)
+        {
+            if (!ConfigLoading.TryLoad(_configPath, out var newConfig, out var error))
+                return ReloadResult.Failed(error!);
 
-        _pendingReload.Set(newConfig!);
-        return ReloadResult.Ok();
+            _pendingReload.Set(newConfig!);
+            return ReloadResult.Ok();
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
