@@ -12,13 +12,17 @@
 
 ## 前提: 現状の構造(この地図の起点)
 
-出荷済み(M6)は **取込通知の受け手トレイ**のみ。実行時は WinForms(トレイ = NotifyIcon)+ WinRT トースト
-(`ToastNotificationManagerCompat`)で、WPF 型はまだ使っていない(`UseWPF` は M5 編集本体のための布石)。
+M6(通知・制御チャネル)は通知トレイ・制御チャネルとも出荷済み。ただし **`Radirec.Gui` 側で出荷済みなのは
+取込通知の受け手トレイのみ**で、制御チャネル(status/rescan/reload)の窓口は今のところ CLI(§軸B が GUI 化の余地)。
+トレイの実行時は WinForms(トレイ = NotifyIcon)+ WinRT トースト(`ToastNotificationManagerCompat`)。
+`UseWPF=true` は ADR-0009 のフレームワーク選定(WPF)によるもので、現トレイは WPF 型をまだ使っていないが、
+同スタックに M5 編集本体を後載せできるよう有効化してある。
 
 アーキテクチャは **2 ツリーの疎結合**:
 
-- **取込・サービス系**(publisher): `Radirec.Core ← Radirec.Hosting ← Radirec.Cli`(= `radirec.exe`)
-- **通知受け手系**(subscriber): `Radirec.Gui.Core ← Radirec.Gui`(= `Radirec.Gui.exe`)
+- **取込・サービス系**(publisher): `Radirec.Hosting → Radirec.Core`、`Radirec.Cli`(= `radirec.exe`)は
+  Hosting と Core の**両方を直接参照**する
+- **通知受け手系**(subscriber): `Radirec.Gui`(= `Radirec.Gui.exe`)→ `Radirec.Gui.Core`
 - 両ツリーは **ProjectReference を共有しない**。繋ぐのは EventLog 上の **バージョン付き JSON 契約
   (EventID 1001)** だけ(型共有を避ける。ADR-0008/0009)。
 - 制御チャネル(ADR-0010)のクライアント/サーバ実装は **`Radirec.Hosting/Control/`** にあり、
