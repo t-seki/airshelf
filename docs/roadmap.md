@@ -46,8 +46,8 @@ named pipe(ADR-0010)を GUI から叩く。usage が「GUI からの操作は今
 
 | 項目 | 根拠 | 依存・触る面 | 疎結合への影響 |
 |---|---|---|---|
-| **B1 トレイメニューに rescan/reload/status** | usage.md「GUI からの操作は今後(#5)」 | 制御クライアント `Radirec.Hosting/Control/ControlClient` を Gui からも使う必要がある | **設計判断**: ①`Gui → Hosting` 参照(Core を transitively 取り込み 2 ツリーを統合)か、②pipe クライアントを **Core 非依存の共有 lib に抽出**するか |
-| **B2 状態の可視化** | ADR-0010 の status verb | B1 のクライアント + 定期ポーリング(status をツールチップ/小窓に表示) | B1 に従属 |
+| **B1 トレイメニューに rescan/reload/status**(#50 で着手) | usage.md「GUI からの操作は今後(#5)」 | `Radirec.Gui.Core` に pipe クライアント + 制御 DTO を**自前保持**(4バイト長フレーミング + envelope + 定数)。契約テストでドリフト検出 | **維持**。①`Gui→Hosting` 統合 / ②共有 lib 抽出 の二択は誤り。ADR-0010 が `ControlContract.cs` で既に規定した③=「別 exe の GUI は跨プロセス型を共有せず JSON 契約に自前 DTO で追従」(通知経路と同じ流儀)を採る。named pipe を EventLog と同じ「バージョン付き JSON を運ぶトランスポート」として扱い、共有 ProjectReference を新設しない |
+| **B2 状態の可視化** | ADR-0010 の status verb | B1 のクライアント + 定期ポーリング(status をツールチップ/小窓に表示) | B1 に従属。**#50 はメニュー開時問い合わせに留め、常時ポーリングは B2 として後回し** |
 
 ## 軸C — M5 編集アプリ本体(キュレーション / 条件付き保留)
 
@@ -64,8 +64,11 @@ issue #5 の本体。**「CLI 運用で不足が判明したら着手」と明�
 1. **3 軸は疎結合への圧力の向きが違う**:
    - **A2/A3(契約拡張)** = EventLog 上の JSON 契約を厚くする方向。`schemaVersion` + 両側 golden JSON
      テストで吸収でき、2 ツリーは維持される。
-   - **B1(制御 GUI 化)** = 制御 pipe クライアントの共有点を新設する。`Gui→Hosting` 統合か Core 非依存
-     lib 抽出かの小さな設計判断が要る。
+   - **B1(制御 GUI 化)** = named pipe を A2/A3 の EventLog と同じ「JSON 契約トランスポート」として扱い、
+     `Radirec.Gui.Core` が pipe クライアント + 制御 DTO を**自前保持**する(ADR-0010 が既に規定。#50)。
+     共有点を新設しない = 2 ツリーは維持される。※かつて①`Gui→Hosting`統合/②共有 lib 抽出の二択と
+     書いていたが、どちらも疎結合を崩す方向で誤り。共有 lib 抽出は「両ツリーは ProjectReference を共有
+     しない」不変条件を破る、より大きな決定を B1 に紛れ込ませることになる。
    - **C2(編集)** = `Gui→Core` の直接参照で 2 ツリーを統合する。最も大きな構造変化(#5 本体の賭け)。
 2. **ゲート**: 軸 C は CLI 運用の不足が判明するまで着手しない(#5)。A/B は出荷済みトレイの増分でゲートなし。
 3. **契約変更を伴う項目(A3)はサービス側とセット**。単独では動かせない(publisher = Hosting も同時に変える)。

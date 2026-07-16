@@ -38,8 +38,9 @@ internal static class Program
                 Icon = SystemIcons.Application, // TODO(実機): 専用アイコンに差し替え
                 Text = "Radirec 取込通知",
                 Visible = true,
-                ContextMenuStrip = BuildMenu(),
             };
+            // 制御チャネル窓口(rescan/status/reload。ADR-0010 / 軸B)をトレイメニューに載せる。
+            trayIcon.ContextMenuStrip = new ControlTrayMenu(trayIcon).Menu;
 
             subscriber.Start();
             TrayLog.Info("Radirec 取込通知トレイを起動");
@@ -56,12 +57,5 @@ internal static class Program
             Application.Run();
             trayIcon.Visible = false;
         }
-    }
-
-    private static ContextMenuStrip BuildMenu()
-    {
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("終了", image: null, (_, _) => Application.Exit());
-        return menu;
     }
 }
