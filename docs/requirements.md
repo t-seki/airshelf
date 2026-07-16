@@ -436,6 +436,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   - `Radirec.Gui` — **独立 exe**(WPF、`net10.0-windows10.0.x`)。現状は取込通知の受け手トレイ
     (§7.1・ADR-0009)。将来の配布フロントエンド兼編集 UI(M5)は同プロジェクトへ後載せ。
     `radirec.exe` とは実行モデルが別(ユーザーセッション GUI)なので別 exe。
+  - `Radirec.Gui.Core` — `Radirec.Gui` のテスト可能ロジック(取込要約シグナルの JSON DTO・
+    購読処理等)。WinRT/WPF 依存を持たず単体テスト可能([ADR-0009] の跨プロセス JSON 契約)。
   - `Radirec.Tests` — 単体テスト(xUnit 等)。
 - タグ操作: **TagLib#(TagLibSharp)**(MP4/M4A の track/disc/標準フィールド + MP3 ID3 の読み書き)。
   §6 は標準フィールドのみ使用(freeform 不要)。
@@ -476,7 +478,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - [ ] Z: 内の Jellyfin 音楽ライブラリ配置ルート(例: `Z:\media\radio\`)。
 - [ ] Jellyfin の API URL・トークン発行。
 - [ ] **ファイル名リネームの目的**(Jellyfin では見た目不変。実ファイル閲覧/別プレーヤ用か)。§10。
-- [ ] デスクトップ GUI フレームワーク選定(WinUI 3 / WPF / Avalonia)。配布時。
+- [x] デスクトップ GUI フレームワーク選定: **WPF に確定**([ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md)。
+      単一自己完結 exe(ADR-0005)と親和。受け手トレイ `Radirec.Gui` で採用済み、編集本体も同プロジェクトに後載せ)。
 - [x] TagLib# で §6 の全フィールド(MP4 track/disc/albumartist、date=フル ISO を `©day`)が
       書けることを実 M4A で確認済み(M1 スパイク)。**disc は `Tag.Disc`、date は `AppleTag.©day`
       直接**(`Tag.Year` は使わない)。
@@ -487,7 +490,10 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - [ ] コード/リポジトリの配置(`C:\dev\radirec-tool` 等)と .NET SDK バージョン。
 - [ ] TagLib# で MP3 ID3 側の §6 マッピングが書けることの実地確認(radikool / M4 スコープ)。
 
-## 13. マイルストーン(コア+CLI → 常駐化 → 統合 → GUI は保留)
+## 13. マイルストーン(コア+CLI → 常駐化 → 統合 → 通知・制御 → 編集 GUI は保留)
+
+> 番号はマイルストーン識別子。着手順は M1→…→M4→**M6**→M5 で、M6(通知・制御)は M5(編集 GUI)
+> 本体の着手前に出荷済み(M6 の受け手トレイが M5 の最初の tracer slice を兼ねるため、番号は M6 だが先行)。
 
 1. **M1 コア + CLI 取り込み(らじれこ → NAS)**: `Radirec.Core` にパース→正規化→import-once→
    タグ付与(TagLib#)、`Radirec.Cli` に `radirec ingest --once`。まず `--dry-run`、次に実コピー。
@@ -497,12 +503,11 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
    検知即取り込み。run-as(自分のアカウント)/UNC を整備。ログ整備。**本番の実行形態**。
 4. **M4 radikool 移行 + 一括正規化 CLI**: radikool importer + `radirec migrate`。
    `apply-alias` / 一括タグ編集・リネームの CLI。
-5. **M6 通知・制御チャネル**: 取込結果のデスクトップ通知(§7.1)と、利用者→サービスの制御チャネル
-   (§7.2)。取込要約シグナル発行(EventLog)+ 受け手トレイ `Radirec.Gui`、named pipe の
-   `status`/`rescan`/`reload`([ADR-0008/0009/0010])。M5 編集 GUI の前に入った独立塊で、受け手トレイは
-   M5 の tracer slice を兼ねる。
-6. **(保留)M5 デスクトップ編集アプリ**: CLI 運用で不足が出たら着手。要否は運用後に判断(§10.1)。
-   受け手トレイ(M6)は同プロジェクトの最初のスライスで、編集グリッド本体はなお保留。
+5. **(保留)M5 デスクトップ編集アプリ**: CLI 運用で不足が出たら着手。要否は運用後に判断(§10.1)。
+   受け手トレイ(M6)が同プロジェクト `Radirec.Gui` の最初のスライスで、編集グリッド本体はなお保留。
+6. **M6 通知・制御チャネル**(出荷済み・M5 本体着手前に完了): 取込結果のデスクトップ通知(§7.1)と、
+   利用者→サービスの制御チャネル(§7.2)。取込要約シグナル発行(EventLog)+ 受け手トレイ `Radirec.Gui`、
+   named pipe の `status`/`rescan`/`reload`([ADR-0008/0009/0010])。受け手トレイは M5 の tracer slice を兼ねる。
 
 ## 14. 配布・ブランディング(将来の派生)
 

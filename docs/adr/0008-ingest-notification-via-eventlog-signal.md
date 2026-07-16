@@ -1,6 +1,6 @@
 # 取込通知はサービス発の EventLog シグナルで発し、受け手(GUI)から疎結合する
 
-Status: proposed(#19 取込通知・サービス側先行実装)
+Status: accepted(#19 取込通知・サービス側先行実装。#34 でマージ済み)
 
 常駐サービス(`radirec.exe service`)は**セッション 0(非対話)**で動くため、`ToastNotificationManager` を直接呼んでも対話デスクトップにトーストは出せない([issue #19](https://github.com/t-seki/radirec-tool/issues/19) 背景)。トーストは「ログオン中のユーザーセッション」で出す必要があり、**ユーザーセッション上の受け手**が要る。その受け手は M5 のデスクトップ/GUI アプリ(#5)だが、GUI はまだ着手しておらずフレームワークも未選定(requirements §12)。
 

@@ -58,7 +58,8 @@ tests/Radirec.Tests/ xUnit
 ```
 
 CLI と常駐サービスは単一 exe `radirec.exe` に統合済み(`ingest`/`refresh`/`service`。[ADR-0005](adr/0005-single-exe-cli-service-merge.md))。
-参照は単方向(`Cli → Hosting → Core` / `Tests → Core, Hosting`)。将来 `Radirec.Gui`(配布フロントエンド, M5)を追加予定。
+参照は単方向(`Cli → Hosting → Core` / `Tests → Core, Hosting` / `Gui → Gui.Core`)。`Radirec.Gui`(独立 exe)は
+取込通知トレイとして実装済み([ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md))。将来の配布フロントエンド兼編集 UI(M5)は同プロジェクトへ後載せ。
 
 ### Radirec.Core の主な型
 
