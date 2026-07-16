@@ -10,9 +10,10 @@
 
 ## ステータス
 
-**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M3(Windows サービス常駐)/ M4-A(radikool 移行)実装済み**。
+**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M3(Windows サービス常駐)/ M4-A(radikool 移行)/
+M6(取込通知・制御チャネル)実装済み**。
 単一 exe + install スクリプト + タグ駆動 Release を提供([最新リリース](https://github.com/t-seki/radirec-tool/releases))。
-ソース跨ぎのアルバム統合(M4-C)/ GUI 配布(M5)は未実装。
+ソース跨ぎのアルバム統合(M4-C)/ 配布・編集 GUI(M5)は未実装。
 
 ## インストール・更新(Windows・運用)
 
@@ -75,5 +76,6 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 | `Radirec.Core` | ドメインロジック(パース/正規化/import-once/タグ/出力ターゲット) | 実装済み |
 | `Radirec.Hosting` | 合成ルート + 環境設定・パス解決(Core と入口の橋渡し) | 実装済み |
 | `Radirec.Cli` | 単一 exe `radirec.exe`(CLI + 常駐サービス。`ingest`/`refresh`/`service`) | 実装済み |
-| `Radirec.Gui` | 配布フロントエンド兼編集 UI | 予定(M5) |
+| `Radirec.Gui` | 取込通知トレイ(独立 exe)。将来の配布フロントエンド兼編集 UI(M5)は後載せ | トレイ実装済み(M6)/ 編集 UI は予定(M5) |
+| `Radirec.Gui.Core` | `Radirec.Gui` のテスト可能ロジック(要約シグナル JSON DTO・購読) | 実装済み |
 | `Radirec.Tests` | 単体・統合テスト | 実装済み |

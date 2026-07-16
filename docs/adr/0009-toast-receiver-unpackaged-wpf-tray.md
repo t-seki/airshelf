@@ -1,6 +1,6 @@
 # 取込通知の受け手は非パッケージ WPF トレイアプリ + 従来 WinRT トーストにする
 
-Status: proposed(#19 の受け手 GUI / #5 の tracer slice)
+Status: accepted(#19 の受け手 GUI / #5 の tracer slice。#36・#37 でマージ済み)
 
 [ADR-0008](0008-ingest-notification-via-eventlog-signal.md) でサービスは取込要約シグナルを EventLog(EventID 1001)へ発行するようにした。その**受け手**(ユーザーセッションでネイティブトーストを出す常駐アプリ)を、#5(M5 デスクトップ編集アプリ・保留中)の**最初の tracer slice** として実装する。編集グリッド等の本体は保留のまま、まず「1001 を購読しトースト表示するだけ」の最小 GUI を作る。
 
