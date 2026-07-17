@@ -8,10 +8,7 @@ public static class IngestFailurePayloadReader
     /// <summary>受け手が理解できる失敗 schemaVersion。</summary>
     public const int SupportedSchemaVersion = NotificationContract.SupportedFailureSchemaVersion;
 
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
+    private static readonly JsonSerializerOptions Options = NotificationContract.PayloadJsonOptions;
 
     /// <summary>
     /// JSON を <see cref="IngestFailurePayload"/> に解析する。成功時 true。解析失敗・空・schemaVersion 不一致は
@@ -46,10 +43,12 @@ public static class IngestFailurePayloadReader
             return false;
         }
 
+        // null コレクション/null フィールドを正規化する(下流の NRE・トースト AddText(null) を防ぐ)。
         payload = parsed with
         {
             Files = (parsed.Files ?? [])
                 .Where(f => f is not null)
+                .Select(f => f with { Name = f.Name ?? string.Empty, Reason = f.Reason ?? string.Empty })
                 .ToList(),
         };
         return true;

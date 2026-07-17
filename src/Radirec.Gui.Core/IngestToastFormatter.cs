@@ -1,6 +1,6 @@
 namespace Radirec.Gui.Core;
 
-/// <summary>取込要約ペイロードからトーストの text 要素列(表題 + 本文行)を組み立てる(表示専用・純粋。ADR-0009)。</summary>
+/// <summary>取込通知ペイロードからトーストの text 要素列(表題 + 本文行)を組み立てる(表示専用・純粋。ADR-0009/0011)。</summary>
 public static class IngestToastFormatter
 {
     /// <summary>
@@ -13,61 +13,55 @@ public static class IngestToastFormatter
     /// <summary>本文行の上限(表題 1 要素を除いた残り)。<see cref="MaxToastTextElements"/> から導出する。</summary>
     public const int MaxLines = MaxToastTextElements - 1;
 
-    /// <summary>
-    /// トーストに渡す text 要素列を返す(先頭 = 表題、以降 = 本文行)。<see cref="MaxToastTextElements"/> に
-    /// 切り詰め済みで、受け手はこれを順に AddText するだけでよい(要素数上限を受け手が意識しなくて済む)。
-    /// ライブ通知は「新規取込 N件」。不在中サマリは <see cref="BuildWhileAwayTexts"/> で表題だけ変える。
-    /// </summary>
+    // ---- 取込要約(1001)----
+
+    /// <summary>ライブ取込通知(「新規取込 N件」)の text 要素列。</summary>
     public static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload) =>
-        BuildTexts(payload, $"新規取込 {payload.TotalImported}件");
+        Compose($"新規取込 {payload.TotalImported}件", FormatAlbums(payload), payload.Truncated);
+
+    /// <summary>不在中サマリ(「不在中の取込 N件」)の text 要素列(While-Away Summary。ADR-0009 拡張)。</summary>
+    public static IReadOnlyList<string> BuildWhileAwayTexts(IngestSummaryPayload payload) =>
+        Compose($"不在中の取込 {payload.TotalImported}件", FormatAlbums(payload), payload.Truncated);
+
+    // ---- 取込失敗(1002。ADR-0011)----
+
+    /// <summary>ライブ取込失敗通知(「取込失敗 N件」)の text 要素列。</summary>
+    public static IReadOnlyList<string> BuildFailureTexts(IngestFailurePayload payload) =>
+        Compose($"取込失敗 {payload.FailedCount}件", FormatFiles(payload), payload.Truncated);
+
+    /// <summary>不在中サマリの失敗版(「不在中の失敗 N件」)の text 要素列。</summary>
+    public static IReadOnlyList<string> BuildWhileAwayFailureTexts(IngestFailurePayload payload) =>
+        Compose($"不在中の失敗 {payload.FailedCount}件", FormatFiles(payload), payload.Truncated);
 
     /// <summary>
-    /// 不在中サマリ(受け手停止中に溜まった取込をマージした 1 件)の text 要素列を返す。本文の組み立ては
-    /// ライブ通知と共通で、表題だけ「不在中の取込 N件」に差し替える(While-Away Summary。ADR-0009 拡張)。
+    /// 表題 + 本文行(整形済み)から text 要素列を組み立てる。要約・失敗・不在中で共通の切り詰めロジック
+    /// (「…ほか」の付与・要素数上限)を 1 箇所に集約し、成功/失敗で挙動が drift しないようにする。
     /// </summary>
-    public static IReadOnlyList<string> BuildWhileAwayTexts(IngestSummaryPayload payload) =>
-        BuildTexts(payload, $"不在中の取込 {payload.TotalImported}件");
-
-    /// <summary>取込失敗のライブ通知(「取込失敗 N件」)の text 要素列。ADR-0011。</summary>
-    public static IReadOnlyList<string> BuildFailureTexts(IngestFailurePayload payload) =>
-        BuildFailureTexts(payload, $"取込失敗 {payload.FailedCount}件");
-
-    /// <summary>不在中サマリの失敗版(「不在中の失敗 N件」)の text 要素列。ADR-0011。</summary>
-    public static IReadOnlyList<string> BuildWhileAwayFailureTexts(IngestFailurePayload payload) =>
-        BuildFailureTexts(payload, $"不在中の失敗 {payload.FailedCount}件");
-
-    private static IReadOnlyList<string> BuildFailureTexts(IngestFailurePayload payload, string title)
+    private static IReadOnlyList<string> Compose(string title, IReadOnlyList<string> lines, bool truncated)
     {
         var texts = new List<string> { title };
 
-        var hasMore = payload.Files.Count > MaxLines || payload.Truncated;
-        var filesToShow = hasMore ? MaxLines - 1 : Math.Min(payload.Files.Count, MaxLines);
+        var hasMore = lines.Count > MaxLines || truncated;
+        // 「…ほか」を出すなら 1 行分空ける。
+        var toShow = hasMore ? MaxLines - 1 : Math.Min(lines.Count, MaxLines);
+        texts.AddRange(lines.Take(toShow));
 
-        texts.AddRange(payload.Files.Take(filesToShow).Select(FormatFailureFile));
-        if (hasMore)
+        // 本文を少なくとも 1 行示したときだけ「…ほか」。空リスト + truncated で**裸の「…ほか」**を出さない。
+        if (hasMore && texts.Count > 1)
             texts.Add("…ほか");
 
+        // 硬い上限(実機の text 要素上限)。ロジックが将来変わっても超えないための最終ガード。
         return texts.Take(MaxToastTextElements).ToList();
     }
+
+    private static IReadOnlyList<string> FormatAlbums(IngestSummaryPayload payload) =>
+        payload.Albums.Select(FormatAlbum).ToList();
+
+    private static IReadOnlyList<string> FormatFiles(IngestFailurePayload payload) =>
+        payload.Files.Select(FormatFailureFile).ToList();
 
     private static string FormatFailureFile(IngestFailureFilePayload file) =>
         string.IsNullOrEmpty(file.Reason) ? file.Name : $"{file.Name}（{file.Reason}）";
-
-    private static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload, string title)
-    {
-        var texts = new List<string> { title };
-
-        var hasMore = payload.Albums.Count > MaxLines || payload.Truncated;
-        // 「…ほか」を出すなら 1 行分空ける。
-        var albumsToShow = hasMore ? MaxLines - 1 : Math.Min(payload.Albums.Count, MaxLines);
-
-        texts.AddRange(payload.Albums.Take(albumsToShow).Select(FormatAlbum));
-        if (hasMore)
-            texts.Add("…ほか");
-
-        // 硬い上限(実機の text 要素上限)。formatter ロジックが将来変わっても超えないための最終ガード。
-        return texts.Take(MaxToastTextElements).ToList();
-    }
 
     private static string FormatAlbum(IngestSummaryAlbumPayload album)
     {

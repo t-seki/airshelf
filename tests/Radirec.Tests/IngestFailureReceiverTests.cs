@@ -50,6 +50,33 @@ public sealed class IngestFailureReceiverTests
         Assert.Contains("schemaVersion", error);
     }
 
+    [Fact]
+    public void nullのname_reasonは空へ正規化されトーストで落ちない()
+    {
+        // 異常ペイロード(name/reason が JSON null)でも AddText(null) で落とさない([2] 回帰)。
+        const string malformed = """{"schemaVersion":1,"failedCount":1,"truncated":false,"files":[{"name":null,"reason":null}]}""";
+
+        Assert.True(IngestFailurePayloadReader.TryParse(malformed, out var payload, out var error), error);
+        var file = Assert.Single(payload!.Files);
+        Assert.Equal(string.Empty, file.Name);
+        Assert.Equal(string.Empty, file.Reason);
+
+        var texts = IngestToastFormatter.BuildFailureTexts(payload);
+        Assert.All(texts, Assert.NotNull); // null 要素が混ざらない
+    }
+
+    [Fact]
+    public void truncatedでファイル空でも裸のほかを出さない()
+    {
+        // failedCount>0・truncated・files=[] のような異常でも、本文行ゼロで「…ほか」だけの行を出さない([4] 回帰)。
+        var payload = new IngestFailurePayload { SchemaVersion = 1, FailedCount = 30, Truncated = true, Files = [] };
+
+        var texts = IngestToastFormatter.BuildFailureTexts(payload);
+
+        Assert.Equal("取込失敗 30件", texts[0]);
+        Assert.DoesNotContain("…ほか", texts); // 本文が無いのに裸の「…ほか」を出さない
+    }
+
     // ---- 不在中マージ ----
 
     [Fact]

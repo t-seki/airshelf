@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Radirec.Gui.Core;
 
 /// <summary>
@@ -7,6 +9,12 @@ namespace Radirec.Gui.Core;
 /// </summary>
 public static class NotificationContract
 {
+    /// <summary>シグナル payload 共通の parse オプション(1001/1002 の reader が共有し drift を防ぐ)。</summary>
+    public static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     /// <summary>購読対象の EventLog ソース名。</summary>
     public const string SourceName = "Radirec";
 

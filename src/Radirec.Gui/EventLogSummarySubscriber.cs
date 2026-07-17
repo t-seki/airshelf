@@ -138,31 +138,42 @@ public sealed class EventLogSummarySubscriber : IDisposable
     }
 
     /// <summary>
-    /// 不在中サマリを提示し、成功後にチェックポイントを **1 回だけ** 確定する。成功 → 失敗の順に出す
-    /// (別シグナル = 別トースト。失敗を後に出して目に残す)。提示(トースト表示)は投げうるため広く握る —
-    /// 失敗時はチェックポイントを進めず、次回起動で再ドレイン・再提示する(at-least-once)。
+    /// 不在中サマリを提示し、通過した最終位置へチェックポイントを **1 回だけ** 確定する。成功 → 失敗の順に
+    /// 出す(別シグナル = 別トースト。失敗を後に出して目に残す)。提示は **best-effort**:トースト表示が投げても
+    /// (基盤不調・異常ペイロード等)チェックポイントは必ず進める。進めないと、live watcher は drained 位置から
+    /// 始まるのに checkpoint が古いままで、次の live イベントの Advance が un-shown を追い越して**永久に消す**
+    /// (取りこぼしより悪い silent loss)。あるいは異常ペイロードが毎起動で再 throw して以降の catch-up を
+    /// 全ブロックする。取りこぼした分の元イベントは EventLog / gui.log(Warning)に残る — while-away トーストは
+    /// 揮発シグナルの回収であって唯一の記録ではない。
     /// </summary>
     private void EmitWhileAwayAndCheckpoint(DrainResult drain)
     {
-        try
+        TryEmit(() =>
         {
             if (drain.Summaries.Count > 0)
                 WhileAwaySummaryReceived?.Invoke(WhileAwaySummary.Merge(drain.Summaries));
+        }, "不在中サマリ(取込)");
+        TryEmit(() =>
+        {
             if (drain.Failures.Count > 0)
                 WhileAwayFailureReceived?.Invoke(WhileAwayFailures.Merge(drain.Failures));
+        }, "不在中サマリ(失敗)");
+
+        if (drain.MaxRecordId is { } maxId)
+            Advance(maxId, drain.ResumeBookmark);
+    }
+
+    /// <summary>不在中サマリの 1 トーストを best-effort で出す。表示失敗は握ってログに残す(checkpoint は進める)。</summary>
+    private void TryEmit(Action emit, string label)
+    {
+        try
+        {
+            emit();
         }
         catch (Exception ex)
         {
-            // 成功トーストは出たが失敗トーストが投げた等の部分失敗でも、チェックポイントを進めないので
-            // 次回起動で両方を再ドレイン・再提示する(all-or-nothing。成功トーストが重複しうるが、
-            // 取りこぼしより重複を選ぶ。部分 advance の機構は入れない)。
-            Warning?.Invoke($"不在中サマリの表示に失敗(次回起動で再提示します): {ex.Message}");
-            return; // チェックポイント未確定のまま(= 再提示可能)。
+            Warning?.Invoke($"{label}の表示に失敗(スキップ。元イベントはログに残ります): {ex.Message}");
         }
-
-        // 提示成功(or 出すものなし)後に、ドレインで通過した最終位置へ 1 度だけ確定する。
-        if (drain.MaxRecordId is { } maxId)
-            Advance(maxId, drain.ResumeBookmark);
     }
 
     /// <summary>フェーズ2: catch-up 済み位置から live watcher を start する。</summary>

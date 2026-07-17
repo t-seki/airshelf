@@ -55,6 +55,10 @@ public static class WhileAwayDrain
             resumeBookmarkXml = record.BookmarkXml;
             maxRecordId = id;
 
+            // 位置は「通過した=新規」レコードで進める。解析できなかったレコード(未対応 schemaVersion 等)も
+            // 位置を進めて**スキップ**する — 進めないと毎起動で再 throw/再解析して以降の catch-up を全ブロック
+            // する(poison)。発行側と受け手は同一バイナリで配布され schemaVersion が lockstep なので、
+            // 解析不能は実運用で起きない前提。「skip-incompatible > poison-block」の割り切り(ADR-0011)。
             if (record.Summary is { } summary)
                 summaries.Add(summary);
             else if (record.Failure is { } failure)
