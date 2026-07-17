@@ -42,3 +42,6 @@ Status: accepted(軸A A3 / #5 配下。requirements §7.1 / [CONTEXT.md](../../C
 - **要実機検証(Windows)**: EventLog 経路は WSL で実行不可。失敗の発行 → 1002 → トレイ(ライブ/不在中サマリ)、de-dup(同じ失敗が再通知されない・成功で解除・再起動を跨いで抑制継続)を母艦で確認する。純粋ロジック(de-dup 判定・失敗マージ・整形)は WSL 単体テスト。
 - **配布は publisher とセット**(契約変更)。publisher(Hosting: 1002 発行 + 失敗ストア)→ receiver(Gui: 1002 対応 + catch-up 拡張)の 2 PR に分け、golden JSON で契約を固定してから受け手を追従させる。
 - **反映失敗(RefreshError)は本 ADR の対象外**。将来さらに別シグナルとして同じ原則で扱う。
+- **失敗ストアに reaper は置かない**。エントリは成功取込でのみ消える(suppress-until-success)。失敗した
+  まま削除・移動されて二度と取り込まれないファイルの行は残り続けるが、homelab 規模では成長は緩慢で無害。
+  必要になったら走査時に現存パス集合との差分で掃除する reaper を後付けする(現時点では過剰)。
