@@ -1,16 +1,6 @@
-using Radirec.Core.Model;
+using Radirec.Core.Ledger;
 
 namespace Radirec.Core.Ingestion;
-
-/// <summary>
-/// ファイルの内容フィンガープリント(サイズ + 最終更新)。同じパスで内容が変わったかの判定に使う
-/// (取込失敗の de-dup。ADR-0011)。安定判定で既に取得済みの値から作れるので追加 I/O は無い。
-/// </summary>
-public readonly record struct FileFingerprint(long SizeBytes, long LastWriteUtcTicks)
-{
-    public static FileFingerprint Of(RecordingFile file) =>
-        new(file.SizeBytes, file.LastWriteTimeUtc.UtcTicks);
-}
 
 /// <summary>de-dup を通過した「新しく現れた失敗」1 件(1002 発行対象。ADR-0011)。</summary>
 public sealed record NewIngestFailure
@@ -36,6 +26,12 @@ public sealed record IngestFailureSignal
     /// <summary>表示するファイル行の上限。超過分は落とし <see cref="Truncated"/> を立てる(記録は全件、表示のみ有界)。</summary>
     public const int MaxFiles = 20;
 
+    /// <summary>
+    /// 1 件の理由の文字数上限。例外メッセージは青天井になりうるため切り詰める。これで payload 全体を有界化し、
+    /// EventLog の ~32KB 上限で WriteEntry が投げて「毎走査再失敗」に陥るのを防ぐ(受け手のトーストも短くて済む)。
+    /// </summary>
+    public const int MaxReasonLength = 200;
+
     /// <summary>新しく現れた失敗の総数(キャップ前の実数)。de-dup 通過分のみを数える。</summary>
     public required int FailedCount { get; init; }
 
@@ -54,9 +50,12 @@ public sealed record IngestFailureSignal
         FailedCount = failures.Count,
         Truncated = failures.Count > MaxFiles,
         Files = failures.Take(MaxFiles)
-            .Select(f => new IngestFailureFile { Name = f.FileName, Reason = f.Reason })
+            .Select(f => new IngestFailureFile { Name = f.FileName, Reason = Truncate(f.Reason) })
             .ToList(),
     };
+
+    private static string Truncate(string reason) =>
+        reason.Length <= MaxReasonLength ? reason : reason[..MaxReasonLength] + "…";
 }
 
 /// <summary>失敗した 1 ファイル(ファイル名 + 理由)。フルパスは運ばない。</summary>

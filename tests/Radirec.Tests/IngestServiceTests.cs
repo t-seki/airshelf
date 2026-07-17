@@ -123,11 +123,20 @@ public sealed class IngestServiceTests
     {
         private readonly Dictionary<string, FileFingerprint> _known = [];
         public List<string> Cleared { get; } = [];
+        public Exception? ThrowOnIsKnown { get; set; }
+        public Exception? ThrowOnRecord { get; set; }
 
-        public bool IsKnown(string sourcePath, FileFingerprint fingerprint) =>
-            _known.TryGetValue(sourcePath, out var fp) && fp == fingerprint;
+        public bool IsKnown(string sourcePath, FileFingerprint fingerprint)
+        {
+            if (ThrowOnIsKnown is not null) throw ThrowOnIsKnown;
+            return _known.TryGetValue(sourcePath, out var fp) && fp == fingerprint;
+        }
 
-        public void Record(string sourcePath, FileFingerprint fingerprint) => _known[sourcePath] = fingerprint;
+        public void Record(string sourcePath, FileFingerprint fingerprint)
+        {
+            if (ThrowOnRecord is not null) throw ThrowOnRecord;
+            _known[sourcePath] = fingerprint;
+        }
 
         public void Clear(string sourcePath)
         {
@@ -136,6 +145,15 @@ public sealed class IngestServiceTests
         }
 
         public int Count => _known.Count;
+    }
+
+    private sealed class PathLeakingOutputTarget : IOutputTarget
+    {
+        public string PlanPath(RecordingFile s, Episode e, NormalizedTags t) => "/out/plan.m4a";
+        // 例外メッセージにフルパスを埋める(実 IO 例外を模す)。sanitize がこれを畳むかを検証する。
+        public Task<string> WriteAsync(RecordingFile s, Episode e, NormalizedTags t, CancellationToken ct = default)
+            => throw new IOException($"アクセスが拒否されました: {s.FilePath}");
+        public int CleanupOrphans() => 0;
     }
 
     private readonly FakeLedger _ledger = new();
@@ -326,6 +344,46 @@ public sealed class IngestServiceTests
 
         Assert.Equal(0, _failurePublisher.Calls);
         Assert.False(report.FailureNotificationPublished);
+    }
+
+    [Fact]
+    public async Task 失敗理由はフルパスを畳んでファイル名にする()
+    {
+        var file = Rec("[J-WAVE]番組(TimeFree)_20260612223000.m4a");
+
+        await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false);
+
+        var reason = _failurePublisher.Last!.Files.Single().Reason;
+        Assert.DoesNotContain(file.FilePath, reason);      // フルパスは晒さない
+        Assert.Contains(file.FileName, reason);            // ファイル名には畳まれる
+    }
+
+    [Fact]
+    public async Task ストア読取が投げても取込は失敗にならず握って報告する()
+    {
+        // Clear/IsKnown が try 外だと成功走査が例外で「失敗」に化ける([0])。握って報告するだけにする。
+        _failureStore.ThrowOnIsKnown = new InvalidOperationException("SQLite ロック(テスト)");
+        var bad = BadFile();
+
+        var report = await Build([bad]).RunOnceAsync(dryRun: false); // 例外が漏れないこと(漏れると throw)
+
+        Assert.Equal(1, report.Count(IngestOutcome.Failed)); // 取込結果は正常に返る
+        Assert.False(report.FailureNotificationPublished);
+        Assert.NotNull(report.FailureNotificationError);
+    }
+
+    [Fact]
+    public async Task 発行成功後のRecord失敗は発行成功を覆さない()
+    {
+        _failureStore.ThrowOnRecord = new InvalidOperationException("SQLite 書込(テスト)");
+        var bad = BadFile();
+
+        var report = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        // publish は成功しているので published=true(記録失敗で false に化けさせない)。
+        Assert.True(report.FailureNotificationPublished);
+        Assert.Null(report.FailureNotificationError);
+        Assert.Equal(1, _failurePublisher.Calls);
     }
 
     [Fact]

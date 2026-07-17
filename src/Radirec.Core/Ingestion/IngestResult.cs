@@ -1,3 +1,4 @@
+using Radirec.Core.Ledger;
 using Radirec.Core.Model;
 
 namespace Radirec.Core.Ingestion;
@@ -37,8 +38,9 @@ public sealed record IngestItemResult
     public bool UsedFallback { get; init; }
     public string? Message { get; init; }
 
-    /// <summary>処理時に捉えたファイルのフィンガープリント(失敗通知の de-dup 用。ADR-0011)。</summary>
-    public FileFingerprint? Fingerprint { get; init; }
+    /// <summary>処理時に捉えたファイルのフィンガープリント(失敗通知の de-dup 用。ADR-0011)。
+    /// <see cref="IngestService"/> の Result() が全 outcome で必ず設定する(欠落しない)。</summary>
+    public required FileFingerprint Fingerprint { get; init; }
 }
 
 /// <summary>取り込み実行全体の結果。</summary>

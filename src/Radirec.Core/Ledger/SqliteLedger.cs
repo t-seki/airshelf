@@ -1,6 +1,5 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
-using Radirec.Core.Ingestion;
 using Radirec.Core.Model;
 
 namespace Radirec.Core.Ledger;

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Radirec.Core.Ingestion;
+using Radirec.Core.Ledger;
 using Radirec.Hosting;
 
 namespace Radirec.Tests;
@@ -46,6 +47,18 @@ public sealed class IngestFailureSignalTests
         Assert.Equal(IngestFailureSignal.MaxFiles, signal.Files.Count);
         Assert.Equal(IngestFailureSignal.MaxFiles + 5, signal.FailedCount);
         Assert.True(signal.Truncated);
+    }
+
+    [Fact]
+    public void From_長すぎる理由は切り詰める_payload有界化()
+    {
+        var longReason = new string('あ', IngestFailureSignal.MaxReasonLength + 100);
+
+        var signal = IngestFailureSignal.From([Fail("/in/a.m4a", longReason)]);
+
+        var reason = signal.Files.Single().Reason;
+        Assert.True(reason.Length <= IngestFailureSignal.MaxReasonLength + 1); // + 省略記号
+        Assert.EndsWith("…", reason);
     }
 
     // ---- 発行側 payload(契約 golden) ----

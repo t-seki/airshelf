@@ -63,41 +63,62 @@ public sealed class IngestService(
         if (dryRun)
             return (false, null);
 
-        // 成功したファイルの失敗記録を解除する(取込成功で clear。発行成否とは独立・無条件)。
-        // 一時失敗(ディスク満杯等)が解消して取り込めたら、将来また失敗したとき再通知できるようにする。
-        foreach (var imported in items.Where(i => i.Outcome == IngestOutcome.Imported))
-            failureStore.Clear(imported.SourcePath);
-
-        // 新しく現れた失敗だけを抽出(de-dup)。記録は全件、表示は有界(IngestFailureSignal.From)。
-        var newFailures = items
-            .Where(i => i.Outcome == IngestOutcome.Failed && i.Fingerprint is not null)
-            .Select(i => new NewIngestFailure
-            {
-                SourcePath = i.SourcePath,
-                Fingerprint = i.Fingerprint!.Value,
-                Reason = i.Message ?? "取り込みに失敗しました",
-            })
-            .Where(f => !failureStore.IsKnown(f.SourcePath, f.Fingerprint))
-            .ToList();
-
-        if (newFailures.Count == 0)
-            return (false, null);
-
+        List<NewIngestFailure> newFailures;
         try
         {
+            // 成功したファイルの失敗記録を解除する(取込成功で clear。無条件)。一時失敗(ディスク満杯等)が
+            // 解消して取り込めたら、将来また失敗したとき再通知できるようにする。
+            foreach (var imported in items.Where(i => i.Outcome == IngestOutcome.Imported))
+                failureStore.Clear(imported.SourcePath);
+
+            // 新しく現れた失敗だけを抽出(de-dup)。記録は全件、表示は有界(IngestFailureSignal.From)。
+            newFailures = items
+                .Where(i => i.Outcome == IngestOutcome.Failed)
+                .Select(i => new NewIngestFailure
+                {
+                    SourcePath = i.SourcePath,
+                    Fingerprint = i.Fingerprint,
+                    Reason = SanitizeReason(i.Message, i.SourcePath),
+                })
+                .Where(f => !failureStore.IsKnown(f.SourcePath, f.Fingerprint))
+                .ToList();
+
+            if (newFailures.Count == 0)
+                return (false, null);
+
             await failurePublisher.PublishAsync(IngestFailureSignal.From(newFailures), cancellationToken);
-            // 発行成功後にだけ de-dup 記録を進める。発行失敗なら記録せず次走査で再試行する
-            // (発行前に記録すると、書込失敗した失敗を「通知済み」と誤認して永久に見逃す。A2 の checkpoint-after の教訓)。
-            // 記録は表示上限に関わらず**新規全件**(表示から溢れた分も記録しないと毎走査で再通知される)。
-            foreach (var failure in newFailures)
-                failureStore.Record(failure.SourcePath, failure.Fingerprint);
-            return (true, null);
         }
-        // 真のキャンセルは伝播、それ以外(EventLog 書込失敗等)は握って報告する。
+        // 通知側(ストアの読取/クリア・EventLog 書込)のどの失敗でも取り込み成功は巻き戻さない。握って報告する
+        // (通知欠落で成功走査を「失敗」に化けさせない)。発行が投げた場合は記録が進まない = 次走査で再試行
+        // (at-least-once。発行前に記録すると書込失敗した失敗を「通知済み」と誤認して永久に見逃す)。
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             return (false, ex.Message);
         }
+
+        // 発行成功後にだけ de-dup 記録を進める。記録は表示上限に関わらず**新規全件**(溢れた分も記録しないと
+        // 毎走査で再通知される)。ここでの記録失敗は publish 成功を覆さない — 最悪、次走査で重複 1002 が出るが、
+        // 通知自体は届いている(取りこぼしより重複を選ぶ)。
+        try
+        {
+            foreach (var failure in newFailures)
+                failureStore.Record(failure.SourcePath, failure.Fingerprint);
+        }
+        catch
+        {
+            // 記録失敗は握る(重複通知はしうるが、成功発行を失敗扱いにしない)。
+        }
+
+        return (true, null);
+    }
+
+    // 失敗理由(例外メッセージ)を受け手向けに整える。例外メッセージにフルパスが埋まっている場合があり
+    // (IO 例外等)、フルパスをトーストに晒さない契約(ADR-0011)を守るためファイル名へ畳む。
+    private static string SanitizeReason(string? message, string sourcePath)
+    {
+        var reason = string.IsNullOrWhiteSpace(message) ? "取り込みに失敗しました" : message;
+        var fileName = sourcePath[(sourcePath.LastIndexOfAny(['/', '\\']) + 1)..];
+        return fileName.Length < sourcePath.Length ? reason.Replace(sourcePath, fileName) : reason;
     }
 
     // 取込が1件以上あった実行のみ取込要約シグナルを発行(dry-run は発行しない)。

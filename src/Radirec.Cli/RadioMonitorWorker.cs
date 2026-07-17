@@ -271,9 +271,12 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             {
                 var refresh = report.LibraryRefreshed ? "起動" : report.RefreshError ?? "-";
                 var notify = report.NotificationPublished ? "発行" : report.NotificationError ?? "-";
+                // 失敗通知(1002)の発行結果も残す。新規失敗が無ければ "-"、発行失敗なら理由を残して
+                // 「失敗トーストが出ない理由」を診断可能にする(さもないと無痕跡)。
+                var failNotify = report.FailureNotificationPublished ? "発行" : report.FailureNotificationError ?? "-";
                 _log.LogInformation(
-                    "{Trigger}スキャン: 取込 {Imported} / 失敗 {Failed} / Jellyfin更新 {Refresh} / 通知 {Notify}",
-                    trigger, imported, failed, refresh, notify);
+                    "{Trigger}スキャン: 取込 {Imported} / 失敗 {Failed} / Jellyfin更新 {Refresh} / 通知 {Notify} / 失敗通知 {FailNotify}",
+                    trigger, imported, failed, refresh, notify, failNotify);
             }
 
             // 走査ごとに status スナップショットを更新(制御チャネル。ADR-0010)。0 件走査でも

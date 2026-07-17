@@ -1,3 +1,6 @@
+using System.Text.Encodings.Web;
+using System.Text.Json;
+
 namespace Radirec.Hosting;
 
 /// <summary>
@@ -7,6 +10,16 @@ namespace Radirec.Hosting;
 /// </summary>
 public static class RadirecEventLog
 {
+    /// <summary>
+    /// シグナル payload 共通の JSON オプション。CJK を <c>\uXXXX</c> へ escape させず素の 1 文字で出す
+    /// (EventLog の文字数上限に効く。受け手は自前 GUI なので relaxed escaping で安全)。1001/1002 の各
+    /// publisher が共有し、escaping ポリシーが両者で silently drift しないようにする。
+    /// </summary>
+    public static readonly JsonSerializerOptions PayloadJsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
     /// <summary>EventLog ソース名(サービス登録時に登録される)。</summary>
     public const string SourceName = "Radirec";
 

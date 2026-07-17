@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using Radirec.Core.Ingestion;
 
@@ -14,12 +13,6 @@ namespace Radirec.Hosting;
 public sealed class EventLogIngestFailurePublisher(string sourceName = RadirecEventLog.SourceName)
     : IIngestFailurePublisher
 {
-    // CJK を \uXXXX へ escape させず素の 1 文字で出す(1001 と同じ。EventLog の文字数上限に効く)。
-    private static readonly JsonSerializerOptions PayloadOptions = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    };
-
     // EventLog は Windows 専用。呼び出しは CompositionRoot の OperatingSystem.IsWindows() ガードで保護。
     [SupportedOSPlatform("windows")]
     public Task PublishAsync(IngestFailureSignal signal, CancellationToken cancellationToken = default)
@@ -49,6 +42,6 @@ public sealed class EventLogIngestFailurePublisher(string sourceName = RadirecEv
             }),
         };
 
-        return JsonSerializer.Serialize(payload, PayloadOptions);
+        return JsonSerializer.Serialize(payload, RadirecEventLog.PayloadJsonOptions);
     }
 }

@@ -1,9 +1,22 @@
-namespace Radirec.Core.Ingestion;
+using Radirec.Core.Model;
+
+namespace Radirec.Core.Ledger;
+
+/// <summary>
+/// ファイルの内容フィンガープリント(サイズ + 最終更新)。同じパスで内容が変わったかの判定に使う
+/// (取込失敗の de-dup。ADR-0011)。永続キーの一部なので永続層(Ledger)に置く。安定判定で既に
+/// 取得済みの値から作れるので追加 I/O は無い。
+/// </summary>
+public readonly record struct FileFingerprint(long SizeBytes, long LastWriteUtcTicks)
+{
+    public static FileFingerprint Of(RecordingFile file) =>
+        new(file.SizeBytes, file.LastWriteTimeUtc.UtcTicks);
+}
 
 /// <summary>
 /// 取込失敗の de-dup ストア(ADR-0011)。**通知済み**の失敗(1002 発行に成功したもの)を永続記録し、
 /// 同じ失敗の再通知を抑える。鍵はソースパス + フィンガープリント(内容変化で再通知)。サービス再起動を
-/// 跨いで永続する(さもないと再起動ごとに standing な失敗を全部再通知する)。
+/// 跨いで永続する(さもないと再起動ごとに standing な失敗を全部再通知する)。永続実装は <see cref="SqliteLedger"/>。
 /// </summary>
 public interface IIngestFailureStore
 {
