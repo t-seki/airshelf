@@ -26,11 +26,15 @@ internal static class Program
             var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
             StartupRegistrar.Register(exePath); // ログオン自動起動を自己登録(冪等)
 
-            subscriber = new EventLogSummarySubscriber();
+            // 不在中サマリ(軸A A2): 前回の購読位置を読み、停止中に溜まった分を起動時に集約提示する。
+            var checkpoints = new CheckpointStore();
+            subscriber = new EventLogSummarySubscriber(checkpoints.Load());
             var presenter = new ToastPresenter();
 
             // Show() が投げても subscriber 側の try/catch が握るため(Warning に流れる)、ここは素直に呼ぶ。
             subscriber.SummaryReceived += payload => presenter.Show(payload);
+            subscriber.WhileAwaySummaryReceived += payload => presenter.ShowWhileAway(payload);
+            subscriber.CheckpointAdvanced += checkpoints.Save;
             subscriber.Warning += TrayLog.Warn;
 
             trayIcon = new NotifyIcon

@@ -10,9 +10,7 @@ namespace Radirec.Gui;
 [SupportedOSPlatform("windows")]
 public static class TrayLog
 {
-    private static readonly string LogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Radirec", "gui.log");
+    private static readonly string LogPath = AppData.File("gui.log");
 
     private static readonly Lock Gate = new();
 
