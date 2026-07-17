@@ -16,10 +16,21 @@ public static class IngestToastFormatter
     /// <summary>
     /// トーストに渡す text 要素列を返す(先頭 = 表題、以降 = 本文行)。<see cref="MaxToastTextElements"/> に
     /// 切り詰め済みで、受け手はこれを順に AddText するだけでよい(要素数上限を受け手が意識しなくて済む)。
+    /// ライブ通知は「新規取込 N件」。不在中サマリは <see cref="BuildWhileAwayTexts"/> で表題だけ変える。
     /// </summary>
-    public static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload)
+    public static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload) =>
+        BuildTexts(payload, $"新規取込 {payload.TotalImported}件");
+
+    /// <summary>
+    /// 不在中サマリ(受け手停止中に溜まった取込をマージした 1 件)の text 要素列を返す。本文の組み立ては
+    /// ライブ通知と共通で、表題だけ「不在中の取込 N件」に差し替える(While-Away Summary。ADR-0009 拡張)。
+    /// </summary>
+    public static IReadOnlyList<string> BuildWhileAwayTexts(IngestSummaryPayload payload) =>
+        BuildTexts(payload, $"不在中の取込 {payload.TotalImported}件");
+
+    private static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload, string title)
     {
-        var texts = new List<string> { $"新規取込 {payload.TotalImported}件" };
+        var texts = new List<string> { title };
 
         var hasMore = payload.Albums.Count > MaxLines || payload.Truncated;
         // 「…ほか」を出すなら 1 行分空ける。

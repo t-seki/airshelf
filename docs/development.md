@@ -110,3 +110,28 @@ CLI と常駐サービスは単一 exe `radirec.exe` に統合済み(`ingest`/`r
 1. `{root}/{局}/{番組}/[{局}]{番組}(TimeFree)_{YYYYMMDDHHMMSS}.m4a` にフィクスチャをコピー。
 2. `radirec.json` の `RadioRoot`/`OutputRoot`/`LedgerPath` を一時ディレクトリに向ける。
 3. `ingest --dry-run`(副作用ゼロ)→ `ingest`(生成)→ 再実行(全て「済」= 冪等)を確認。
+
+### 不在中サマリの実機検証(軸A / A2 / #54)
+
+EventLog の bookmark/RecordId 挙動は Windows 実機依存で WSL では回せない。核となるフェーズ境界は
+必ず母艦で確認する(純粋ロジック=マージ/整形/単調ガードは WSL 単体テストで担保済み)。
+
+前提: サービス稼働中・トレイ配置済み(`install.ps1`)。ログは `%LocalAppData%\Radirec\gui.log`、
+チェックポイントは `%LocalAppData%\Radirec\subscription.json`。
+
+- [ ] **通常回収**: トレイを終了(タスクトレイから終了 or プロセス kill)→ 取込を **2 回**発生させる
+      (別番組/同一番組を混ぜる)→ トレイを再起動 → **不在中サマリのトーストが 1 件だけ**出て、
+      表題「不在中の取込 N件」の N が **2 回分の合計と一致**すること。個別トーストが 2 件出ないこと
+- [ ] **境界の非二重計上**: 上記直後にもう一度トレイを再起動 → **不在中サマリが出ない**
+      (提示済み分が RecordId ガードで再提示されない)こと
+- [ ] **ライブ継続**: 再起動後にトレイ常駐のまま取込を 1 回発生 → 通常の「新規取込 N件」トーストが出て、
+      `subscription.json` の `lastRecordId` が進むこと
+- [ ] **初回起動の縮退**: `subscription.json` を削除 → トレイ再起動 → 過去分の一括再生が**出ない**
+      (read-from-now で開始)こと
+- [ ] **破損 bookmark の縮退**: `subscription.json` を不正 JSON に書き換え → トレイ再起動 → クラッシュせず、
+      `gui.log` に縮退の warn が残り、read-from-now で開始すること
+- [ ] **ログクリア後もライブ通知が死なない**(回帰の要): **有効な** `subscription.json` がある状態で
+      Event Viewer から Application ログをクリア(RecordId が 1 に戻る)→ トレイ再起動 → 取込を 1 回発生
+      → **通常の「新規取込 N件」トーストが出る**こと(旧 RecordId baseline がライブ通知を潰さない)
+
+すべて満たしたら #54 の実機検証を完了とし #54 を close してよい。

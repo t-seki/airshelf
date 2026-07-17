@@ -37,7 +37,7 @@ M6(通知・制御チャネル)は通知トレイ・制御チャネルとも出�
 | 項目 | 根拠 | 依存・触る面 | 疎結合への影響 |
 |---|---|---|---|
 | **A1 専用アイコン**(#52 で対応済み・実機目視待ち) | かつて `Program.cs` に `TODO(実機)` として残っていた汎用アイコン(`SystemIcons.Application`)の解消。現在は専用 ico(`Assets/radirec.ico`)を EmbeddedResource + ApplicationIcon で配線済み | `Radirec.Gui` のみ(アセット差し替え) | なし。最小 |
-| **A2 不在中サマリ** | ADR-0009「ブックマークで後載せ」(`readExistingEvents:false` の裏返し) | EventLog の bookmark 機構。**受信側 `Radirec.Gui` で完結**(EventLog が履歴を保持) | 契約変更**不要**。Gui 内で閉じる |
+| **A2 不在中サマリ**(#54 で着手) | ADR-0009「ブックマークで後載せ」(`readExistingEvents:false` の裏返し) | EventLog の bookmark 機構 + RecordId 単調ガード。**受信側 `Radirec.Gui` で完結**(EventLog が履歴を保持)。2 フェーズ(同期 catch-up 読み切り → live watcher) | 契約変更**不要**。Gui 内で閉じる |
 | **A3 失敗の通知(要検討)** | 現状シグナルは新規取込のみ(EventID 1001)。取込失敗は自由文ログのみ | サービス側が失敗シグナルを発行(新 EventID or ペイロード拡張)→ **JSON 契約変更** | 契約を厚くする方向。サービス側とセットのエピック |
 
 ## 軸B — 制御チャネルの GUI 化(ユーザー→サービス / 操作方向)
