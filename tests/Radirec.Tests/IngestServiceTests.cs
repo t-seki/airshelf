@@ -105,10 +105,45 @@ public sealed class IngestServiceTests
         }
     }
 
+    private sealed class FakeFailurePublisher : IIngestFailurePublisher
+    {
+        public int Calls { get; private set; }
+        public IngestFailureSignal? Last { get; private set; }
+        public Exception? Throws { get; set; }
+
+        public Task PublishAsync(IngestFailureSignal signal, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            Last = signal;
+            return Throws is null ? Task.CompletedTask : throw Throws;
+        }
+    }
+
+    private sealed class FakeFailureStore : IIngestFailureStore
+    {
+        private readonly Dictionary<string, FileFingerprint> _known = [];
+        public List<string> Cleared { get; } = [];
+
+        public bool IsKnown(string sourcePath, FileFingerprint fingerprint) =>
+            _known.TryGetValue(sourcePath, out var fp) && fp == fingerprint;
+
+        public void Record(string sourcePath, FileFingerprint fingerprint) => _known[sourcePath] = fingerprint;
+
+        public void Clear(string sourcePath)
+        {
+            Cleared.Add(sourcePath);
+            _known.Remove(sourcePath);
+        }
+
+        public int Count => _known.Count;
+    }
+
     private readonly FakeLedger _ledger = new();
     private readonly FakeOutputTarget _target = new();
     private readonly FakeRefresher _refresher = new();
     private readonly FakePublisher _publisher = new();
+    private readonly FakeFailurePublisher _failurePublisher = new();
+    private readonly FakeFailureStore _failureStore = new();
     private readonly FakeTagReader _tagReader = new("出演者");
 
     private IngestService Build(
@@ -128,7 +163,9 @@ public sealed class IngestServiceTests
             new FixedClock(Now),
             genre: "ラジオ",
             _refresher,
-            _publisher);
+            _publisher,
+            _failureStore,
+            _failurePublisher);
 
     private static RecordingFile Rec(
         string name, string station = "J-WAVE", string program = "LOGISTEEDRADIONOMICS",
@@ -218,6 +255,77 @@ public sealed class IngestServiceTests
         var report = await Build([bad]).RunOnceAsync(dryRun: false);
 
         Assert.Equal(1, report.Count(IngestOutcome.Failed));
+    }
+
+    // ---- 取込失敗シグナル 1002(ADR-0011)----
+
+    private static RecordingFile BadFile() => Rec("[X局]番組(TimeFree)_20250229123000.m4a"); // 非閏年 2/29 → Failed
+
+    [Fact]
+    public async Task NewFailure_発行され記録される()
+    {
+        var bad = BadFile();
+
+        var report = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        Assert.True(report.FailureNotificationPublished);
+        Assert.Equal(1, _failurePublisher.Calls);
+        Assert.Equal(1, _failurePublisher.Last!.FailedCount);
+        // 発行成功後に de-dup 記録されている。
+        Assert.True(_failureStore.IsKnown(bad.FilePath, FileFingerprint.Of(bad)));
+    }
+
+    [Fact]
+    public async Task SameFailure_二度目は再発行されない_de_dup()
+    {
+        var bad = BadFile();
+        await Build([bad]).RunOnceAsync(dryRun: false);
+
+        var second = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, _failurePublisher.Calls);        // 2 回目は de-dup で抑制
+        Assert.False(second.FailureNotificationPublished);
+    }
+
+    [Fact]
+    public async Task FailurePublishが投げたら記録せず次走査で再試行する()
+    {
+        var bad = BadFile();
+        _failurePublisher.Throws = new InvalidOperationException("EventLog 書込失敗");
+
+        var first = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        Assert.False(first.FailureNotificationPublished);
+        Assert.NotNull(first.FailureNotificationError);
+        Assert.False(_failureStore.IsKnown(bad.FilePath, FileFingerprint.Of(bad))); // 発行前に記録しない
+
+        // 復旧後の走査で再試行される(発行前記録なら「通知済み」と誤認して永久に見逃す)。
+        _failurePublisher.Throws = null;
+        var second = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        Assert.True(second.FailureNotificationPublished);
+        Assert.Equal(2, _failurePublisher.Calls);
+    }
+
+    [Fact]
+    public async Task 取込成功はそのパスの失敗記録を解除する()
+    {
+        var good = Rec(StandardName);
+        _failureStore.Record(good.FilePath, FileFingerprint.Of(good)); // 以前失敗して記録済みと仮定
+
+        await Build([good]).RunOnceAsync(dryRun: false);
+
+        Assert.Contains(good.FilePath, _failureStore.Cleared);
+        Assert.False(_failureStore.IsKnown(good.FilePath, FileFingerprint.Of(good)));
+    }
+
+    [Fact]
+    public async Task DryRun_失敗があっても発行しない()
+    {
+        var report = await Build([BadFile()]).RunOnceAsync(dryRun: true);
+
+        Assert.Equal(0, _failurePublisher.Calls);
+        Assert.False(report.FailureNotificationPublished);
     }
 
     [Fact]

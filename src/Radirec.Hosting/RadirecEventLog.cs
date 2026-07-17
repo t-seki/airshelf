@@ -15,4 +15,10 @@ public static class RadirecEventLog
 
     /// <summary>取込要約ペイロード JSON envelope のスキーマ版(前方進化用)。</summary>
     public const int SummarySchemaVersion = 1;
+
+    /// <summary>取込失敗シグナルの EventID(1 アラート種別 = 1 シグナル。ADR-0011)。</summary>
+    public const int IngestFailureEventId = 1002;
+
+    /// <summary>取込失敗ペイロード JSON envelope のスキーマ版(1001 とは独立に進化)。</summary>
+    public const int FailureSchemaVersion = 1;
 }
