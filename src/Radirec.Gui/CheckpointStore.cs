@@ -35,13 +35,10 @@ public sealed class CheckpointStore
                 TrayLog.Warn($"購読チェックポイントが破損。read-from-now へ縮退します: {_path}");
             return checkpoint; // Empty/Corrupt は null、Loaded は値。
         }
-        catch (IOException ex)
+        catch (Exception ex)
         {
-            TrayLog.Warn($"購読チェックポイントの読込に失敗(縮退します): {ex.Message}");
-            return null;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
+            // 読込・分類のどの失敗(I/O・権限・Classify が投げうる JsonException 以外の
+            // deserialization 例外等)でもトレイ起動を止めない。read-from-now へ縮退する。
             TrayLog.Warn($"購読チェックポイントの読込に失敗(縮退します): {ex.Message}");
             return null;
         }

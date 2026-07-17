@@ -55,11 +55,6 @@ public sealed record SubscriptionCheckpoint
         return checkpoint is null ? CheckpointParse.Corrupt : CheckpointParse.Loaded;
     }
 
-    /// <summary>永続化文字列から復元する。破損・空なら null(呼び手は縮退=read-from-now)。空と破損を
-    /// 区別したい呼び手は <see cref="Classify"/> を使う。</summary>
-    public static SubscriptionCheckpoint? TryDeserialize(string? json) =>
-        Classify(json, out var checkpoint) == CheckpointParse.Loaded ? checkpoint : null;
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,

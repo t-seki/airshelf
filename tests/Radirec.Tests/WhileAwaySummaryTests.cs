@@ -237,24 +237,14 @@ public sealed class WhileAwaySummaryTests
     {
         var original = new SubscriptionCheckpoint { BookmarkXml = "<BookmarkList/>", LastRecordId = 42 };
 
-        var restored = SubscriptionCheckpoint.TryDeserialize(original.Serialize());
-
+        Assert.Equal(SubscriptionCheckpoint.CheckpointParse.Loaded,
+            SubscriptionCheckpoint.Classify(original.Serialize(), out var restored));
         Assert.NotNull(restored);
         Assert.Equal("<BookmarkList/>", restored!.BookmarkXml);
         Assert.Equal(42, restored.LastRecordId);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("{ not json")]
-    public void 空や破損はnull_呼び手は縮退する(string? json)
-    {
-        Assert.Null(SubscriptionCheckpoint.TryDeserialize(json));
-    }
-
-    // ---- Classify の 3 値分類(#56: 破損だけ warn するための判別) ----
+    // ---- Classify の 3 値分類(#56: 破損だけ warn するための判別。空/破損の縮退もここで担保) ----
 
     [Theory]
     [InlineData(null)]
