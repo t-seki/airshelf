@@ -1,3 +1,4 @@
+using Radirec.Core.Ledger;
 using Radirec.Core.Model;
 
 namespace Radirec.Core.Ingestion;
@@ -36,6 +37,10 @@ public sealed record IngestItemResult
     public string? OutputPath { get; init; }
     public bool UsedFallback { get; init; }
     public string? Message { get; init; }
+
+    /// <summary>処理時に捉えたファイルのフィンガープリント(失敗通知の de-dup 用。ADR-0011)。
+    /// <see cref="IngestService"/> の Result() が全 outcome で必ず設定する(欠落しない)。</summary>
+    public required FileFingerprint Fingerprint { get; init; }
 }
 
 /// <summary>取り込み実行全体の結果。</summary>
@@ -55,6 +60,12 @@ public sealed record IngestReport
 
     /// <summary>シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>
     public string? NotificationError { get; init; }
+
+    /// <summary>取込失敗シグナル(1002)を発行できたか(新規失敗0件・dry-run・通知無効時は false。ADR-0011)。</summary>
+    public bool FailureNotificationPublished { get; init; }
+
+    /// <summary>失敗シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>
+    public string? FailureNotificationError { get; init; }
 
     public int Count(IngestOutcome outcome) => Items.Count(i => i.Outcome == outcome);
 }

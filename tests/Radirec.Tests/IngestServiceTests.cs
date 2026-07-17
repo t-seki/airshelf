@@ -105,10 +105,63 @@ public sealed class IngestServiceTests
         }
     }
 
+    private sealed class FakeFailurePublisher : IIngestFailurePublisher
+    {
+        public int Calls { get; private set; }
+        public IngestFailureSignal? Last { get; private set; }
+        public Exception? Throws { get; set; }
+
+        public Task PublishAsync(IngestFailureSignal signal, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            Last = signal;
+            return Throws is null ? Task.CompletedTask : throw Throws;
+        }
+    }
+
+    private sealed class FakeFailureStore : IIngestFailureStore
+    {
+        private readonly Dictionary<string, FileFingerprint> _known = [];
+        public List<string> Cleared { get; } = [];
+        public Exception? ThrowOnIsKnown { get; set; }
+        public Exception? ThrowOnRecord { get; set; }
+
+        public bool IsKnown(string sourcePath, FileFingerprint fingerprint)
+        {
+            if (ThrowOnIsKnown is not null) throw ThrowOnIsKnown;
+            return _known.TryGetValue(sourcePath, out var fp) && fp == fingerprint;
+        }
+
+        public void Record(string sourcePath, FileFingerprint fingerprint)
+        {
+            if (ThrowOnRecord is not null) throw ThrowOnRecord;
+            _known[sourcePath] = fingerprint;
+        }
+
+        public void Clear(string sourcePath)
+        {
+            Cleared.Add(sourcePath);
+            _known.Remove(sourcePath);
+        }
+
+        public int Count => _known.Count;
+    }
+
+    private sealed class PathLeakingOutputTarget : IOutputTarget
+    {
+        public string PlanPath(RecordingFile s, Episode e, NormalizedTags t) => "/out/plan.m4a";
+        // 例外メッセージにフルパスを埋める(実 IO 例外を模す)。sanitize がこれを畳むかを検証する。
+        public Task<string> WriteAsync(RecordingFile s, Episode e, NormalizedTags t, CancellationToken ct = default)
+            => throw new IOException($"アクセスが拒否されました: {s.FilePath}");
+        public int CleanupOrphans() => 0;
+    }
+
     private readonly FakeLedger _ledger = new();
     private readonly FakeOutputTarget _target = new();
     private readonly FakeRefresher _refresher = new();
     private readonly FakePublisher _publisher = new();
+    private readonly FakeFailurePublisher _failurePublisher = new();
+    private readonly FakeFailureStore _failureStore = new();
     private readonly FakeTagReader _tagReader = new("出演者");
 
     private IngestService Build(
@@ -128,7 +181,9 @@ public sealed class IngestServiceTests
             new FixedClock(Now),
             genre: "ラジオ",
             _refresher,
-            _publisher);
+            _publisher,
+            _failureStore,
+            _failurePublisher);
 
     private static RecordingFile Rec(
         string name, string station = "J-WAVE", string program = "LOGISTEEDRADIONOMICS",
@@ -218,6 +273,117 @@ public sealed class IngestServiceTests
         var report = await Build([bad]).RunOnceAsync(dryRun: false);
 
         Assert.Equal(1, report.Count(IngestOutcome.Failed));
+    }
+
+    // ---- 取込失敗シグナル 1002(ADR-0011)----
+
+    private static RecordingFile BadFile() => Rec("[X局]番組(TimeFree)_20250229123000.m4a"); // 非閏年 2/29 → Failed
+
+    [Fact]
+    public async Task NewFailure_発行され記録される()
+    {
+        var bad = BadFile();
+
+        var report = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        Assert.True(report.FailureNotificationPublished);
+        Assert.Equal(1, _failurePublisher.Calls);
+        Assert.Equal(1, _failurePublisher.Last!.FailedCount);
+        // 発行成功後に de-dup 記録されている。
+        Assert.True(_failureStore.IsKnown(bad.FilePath, FileFingerprint.Of(bad)));
+    }
+
+    [Fact]
+    public async Task SameFailure_二度目は再発行されない_de_dup()
+    {
+        var bad = BadFile();
+        await Build([bad]).RunOnceAsync(dryRun: false);
+
+        var second = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, _failurePublisher.Calls);        // 2 回目は de-dup で抑制
+        Assert.False(second.FailureNotificationPublished);
+    }
+
+    [Fact]
+    public async Task FailurePublishが投げたら記録せず次走査で再試行する()
+    {
+        var bad = BadFile();
+        _failurePublisher.Throws = new InvalidOperationException("EventLog 書込失敗");
+
+        var first = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        Assert.False(first.FailureNotificationPublished);
+        Assert.NotNull(first.FailureNotificationError);
+        Assert.False(_failureStore.IsKnown(bad.FilePath, FileFingerprint.Of(bad))); // 発行前に記録しない
+
+        // 復旧後の走査で再試行される(発行前記録なら「通知済み」と誤認して永久に見逃す)。
+        _failurePublisher.Throws = null;
+        var second = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        Assert.True(second.FailureNotificationPublished);
+        Assert.Equal(2, _failurePublisher.Calls);
+    }
+
+    [Fact]
+    public async Task 取込成功はそのパスの失敗記録を解除する()
+    {
+        var good = Rec(StandardName);
+        _failureStore.Record(good.FilePath, FileFingerprint.Of(good)); // 以前失敗して記録済みと仮定
+
+        await Build([good]).RunOnceAsync(dryRun: false);
+
+        Assert.Contains(good.FilePath, _failureStore.Cleared);
+        Assert.False(_failureStore.IsKnown(good.FilePath, FileFingerprint.Of(good)));
+    }
+
+    [Fact]
+    public async Task DryRun_失敗があっても発行しない()
+    {
+        var report = await Build([BadFile()]).RunOnceAsync(dryRun: true);
+
+        Assert.Equal(0, _failurePublisher.Calls);
+        Assert.False(report.FailureNotificationPublished);
+    }
+
+    [Fact]
+    public async Task 失敗理由はフルパスを畳んでファイル名にする()
+    {
+        var file = Rec("[J-WAVE]番組(TimeFree)_20260612223000.m4a");
+
+        await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false);
+
+        var reason = _failurePublisher.Last!.Files.Single().Reason;
+        Assert.DoesNotContain(file.FilePath, reason);      // フルパスは晒さない
+        Assert.Contains(file.FileName, reason);            // ファイル名には畳まれる
+    }
+
+    [Fact]
+    public async Task ストア読取が投げても取込は失敗にならず握って報告する()
+    {
+        // Clear/IsKnown が try 外だと成功走査が例外で「失敗」に化ける([0])。握って報告するだけにする。
+        _failureStore.ThrowOnIsKnown = new InvalidOperationException("SQLite ロック(テスト)");
+        var bad = BadFile();
+
+        var report = await Build([bad]).RunOnceAsync(dryRun: false); // 例外が漏れないこと(漏れると throw)
+
+        Assert.Equal(1, report.Count(IngestOutcome.Failed)); // 取込結果は正常に返る
+        Assert.False(report.FailureNotificationPublished);
+        Assert.NotNull(report.FailureNotificationError);
+    }
+
+    [Fact]
+    public async Task 発行成功後のRecord失敗は発行成功を覆さない()
+    {
+        _failureStore.ThrowOnRecord = new InvalidOperationException("SQLite 書込(テスト)");
+        var bad = BadFile();
+
+        var report = await Build([bad]).RunOnceAsync(dryRun: false);
+
+        // publish は成功しているので published=true(記録失敗で false に化けさせない)。
+        Assert.True(report.FailureNotificationPublished);
+        Assert.Null(report.FailureNotificationError);
+        Assert.Equal(1, _failurePublisher.Calls);
     }
 
     [Fact]

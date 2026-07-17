@@ -36,7 +36,7 @@ public static class CompositionRoot
             new StationResolver(stations),
             new ProgramResolver(programs));
 
-        var (ledger, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
+        var (ledger, failureStoreFacet, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
 
         // dry-run はリフレッシュしないので Jellyfin 接続を作らない。
         ILibraryRefresher refresher = new NullLibraryRefresher();
@@ -44,10 +44,18 @@ public static class CompositionRoot
         if (!dryRun)
             (refresher, refresherDisposable) = BuildRefresher(config);
 
-        // 発行はサービス経路のみ(notify)。dry-run / 通知無効 / 非 Windows は発行しない。
+        // 発行はサービス経路のみ(notify)。dry-run / 通知無効 / 非 Windows は発行しない。取込失敗の
+        // de-dup ストアも notify 経路でだけ実体を使う(非 notify 走査が失敗を記録して初回通知を潰さないため。
+        // ADR-0011)。成功要約(1001)と失敗(1002)は同じゲートで揃える。
         IIngestSummaryPublisher summaryPublisher = new NullIngestSummaryPublisher();
+        IIngestFailurePublisher failurePublisher = new NullIngestFailurePublisher();
+        IIngestFailureStore failureStore = new NullIngestFailureStore();
         if (notify && !dryRun && config.NotificationsEnabled && OperatingSystem.IsWindows())
+        {
             summaryPublisher = new EventLogIngestSummaryPublisher();
+            failurePublisher = new EventLogIngestFailurePublisher();
+            failureStore = failureStoreFacet;
+        }
 
         // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> radirec.json の Genre > 既定。
         var genre = string.IsNullOrWhiteSpace(programs.Defaults.Genre)
@@ -78,7 +86,9 @@ public static class CompositionRoot
             TimeProvider.System,
             genre,
             refresher,
-            summaryPublisher);
+            summaryPublisher,
+            failureStore,
+            failurePublisher);
 
         return (service, Combine(ledgerDisposable, refresherDisposable));
     }
@@ -118,21 +128,23 @@ public static class CompositionRoot
         }
     }
 
-    private static (ILedger Ledger, IDisposable? Disposable) BuildLedger(string ledgerPath, bool dryRun)
+    private static (ILedger Ledger, IIngestFailureStore FailureStore, IDisposable? Disposable) BuildLedger(
+        string ledgerPath, bool dryRun)
     {
         if (!dryRun)
         {
             var writable = new SqliteLedger(ledgerPath);
-            return (writable, writable);
+            return (writable, writable, writable); // 同一インスタンスが台帳 + 失敗 de-dup ストアを兼ねる。
         }
 
-        // dry-run: 副作用を避ける。既存台帳は読み取り専用、無ければ NullLedger。
+        // dry-run: 副作用を避ける。既存台帳は読み取り専用、無ければ NullLedger。失敗 de-dup は notify 経路
+        // でしか使わない(dry-run は発行しない)ため、ここでは Null ストアを返す。
         if (File.Exists(ledgerPath))
         {
             var readOnly = new SqliteLedger(ledgerPath, readOnly: true);
-            return (readOnly, readOnly);
+            return (readOnly, new NullIngestFailureStore(), readOnly);
         }
 
-        return (new NullLedger(), null);
+        return (new NullLedger(), new NullIngestFailureStore(), null);
     }
 }

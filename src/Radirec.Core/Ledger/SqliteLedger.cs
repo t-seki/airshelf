@@ -5,11 +5,24 @@ using Radirec.Core.Model;
 namespace Radirec.Core.Ledger;
 
 /// <summary>
-/// SQLite(WAL)によるローカルディスク台帳。SMB(出力先)には置かない前提。
+/// SQLite(WAL)によるローカルディスク台帳。SMB(出力先)には置かない前提。取込済み記録(import-once)に
+/// 加えて、取込失敗の de-dup ストア(<see cref="IIngestFailureStore"/>。ADR-0011)を同一 DB の別テーブルで
+/// 相乗りさせる(Windows の SQLite ファイルロックを増やさないため別ファイルにしない)。
 /// </summary>
-public sealed class SqliteLedger : ILedger, IDisposable
+public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
 {
     private const string DateFormat = "yyyy-MM-dd";
+
+    // 取込失敗の de-dup テーブル。鍵 = ソースパス。フィンガープリント(サイズ + 最終更新 ticks)が
+    // 一致するときだけ「通知済み」とみなす(内容変化で再通知)。
+    private const string CreateFailuresTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS failures (
+            source_path TEXT NOT NULL PRIMARY KEY,
+            size_bytes  INTEGER NOT NULL,
+            last_write  INTEGER NOT NULL
+        );
+        """;
 
     private const string CreateTableSql =
         """
@@ -36,6 +49,9 @@ public sealed class SqliteLedger : ILedger, IDisposable
     // 旧スキーマDBに対する dry-run が例外(no such column: part_index 等)で落ちるのを防ぐ
     // (readOnly では作り直せないため)。
     private readonly bool _usable;
+
+    // failures テーブルが使えるか(readOnly の旧 DB でテーブル欠如時に throw させないためのガード)。
+    private readonly bool _failuresUsable;
 
     /// <param name="databasePath">台帳 DB のパス(ローカルディスク)。</param>
     /// <param name="readOnly">
@@ -71,11 +87,14 @@ public sealed class SqliteLedger : ILedger, IDisposable
             if (!readOnly)
             {
                 MigrateOrCreate();
+                Exec(CreateFailuresTableSql); // 冪等。失敗 de-dup テーブルを保証する。
                 _usable = true;
+                _failuresUsable = true;
             }
             else
             {
                 _usable = TableExists("imports") && ColumnExists("imports", "part_index");
+                _failuresUsable = TableExists("failures");
             }
         }
         catch
@@ -214,6 +233,51 @@ public sealed class SqliteLedger : ILedger, IDisposable
         cmd.Parameters.AddWithValue("$rule", entry.RuleVersion);
         cmd.Parameters.AddWithValue("$fallback", entry.UsedFallback ? 1 : 0);
         cmd.Parameters.AddWithValue("$imported", entry.ImportedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+        cmd.ExecuteNonQuery();
+    }
+
+    // ---- IIngestFailureStore(取込失敗の de-dup。ADR-0011)----
+
+    public bool IsKnown(string sourcePath, FileFingerprint fingerprint)
+    {
+        if (!_failuresUsable)
+            return false;
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT 1 FROM failures WHERE source_path = $p AND size_bytes = $s AND last_write = $t LIMIT 1;";
+        cmd.Parameters.AddWithValue("$p", sourcePath);
+        cmd.Parameters.AddWithValue("$s", fingerprint.SizeBytes);
+        cmd.Parameters.AddWithValue("$t", fingerprint.LastWriteUtcTicks);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    public void Record(string sourcePath, FileFingerprint fingerprint)
+    {
+        if (!_failuresUsable)
+            return;
+
+        // パスが PK。同じパスで内容が変わった(fingerprint 更新)場合は置き換える。
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            """
+            INSERT OR REPLACE INTO failures (source_path, size_bytes, last_write)
+            VALUES ($p, $s, $t);
+            """;
+        cmd.Parameters.AddWithValue("$p", sourcePath);
+        cmd.Parameters.AddWithValue("$s", fingerprint.SizeBytes);
+        cmd.Parameters.AddWithValue("$t", fingerprint.LastWriteUtcTicks);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void Clear(string sourcePath)
+    {
+        if (!_failuresUsable)
+            return;
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM failures WHERE source_path = $p;";
+        cmd.Parameters.AddWithValue("$p", sourcePath);
         cmd.ExecuteNonQuery();
     }
 

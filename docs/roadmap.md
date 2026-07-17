@@ -38,7 +38,7 @@ M6(通知・制御チャネル)は通知トレイ・制御チャネルとも出�
 |---|---|---|---|
 | **A1 専用アイコン**(#52 で対応済み・実機目視待ち) | かつて `Program.cs` に `TODO(実機)` として残っていた汎用アイコン(`SystemIcons.Application`)の解消。現在は専用 ico(`Assets/radirec.ico`)を EmbeddedResource + ApplicationIcon で配線済み | `Radirec.Gui` のみ(アセット差し替え) | なし。最小 |
 | **A2 不在中サマリ**(#54 で着手) | ADR-0009「ブックマークで後載せ」(`readExistingEvents:false` の裏返し) | EventLog の bookmark 機構 + RecordId 単調ガード。**受信側 `Radirec.Gui` で完結**(EventLog が履歴を保持)。2 フェーズ(同期 catch-up 読み切り → live watcher) | 契約変更**不要**。Gui 内で閉じる |
-| **A3 失敗の通知(要検討)** | 現状シグナルは新規取込のみ(EventID 1001)。取込失敗は自由文ログのみ | サービス側が失敗シグナルを発行(新 EventID or ペイロード拡張)→ **JSON 契約変更** | 契約を厚くする方向。サービス側とセットのエピック |
+| **A3 失敗の通知**(ADR-0011 で確定・着手) | 現状シグナルは新規取込のみ(EventID 1001)。取込失敗は自由文ログのみ | サービス側が**新 EventID 1002**(取込失敗シグナル)を発行(発行側 de-dup つき)→ 受け手が catch-up 参加で表示。**JSON 契約追加**(1001 拡張ではなく別シグナル。ADR-0011) | 契約を厚くする方向。publisher(Hosting)→ receiver(Gui)の 2 PR。反映失敗は将来さらに別シグナル |
 
 ## 軸B — 制御チャネルの GUI 化(ユーザー→サービス / 操作方向)
 
@@ -62,8 +62,10 @@ issue #5 の本体。**「CLI 運用で不足が判明したら着手」と明�
 ## 地図から読める構造(将来判断の要点)
 
 1. **3 軸は疎結合への圧力の向きが違う**:
-   - **A2/A3(契約拡張)** = EventLog 上の JSON 契約を厚くする方向。`schemaVersion` + 両側 golden JSON
-     テストで吸収でき、2 ツリーは維持される。
+   - **A2(受信のみ)** = 契約変更なし。`Radirec.Gui` 内で bookmark/catch-up を足すだけ(実装済み)。
+   - **A3(契約追加)** = EventLog に**新 EventID 1002**(取込失敗シグナル)を足す方向。1001 を拡張せず
+     別シグナルにし(ADR-0011)、受け手は自前 DTO + golden JSON + 実サーバ往復テストで追従する。
+     共有 ProjectReference は増えず、2 ツリーは維持される。
    - **B1(制御 GUI 化)** = named pipe を A2/A3 の EventLog と同じ「JSON 契約トランスポート」として扱い、
      `Radirec.Gui.Core` が pipe クライアント + 制御 DTO を**自前保持**する(ADR-0010 が既に規定。#50)。
      共有点を新設しない = 2 ツリーは維持される。※かつて①`Gui→Hosting`統合/②共有 lib 抽出の二択と
