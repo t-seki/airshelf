@@ -80,7 +80,8 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            TrayLog.Warn($"トレイアイコンのロードに失敗。既定アイコンで継続します: {ex.Message}");
+            // 実機でしか再現しない失敗のためログが一次情報。起動失敗ハンドラと同じ粒度で {ex} 全体を残す。
+            TrayLog.Warn($"トレイアイコンのロードに失敗。既定アイコンで継続します: {ex}");
             return SystemIcons.Application;
         }
     }
