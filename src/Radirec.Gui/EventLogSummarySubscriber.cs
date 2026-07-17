@@ -153,6 +153,9 @@ public sealed class EventLogSummarySubscriber : IDisposable
         }
         catch (Exception ex)
         {
+            // 成功トーストは出たが失敗トーストが投げた等の部分失敗でも、チェックポイントを進めないので
+            // 次回起動で両方を再ドレイン・再提示する(all-or-nothing。成功トーストが重複しうるが、
+            // 取りこぼしより重複を選ぶ。部分 advance の機構は入れない)。
             Warning?.Invoke($"不在中サマリの表示に失敗(次回起動で再提示します): {ex.Message}");
             return; // チェックポイント未確定のまま(= 再提示可能)。
         }
