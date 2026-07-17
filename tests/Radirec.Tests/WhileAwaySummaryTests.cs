@@ -253,4 +253,39 @@ public sealed class WhileAwaySummaryTests
     {
         Assert.Null(SubscriptionCheckpoint.TryDeserialize(json));
     }
+
+    // ---- Classify の 3 値分類(#56: 破損だけ warn するための判別) ----
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Classify_空や空白はEmpty_無言(string? json)
+    {
+        Assert.Equal(SubscriptionCheckpoint.CheckpointParse.Empty,
+            SubscriptionCheckpoint.Classify(json, out var cp));
+        Assert.Null(cp);
+    }
+
+    [Theory]
+    [InlineData("{ not json")]  // 壊れた JSON
+    [InlineData("null")]        // 非空だが null に化ける
+    [InlineData("[1,2,3]")]     // 型違い(配列)
+    public void Classify_非空だが解析不能はCorrupt(string json)
+    {
+        Assert.Equal(SubscriptionCheckpoint.CheckpointParse.Corrupt,
+            SubscriptionCheckpoint.Classify(json, out var cp));
+        Assert.Null(cp);
+    }
+
+    [Fact]
+    public void Classify_正常はLoadedで値を返す()
+    {
+        var json = new SubscriptionCheckpoint { BookmarkXml = "<BookmarkList/>", LastRecordId = 7 }.Serialize();
+
+        Assert.Equal(SubscriptionCheckpoint.CheckpointParse.Loaded,
+            SubscriptionCheckpoint.Classify(json, out var cp));
+        Assert.NotNull(cp);
+        Assert.Equal(7, cp!.LastRecordId);
+    }
 }

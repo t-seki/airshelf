@@ -18,14 +18,22 @@ public sealed class CheckpointStore
 
     public CheckpointStore(string? path = null) => _path = path ?? DefaultPath;
 
-    /// <summary>保存済みチェックポイントを読む。未記録・破損は null(= 縮退)。</summary>
+    /// <summary>
+    /// 保存済みチェックポイントを読む。未記録(未存在/空)は null で無言。**破損(非空だが解析不能)は
+    /// warn を残して** null(= read-from-now 縮退)。破損が痕跡なく消えて field で不在中サマリを静かに
+    /// 失う穴を塞ぐ(#56)。
+    /// </summary>
     public SubscriptionCheckpoint? Load()
     {
         try
         {
             if (!File.Exists(_path))
                 return null;
-            return SubscriptionCheckpoint.TryDeserialize(File.ReadAllText(_path));
+
+            var parse = SubscriptionCheckpoint.Classify(File.ReadAllText(_path), out var checkpoint);
+            if (parse == SubscriptionCheckpoint.CheckpointParse.Corrupt)
+                TrayLog.Warn($"購読チェックポイントが破損。read-from-now へ縮退します: {_path}");
+            return checkpoint; // Empty/Corrupt は null、Loaded は値。
         }
         catch (IOException ex)
         {
