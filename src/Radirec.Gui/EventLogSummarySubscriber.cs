@@ -84,10 +84,10 @@ public sealed class EventLogSummarySubscriber : IDisposable
     }
 
     /// <summary>
-    /// フェーズ1: 保存 bookmark 起点で既存レコードを同期的に読み切り、不在中分を収集する。副作用は持たず
-    /// (提示・チェックポイント確定は呼び手が担う)、位置と収集結果だけを返す。lastBookmark / maxRecordId は
-    /// **単調ガードを通ったレコードだけ**進める — 全件スキップ(ログクリアで ID 巻き戻り等)なら
-    /// <see cref="DrainResult.ResumeBookmark"/> が null に落ち、呼び手が read-from-now へ縮退できる。
+    /// フェーズ1 の shim: 保存 bookmark 起点で既存レコードを同期的に読み切り、判定は純粋な
+    /// <see cref="WhileAwayDrain.Plan"/>(Gui.Core・テスト済み)へ委譲する。ここは EventLog の前方向
+    /// 読み取りを <see cref="DrainRecord"/> 列へ落として parse する薄い変換だけを持つ。単調ガード /
+    /// 位置前進 / 縮退の判定はすべてリデューサ側。
     /// </summary>
     private DrainResult DrainWhileAway()
     {
@@ -106,32 +106,28 @@ public sealed class EventLogSummarySubscriber : IDisposable
             return DrainResult.ReadFromNow;
         }
 
-        var collected = new List<IngestSummaryPayload>();
-        EventBookmark? lastBookmark = null;
-        long? maxRecordId = null;
-
         var query = new EventLogQuery("Application", PathType.LogName, _queryText);
         using var reader = new EventLogReader(query, bookmark);
 
+        // baseline はドレイン中一定(Advance は提示成功後に 1 度だけ行う)。純粋リデューサへ渡す。
+        var outcome = WhileAwayDrain.Plan(_lastRecordId, ReadDrainRecords(reader));
+
+        // resume 位置は XML から復元する(persist と同じ round-trip。RecordId ガードが差異を backstop)。
+        var resume = outcome.ResumeBookmarkXml is { } xml ? new EventBookmark(xml) : null;
+        return new DrainResult(resume, outcome.MaxRecordId, outcome.Collected);
+    }
+
+    /// <summary>EventLogReader を前方向に読み、各レコードを parse して <see cref="DrainRecord"/> へ落とす。</summary>
+    private IEnumerable<DrainRecord> ReadDrainRecords(EventLogReader reader)
+    {
         for (EventRecord? record = reader.ReadEvent(); record is not null; record = reader.ReadEvent())
         {
             using (record)
             {
-                // 単調ガード: 提示済み ID 以下(bookmark が境界を再返却しうる / ログクリアで ID が巻き戻る)は
-                // スキップ。位置(lastBookmark/maxRecordId)はガードを通った分だけ進めるので、全件スキップなら
-                // resumeBookmark=null のまま返り read-from-now へ縮退する(旧 baseline による永久抑制を防ぐ)。
-                if (record.RecordId is not { } id || !IsNewer(id))
-                    continue;
-
-                lastBookmark = record.Bookmark; // 1 レコード 1 回だけ materialize。
-                maxRecordId = id;
-
-                if (TryReadPayload(record, out var payload))
-                    collected.Add(payload!);
+                var parsed = TryReadPayload(record, out var payload) ? payload : null;
+                yield return new DrainRecord(record.RecordId, record.Bookmark?.BookmarkXml, parsed);
             }
         }
-
-        return new DrainResult(lastBookmark, maxRecordId, collected);
     }
 
     /// <summary>

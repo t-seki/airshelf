@@ -160,6 +160,76 @@ public sealed class WhileAwaySummaryTests
             album.Episodes.Select(e => e.BroadcastDate));
     }
 
+    // ---- ドレイン判定リデューサ(過去 2 度バグった要のロジック) ----
+
+    private static DrainRecord Rec(long? id, string bookmark, IngestSummaryPayload? parsed = null) =>
+        new(id, bookmark, parsed);
+
+    [Fact]
+    public void Drain_全件baseline以下ならresumeはnull_縮退する()
+    {
+        // ログクリアで ID が巻き戻り、全レコードが提示済み baseline 以下になるケース。
+        var outcome = WhileAwayDrain.Plan(baseline: 5000, records: [
+            Rec(1, "bm1", Payload(1, false, Album("J-WAVE", "番組A", Ep("2026-07-10")))),
+            Rec(2, "bm2", Payload(1, false, Album("TOKYO FM", "番組B", Ep("2026-07-11")))),
+        ]);
+
+        Assert.Null(outcome.ResumeBookmarkXml); // → 呼び手は read-from-now へ縮退
+        Assert.Null(outcome.MaxRecordId);
+        Assert.Empty(outcome.Collected);
+    }
+
+    [Fact]
+    public void Drain_一部通過ならresumeとmaxは通過分だけ進む()
+    {
+        var outcome = WhileAwayDrain.Plan(baseline: 100, records: [
+            Rec(101, "bm101", Payload(1, false, Album("J-WAVE", "番組A", Ep("2026-07-10")))),
+            Rec(102, "bm102", Payload(1, false, Album("TOKYO FM", "番組B", Ep("2026-07-11")))),
+        ]);
+
+        Assert.Equal("bm102", outcome.ResumeBookmarkXml);
+        Assert.Equal(102, outcome.MaxRecordId);
+        Assert.Equal(2, outcome.Collected.Count);
+    }
+
+    [Fact]
+    public void Drain_スキップの後に通過_resumeは通過分でありnullでない()
+    {
+        // 境界レコード(baseline と同値 = 再返却)をスキップし、続く新規で resume が確定すること。
+        // lastBookmark をガード前に代入していた旧実装ではここが「スキップ分の bookmark」で汚染された。
+        var outcome = WhileAwayDrain.Plan(baseline: 100, records: [
+            Rec(100, "bm100-boundary"), // 再返却された境界 → スキップ
+            Rec(101, "bm101", Payload(2, false, Album("J-WAVE", "番組A", Ep("2026-07-10")))),
+        ]);
+
+        Assert.Equal("bm101", outcome.ResumeBookmarkXml);
+        Assert.Equal(101, outcome.MaxRecordId);
+        Assert.Single(outcome.Collected);
+    }
+
+    [Fact]
+    public void Drain_空入力はresumeがnullで縮退()
+    {
+        var outcome = WhileAwayDrain.Plan(baseline: 100, records: []);
+
+        Assert.Null(outcome.ResumeBookmarkXml);
+        Assert.Null(outcome.MaxRecordId);
+        Assert.Empty(outcome.Collected);
+    }
+
+    [Fact]
+    public void Drain_通過だが解析失敗はcollectedに入らないがresumeは進む()
+    {
+        // 位置は進める(再スキャンを避ける)が、提示対象には含めない。
+        var outcome = WhileAwayDrain.Plan(baseline: null, records: [
+            Rec(1, "bm1", parsed: null),
+        ]);
+
+        Assert.Equal("bm1", outcome.ResumeBookmarkXml);
+        Assert.Equal(1, outcome.MaxRecordId);
+        Assert.Empty(outcome.Collected);
+    }
+
     // ---- チェックポイントの永続化往復 ----
 
     [Fact]
