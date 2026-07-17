@@ -15,6 +15,9 @@
     <!-- WPF/WinForms を含む Windows ターゲットを非 Windows(WSL/Linux CI)でもビルド可能にする。
          Windows 実機ビルドでは無害。実行/トースト表示は Windows のみ。 -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- exe の Win32 アイコン(Explorer / タスクバー / Alt-Tab)。トレイ表示は同じ ico を
+         EmbeddedResource からロードする(Program.cs。PublishSingleFile では loose file が使えない)。 -->
+    <ApplicationIcon>Assets/radirec.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- 配布は Cli と同じく単一自己完結 exe(ADR-0005 / 0009)。Release 時のみ重い publish 設定。 -->
@@ -29,6 +32,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Radirec.Gui.Core\Radirec.Gui.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- トレイアイコン(NotifyIcon)用。LogicalName を明示して Program.cs のロード名と固定で一致させる。 -->
+    <EmbeddedResource Include="Assets/radirec.ico" LogicalName="Radirec.Gui.Assets.radirec.ico" />
   </ItemGroup>
 
   <ItemGroup>

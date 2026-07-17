@@ -35,7 +35,7 @@ internal static class Program
 
             trayIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Application, // TODO(実機): 専用アイコンに差し替え
+                Icon = LoadTrayIcon(),
                 Text = "Radirec 取込通知",
                 Visible = true,
             };
@@ -56,6 +56,33 @@ internal static class Program
         {
             Application.Run();
             trayIcon.Visible = false;
+        }
+    }
+
+    /// <summary>
+    /// 専用トレイアイコン(#52)を埋め込みリソースからロードする。<c>PublishSingleFile</c> のため
+    /// loose file ではなく EmbeddedResource(LogicalName は csproj で固定)。<see cref="SystemInformation.SmallIconSize"/>
+    /// を指定して ico 内の実寸フレーム(16px 相当)を選ばせる(既定だと 32px を縮小して潰れる)。
+    /// アイコン欠損でトレイ全体を殺さないよう、失敗時は従来の既定アイコンへフォールバックする。
+    /// </summary>
+    private static Icon LoadTrayIcon()
+    {
+        try
+        {
+            using var stream = typeof(Program).Assembly
+                .GetManifestResourceStream("Radirec.Gui.Assets.radirec.ico");
+            if (stream is null)
+            {
+                TrayLog.Warn("トレイアイコン資産が見つかりません。既定アイコンで継続します");
+                return SystemIcons.Application;
+            }
+            return new Icon(stream, SystemInformation.SmallIconSize);
+        }
+        catch (Exception ex)
+        {
+            // 実機でしか再現しない失敗のためログが一次情報。起動失敗ハンドラと同じ粒度で {ex} 全体を残す。
+            TrayLog.Warn($"トレイアイコンのロードに失敗。既定アイコンで継続します: {ex}");
+            return SystemIcons.Application;
         }
     }
 }
