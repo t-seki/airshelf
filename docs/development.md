@@ -135,3 +135,31 @@ EventLog の bookmark/RecordId 挙動は Windows 実機依存で WSL では回�
       → **通常の「新規取込 N件」トーストが出る**こと(旧 RecordId baseline がライブ通知を潰さない)
 
 すべて満たしたら #54 の実機検証を完了とし #54 を close してよい。
+
+### 取込失敗通知の実機検証(軸A / A3 / #58・#59)
+
+EventLog の 1002 経路は Windows 実機依存(WSL 不可)。純粋ロジック(発行側 de-dup・受け手のマージ/整形/
+EventID 振り分け)は WSL 単体テスト済み。母艦で振る舞いを確認する。
+
+**合成注入**(実取込失敗を待たずに検証): 1001 と同様、`Write-EventLog` で **EventID 1002** の失敗シグナルを
+注入できる。JSON は発行側 `EventLogIngestFailurePublisher.BuildPayload` と同形:
+
+```powershell
+function Send-RadirecFailure {
+  param([int]$Count=1,[string]$Name='[X局]番組(TimeFree)_20250229123000.m4a',[string]$Reason='パースに失敗しました')
+  $json = '{{"schemaVersion":1,"failedCount":{0},"truncated":false,"files":[{{"name":"{1}","reason":"{2}"}}]}}' -f $Count,$Name,$Reason
+  Write-EventLog -LogName Application -Source Radirec -EntryType Warning -EventId 1002 -Message $json
+}
+```
+
+- [ ] **ライブ失敗**: トレイ稼働中に 1002 注入(or 壊れた録音で実失敗)→ **「取込失敗 N件」トースト**が出て、
+      ファイル名 + 理由の行が見えること(成功トーストとは別に出る)
+- [ ] **成功/失敗の分岐**: 1001 と 1002 を続けて注入 → 「新規取込」トーストと「取込失敗」トーストが**別々に**出る
+- [ ] **不在中の失敗**: トレイ停止 → 1002 を 2 件注入 → トレイ再起動 → **「不在中の失敗 N件」トースト 1 本**に集約
+- [ ] **成功と失敗の混在(不在中)**: 停止中に 1001 と 1002 を両方注入 → 再起動 → **成功 1 本 + 失敗 1 本の 2 トースト**
+      (別シグナル = 別通知)
+- [ ] **de-dup**(実失敗経由): 壊れた録音を置いたまま periodic スキャンを 2 回起こす → 失敗トーストは**初回のみ**
+      (同じ失敗が毎走査で鳴らない)。`gui.log` / サービスログで確認
+
+すべて満たしたら #58・#59 の実機検証を完了とし両 issue を close してよい。**リリースは #58 + #59 が
+両方マージされてから 1 本**(publisher 単体配布は 1002 を表示するトレイが無く失敗が無言で消えるため不可)。

@@ -1,25 +1,34 @@
 namespace Radirec.Gui.Core;
 
-/// <summary>1 件のドレイン対象レコードを、判定に要る最小フィールドへ落としたもの(軸A A2)。</summary>
+/// <summary>
+/// 1 件のドレイン対象レコードを、判定に要る最小フィールドへ落としたもの(軸A A2 / A3)。EventID で
+/// 成功要約(1001)か失敗(1002)かが決まり、<see cref="Summary"/> か <see cref="Failure"/> の一方だけが
+/// 入る(解析失敗なら両方 null。位置は進めるが提示に含めない)。
+/// </summary>
 /// <param name="RecordId">EventLog の <c>RecordId</c>(取得不能なら null → 判定対象外)。</param>
 /// <param name="BookmarkXml">このレコードの <c>EventBookmark.BookmarkXml</c>(live 再開位置に使う)。</param>
-/// <param name="Parsed">解析に成功した取込要約(失敗/未対応なら null → 提示に含めない)。</param>
-public readonly record struct DrainRecord(long? RecordId, string? BookmarkXml, IngestSummaryPayload? Parsed);
+/// <param name="Summary">1001 の解析結果(成功要約)。1002 や解析失敗では null。</param>
+/// <param name="Failure">1002 の解析結果(取込失敗)。1001 や解析失敗では null。</param>
+public readonly record struct DrainRecord(
+    long? RecordId, string? BookmarkXml, IngestSummaryPayload? Summary, IngestFailurePayload? Failure);
 
-/// <summary>ドレイン計画の結果(軸A A2)。</summary>
-/// <param name="Collected">不在中サマリへマージする(=提示対象の)ペイロード。</param>
+/// <summary>ドレイン計画の結果(軸A A2 / A3)。成功・失敗を別コレクションで返す(別トーストになる)。</summary>
+/// <param name="Summaries">提示対象の成功要約(1001)。</param>
+/// <param name="Failures">提示対象の取込失敗(1002)。</param>
 /// <param name="ResumeBookmarkXml">live watcher の再開位置。null なら「今から先」(縮退)。</param>
 /// <param name="MaxRecordId">通過した最大 RecordId(チェックポイント確定に使う)。null なら通過ゼロ。</param>
 public readonly record struct DrainOutcome(
-    IReadOnlyList<IngestSummaryPayload> Collected,
+    IReadOnlyList<IngestSummaryPayload> Summaries,
+    IReadOnlyList<IngestFailurePayload> Failures,
     string? ResumeBookmarkXml,
     long? MaxRecordId);
 
 /// <summary>
-/// 不在中ドレインの**純粋な判定ロジック**(軸A A2)。EventLog の前方向読み取りを抽象ストリーム
+/// 不在中ドレインの**純粋な判定ロジック**(軸A A2 / A3)。EventLog の前方向読み取りを抽象ストリーム
 /// (<see cref="DrainRecord"/> 列)に落とし、Windows 非依存で単体テストできるようにする。ここが本機能の
 /// 要の正しさ — 単調ガード / 通過分だけの位置前進 / 全件スキップ時の縮退 — を担う(過去 2 度この判定で
-/// 別々の subtle bug を出したため、抽出してテストで固定する)。
+/// 別々の subtle bug を出したため、抽出してテストで固定する)。1001/1002 は EventID で振り分け、成功・失敗を
+/// 別コレクションへ集約する(**単一チェックポイントで両シグナルを覆う**。ADR-0011)。
 ///
 /// 規則: baseline(提示済み最大 RecordId)より新しいレコードだけを「通過」とし、その分だけ resume 位置と
 /// max を進める。baseline 以下(bookmark の境界再返却 / ログクリアでの ID 巻き戻り)は完全にスキップする。
@@ -31,7 +40,8 @@ public static class WhileAwayDrain
     /// <summary>ドレインを計画する。<paramref name="baseline"/> は起動時点の提示済み最大 RecordId(null=未記録)。</summary>
     public static DrainOutcome Plan(long? baseline, IEnumerable<DrainRecord> records)
     {
-        var collected = new List<IngestSummaryPayload>();
+        var summaries = new List<IngestSummaryPayload>();
+        var failures = new List<IngestFailurePayload>();
         string? resumeBookmarkXml = null;
         long? maxRecordId = null;
 
@@ -45,10 +55,12 @@ public static class WhileAwayDrain
             resumeBookmarkXml = record.BookmarkXml;
             maxRecordId = id;
 
-            if (record.Parsed is { } payload)
-                collected.Add(payload);
+            if (record.Summary is { } summary)
+                summaries.Add(summary);
+            else if (record.Failure is { } failure)
+                failures.Add(failure);
         }
 
-        return new DrainOutcome(collected, resumeBookmarkXml, maxRecordId);
+        return new DrainOutcome(summaries, failures, resumeBookmarkXml, maxRecordId);
     }
 }

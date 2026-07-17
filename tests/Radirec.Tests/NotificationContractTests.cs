@@ -21,4 +21,12 @@ public sealed class NotificationContractTests
     [Fact]
     public void schemaVersionが発行側と一致()
         => Assert.Equal(RadirecEventLog.SummarySchemaVersion, NotificationContract.SupportedSchemaVersion);
+
+    [Fact]
+    public void 失敗EventIDが発行側と一致()
+        => Assert.Equal(RadirecEventLog.IngestFailureEventId, NotificationContract.IngestFailureEventId);
+
+    [Fact]
+    public void 失敗schemaVersionが発行側と一致()
+        => Assert.Equal(RadirecEventLog.FailureSchemaVersion, NotificationContract.SupportedFailureSchemaVersion);
 }

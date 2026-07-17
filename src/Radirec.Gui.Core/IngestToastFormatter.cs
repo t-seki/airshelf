@@ -28,6 +28,31 @@ public static class IngestToastFormatter
     public static IReadOnlyList<string> BuildWhileAwayTexts(IngestSummaryPayload payload) =>
         BuildTexts(payload, $"不在中の取込 {payload.TotalImported}件");
 
+    /// <summary>取込失敗のライブ通知(「取込失敗 N件」)の text 要素列。ADR-0011。</summary>
+    public static IReadOnlyList<string> BuildFailureTexts(IngestFailurePayload payload) =>
+        BuildFailureTexts(payload, $"取込失敗 {payload.FailedCount}件");
+
+    /// <summary>不在中サマリの失敗版(「不在中の失敗 N件」)の text 要素列。ADR-0011。</summary>
+    public static IReadOnlyList<string> BuildWhileAwayFailureTexts(IngestFailurePayload payload) =>
+        BuildFailureTexts(payload, $"不在中の失敗 {payload.FailedCount}件");
+
+    private static IReadOnlyList<string> BuildFailureTexts(IngestFailurePayload payload, string title)
+    {
+        var texts = new List<string> { title };
+
+        var hasMore = payload.Files.Count > MaxLines || payload.Truncated;
+        var filesToShow = hasMore ? MaxLines - 1 : Math.Min(payload.Files.Count, MaxLines);
+
+        texts.AddRange(payload.Files.Take(filesToShow).Select(FormatFailureFile));
+        if (hasMore)
+            texts.Add("…ほか");
+
+        return texts.Take(MaxToastTextElements).ToList();
+    }
+
+    private static string FormatFailureFile(IngestFailureFilePayload file) =>
+        string.IsNullOrEmpty(file.Reason) ? file.Name : $"{file.Name}（{file.Reason}）";
+
     private static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload, string title)
     {
         var texts = new List<string> { title };

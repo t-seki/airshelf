@@ -5,14 +5,14 @@ using Radirec.Gui.Core;
 namespace Radirec.Gui;
 
 /// <summary>
-/// Application イベントログを <c>Source=Radirec &amp; EventID=1001</c> で購読し、取込要約ペイロードを
-/// parse して通知する(ADR-0009)。2 フェーズ起動(軸A A2):
-/// フェーズ1(catch-up)= 保存 bookmark 起点で <see cref="EventLogReader"/> を同期的に読み切り、
-/// 受け手停止中に溜まった分を 1 件の**不在中サマリ**へマージ。フェーズ2(live)= その位置から
+/// Application イベントログを <c>Source=Radirec</c> で購読し、取込要約(EventID 1001)と取込失敗(1002)を
+/// parse して通知する(ADR-0009 / 0011)。2 フェーズ起動(軸A A2/A3):
+/// フェーズ1(catch-up)= 保存 bookmark 起点で <see cref="EventLogReader"/> を同期的に読み切り、受け手停止中に
+/// 溜まった分を成功・失敗それぞれ 1 件へマージして提示。フェーズ2(live)= その位置から
 /// <see cref="EventLogWatcher"/>(<c>readExistingEvents:false</c>)でライブ購読。
-/// bookmark の include/exclude 意味論が実機依存で読めないため、提示済み <c>RecordId</c> 以下は
-/// 両フェーズで無視する(単調ガード。二重計上の backstop)。bookmark 失効/破損は縮退(read-from-now)。
-/// EventLog は Windows 専用。実機で E2E 検証すること。
+/// 1001/1002 は EventID で振り分けるが、**チェックポイント(RecordId)はログ位置なので 1 個**が両シグナルを覆う。
+/// bookmark の include/exclude 意味論が実機依存で読めないため、提示済み <c>RecordId</c> 以下は両フェーズで無視する
+/// (単調ガード。二重計上の backstop)。bookmark 失効/破損は縮退(read-from-now)。EventLog は Windows 専用。
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class EventLogSummarySubscriber : IDisposable
@@ -24,11 +24,17 @@ public sealed class EventLogSummarySubscriber : IDisposable
     private EventLogWatcher? _watcher;
     private long? _lastRecordId;
 
-    /// <summary>解析に成功したライブ取込要約を通知する(1 走査 = 1 件)。</summary>
+    /// <summary>解析に成功したライブ取込要約(1001)を通知する。</summary>
     public event Action<IngestSummaryPayload>? SummaryReceived;
 
-    /// <summary>受け手停止中に溜まった取込をマージした不在中サマリ(起動時に最大 1 件)。</summary>
+    /// <summary>解析に成功したライブ取込失敗(1002)を通知する(ADR-0011)。</summary>
+    public event Action<IngestFailurePayload>? FailureReceived;
+
+    /// <summary>受け手停止中に溜まった取込要約をマージした不在中サマリ(起動時に最大 1 件)。</summary>
     public event Action<IngestSummaryPayload>? WhileAwaySummaryReceived;
+
+    /// <summary>受け手停止中に溜まった取込失敗をマージした不在中サマリ(失敗版。起動時に最大 1 件)。</summary>
+    public event Action<IngestFailurePayload>? WhileAwayFailureReceived;
 
     /// <summary>解析失敗・未対応 schemaVersion・購読エラー等の警告(トーストは出さずログ想定)。</summary>
     public event Action<string>? Warning;
@@ -39,20 +45,23 @@ public sealed class EventLogSummarySubscriber : IDisposable
     public EventLogSummarySubscriber(SubscriptionCheckpoint? checkpoint = null)
     {
         // ソース名・EventID は受け手契約(Gui.Core)から。発行側 Hosting.RadirecEventLog との一致は契約テストで保証。
+        // 1001(要約)と 1002(失敗)の両方を購読する。RecordId は EventID 非依存なのでチェックポイントは 1 個。
         _queryText = $"*[System[Provider[@Name='{NotificationContract.SourceName}'] "
-            + $"and EventID={NotificationContract.IngestSummaryEventId}]]";
+            + $"and (EventID={NotificationContract.IngestSummaryEventId} "
+            + $"or EventID={NotificationContract.IngestFailureEventId})]]";
         _initial = checkpoint;
         _lastRecordId = checkpoint?.LastRecordId;
     }
 
-    /// <summary>不在中分の読み取り位置と、そこで拾った(=提示対象の)ペイロード。</summary>
+    /// <summary>不在中分の読み取り位置と、そこで拾った(=提示対象の)成功・失敗ペイロード。</summary>
     private readonly record struct DrainResult(
         EventBookmark? ResumeBookmark,
         long? MaxRecordId,
-        IReadOnlyList<IngestSummaryPayload> Collected)
+        IReadOnlyList<IngestSummaryPayload> Summaries,
+        IReadOnlyList<IngestFailurePayload> Failures)
     {
         /// <summary>catch-up 無し(初回・縮退)。live は「今から先」で開始する。</summary>
-        public static DrainResult ReadFromNow => new(null, null, []);
+        public static DrainResult ReadFromNow => new(null, null, [], []);
     }
 
     /// <summary>フェーズ1(catch-up 同期読み切り)→ 提示 → フェーズ2(live watcher)を起動する。</summary>
@@ -76,7 +85,6 @@ public sealed class EventLogSummarySubscriber : IDisposable
         // resumeBookmark==null(初回/縮退/不在中なし) = 信頼できる購読位置が無い = 「今から先」。
         // 種として持ち込んだ _lastRecordId(旧チェックポイント)は無効。特にログクリアで RecordId が
         // 1 に戻ると、旧 baseline(例 5000)が全ライブ通知を IsNewer で潰し続けるため、必ずリセットする。
-        // resumeBookmark が null のときは catch-up で何も通過していない(= 進めていない)ので安全。
         if (drain.ResumeBookmark is null)
             ResetBaseline();
 
@@ -85,9 +93,8 @@ public sealed class EventLogSummarySubscriber : IDisposable
 
     /// <summary>
     /// フェーズ1 の shim: 保存 bookmark 起点で既存レコードを同期的に読み切り、判定は純粋な
-    /// <see cref="WhileAwayDrain.Plan"/>(Gui.Core・テスト済み)へ委譲する。ここは EventLog の前方向
-    /// 読み取りを <see cref="DrainRecord"/> 列へ落として parse する薄い変換だけを持つ。単調ガード /
-    /// 位置前進 / 縮退の判定はすべてリデューサ側。
+    /// <see cref="WhileAwayDrain.Plan"/>(Gui.Core・テスト済み)へ委譲する。ここは EventLog の前方向読み取りを
+    /// <see cref="DrainRecord"/> 列へ落として EventID で parse するだけの薄い変換。
     /// </summary>
     private DrainResult DrainWhileAway()
     {
@@ -114,44 +121,43 @@ public sealed class EventLogSummarySubscriber : IDisposable
 
         // resume 位置は XML から復元する(persist と同じ round-trip。RecordId ガードが差異を backstop)。
         var resume = outcome.ResumeBookmarkXml is { } xml ? new EventBookmark(xml) : null;
-        return new DrainResult(resume, outcome.MaxRecordId, outcome.Collected);
+        return new DrainResult(resume, outcome.MaxRecordId, outcome.Summaries, outcome.Failures);
     }
 
-    /// <summary>EventLogReader を前方向に読み、各レコードを parse して <see cref="DrainRecord"/> へ落とす。</summary>
+    /// <summary>EventLogReader を前方向に読み、各レコードを EventID で parse して <see cref="DrainRecord"/> へ落とす。</summary>
     private IEnumerable<DrainRecord> ReadDrainRecords(EventLogReader reader)
     {
         for (EventRecord? record = reader.ReadEvent(); record is not null; record = reader.ReadEvent())
         {
             using (record)
             {
-                var parsed = TryReadPayload(record, out var payload) ? payload : null;
-                yield return new DrainRecord(record.RecordId, record.Bookmark?.BookmarkXml, parsed);
+                var (summary, failure) = ReadPayloads(record);
+                yield return new DrainRecord(record.RecordId, record.Bookmark?.BookmarkXml, summary, failure);
             }
         }
     }
 
     /// <summary>
-    /// 不在中サマリを提示し、成功後にチェックポイントを **1 回だけ** 確定する。提示(トースト表示)は
-    /// 投げうるため広く握る — 失敗時はチェックポイントを進めず、次回起動で再ドレイン・再提示する
-    /// (at-least-once。live 経路が提示後に advance するのと同じ順序で、取りこぼしより重複提示を選ぶ)。
+    /// 不在中サマリを提示し、成功後にチェックポイントを **1 回だけ** 確定する。成功 → 失敗の順に出す
+    /// (別シグナル = 別トースト。失敗を後に出して目に残す)。提示(トースト表示)は投げうるため広く握る —
+    /// 失敗時はチェックポイントを進めず、次回起動で再ドレイン・再提示する(at-least-once)。
     /// </summary>
     private void EmitWhileAwayAndCheckpoint(DrainResult drain)
     {
-        if (drain.Collected.Count > 0)
+        try
         {
-            try
-            {
-                WhileAwaySummaryReceived?.Invoke(WhileAwaySummary.Merge(drain.Collected));
-            }
-            catch (Exception ex)
-            {
-                Warning?.Invoke($"不在中サマリの表示に失敗(次回起動で再提示します): {ex.Message}");
-                return; // チェックポイント未確定のまま(= 再提示可能)。
-            }
+            if (drain.Summaries.Count > 0)
+                WhileAwaySummaryReceived?.Invoke(WhileAwaySummary.Merge(drain.Summaries));
+            if (drain.Failures.Count > 0)
+                WhileAwayFailureReceived?.Invoke(WhileAwayFailures.Merge(drain.Failures));
+        }
+        catch (Exception ex)
+        {
+            Warning?.Invoke($"不在中サマリの表示に失敗(次回起動で再提示します): {ex.Message}");
+            return; // チェックポイント未確定のまま(= 再提示可能)。
         }
 
-        // 提示成功(or 出すものなし)後に、ドレインで通過した最終位置へ 1 度だけ確定する
-        // (per-record 保存を避け、長期不在後の起動を N 件のファイル書き込みでブロックしない)。
+        // 提示成功(or 出すものなし)後に、ドレインで通過した最終位置へ 1 度だけ確定する。
         if (drain.MaxRecordId is { } maxId)
             Advance(maxId, drain.ResumeBookmark);
     }
@@ -188,8 +194,11 @@ public sealed class EventLogSummarySubscriber : IDisposable
             if (record.RecordId is not { } id || !IsNewer(id))
                 return;
 
-            if (TryReadPayload(record, out var payload))
-                SummaryReceived?.Invoke(payload!);
+            var (summary, failure) = ReadPayloads(record);
+            if (summary is { } s)
+                SummaryReceived?.Invoke(s);
+            else if (failure is { } f)
+                FailureReceived?.Invoke(f);
 
             Advance(id, record.Bookmark);
         }
@@ -199,14 +208,33 @@ public sealed class EventLogSummarySubscriber : IDisposable
         }
     }
 
-    /// <summary>レコードから JSON を取り出し parse する。成功時 true。失敗は Warning に流して false。</summary>
-    private bool TryReadPayload(EventRecord record, out IngestSummaryPayload? payload)
+    /// <summary>
+    /// レコードの生 JSON を EventID で振り分け parse する。1002 は失敗、それ以外(1001)は要約。解析失敗は
+    /// Warning に流し両方 null を返す(位置は進めるが提示に含めない)。
+    /// </summary>
+    private (IngestSummaryPayload? Summary, IngestFailurePayload? Failure) ReadPayloads(EventRecord record)
     {
-        payload = null;
+        if (!TryReadJson(record, out var json))
+            return (null, null);
 
-        // WriteEntry の生メッセージは挿入文字列 Properties[0] に入る。カスタム EventID は message
-        // リソース未登録で FormatDescription() が「説明が見つかりません」を返しうるため Properties を優先。
-        var json = record.Properties.FirstOrDefault()?.Value?.ToString();
+        if (record.Id == NotificationContract.IngestFailureEventId)
+        {
+            if (IngestFailurePayloadReader.TryParse(json!, out var failure, out var failError))
+                return (null, failure);
+            Warning?.Invoke(failError ?? "失敗シグナルの解析失敗");
+            return (null, null);
+        }
+
+        if (IngestSummaryPayloadReader.TryParse(json!, out var summary, out var sumError))
+            return (summary, null);
+        Warning?.Invoke(sumError ?? "解析失敗");
+        return (null, null);
+    }
+
+    /// <summary>レコードから JSON 本文を取り出す。カスタム EventID は FormatDescription が説明未登録を返しうるため Properties 優先。</summary>
+    private bool TryReadJson(EventRecord record, out string? json)
+    {
+        json = record.Properties.FirstOrDefault()?.Value?.ToString();
         if (string.IsNullOrWhiteSpace(json))
             json = record.FormatDescription();
         if (string.IsNullOrWhiteSpace(json))
@@ -214,15 +242,7 @@ public sealed class EventLogSummarySubscriber : IDisposable
             Warning?.Invoke("空のイベントメッセージ");
             return false;
         }
-
-        if (IngestSummaryPayloadReader.TryParse(json, out var parsed, out var error))
-        {
-            payload = parsed;
-            return true;
-        }
-
-        Warning?.Invoke(error ?? "解析失敗");
-        return false;
+        return true;
     }
 
     /// <summary>提示済み最大 RecordId(単調ガードの baseline)より新しいか。テスト実物(<see cref="SubscriptionCheckpoint.IsNewer(long?, long)"/>)を共有。</summary>

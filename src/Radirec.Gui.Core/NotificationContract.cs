@@ -13,6 +13,12 @@ public static class NotificationContract
     /// <summary>取込要約シグナルの EventID。</summary>
     public const int IngestSummaryEventId = 1001;
 
-    /// <summary>受け手が理解できる schemaVersion。これと一致しない版は未対応として扱う。</summary>
+    /// <summary>取込失敗シグナルの EventID(1 アラート種別 = 1 シグナル。ADR-0011)。</summary>
+    public const int IngestFailureEventId = 1002;
+
+    /// <summary>受け手が理解できる要約(1001)schemaVersion。これと一致しない版は未対応として扱う。</summary>
     public const int SupportedSchemaVersion = 1;
+
+    /// <summary>受け手が理解できる失敗(1002)schemaVersion(1001 とは独立に進化)。</summary>
+    public const int SupportedFailureSchemaVersion = 1;
 }

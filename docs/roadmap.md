@@ -38,7 +38,7 @@ M6(通知・制御チャネル)は通知トレイ・制御チャネルとも出�
 |---|---|---|---|
 | **A1 専用アイコン**(#52 で対応済み・実機目視待ち) | かつて `Program.cs` に `TODO(実機)` として残っていた汎用アイコン(`SystemIcons.Application`)の解消。現在は専用 ico(`Assets/radirec.ico`)を EmbeddedResource + ApplicationIcon で配線済み | `Radirec.Gui` のみ(アセット差し替え) | なし。最小 |
 | **A2 不在中サマリ**(#54 で着手) | ADR-0009「ブックマークで後載せ」(`readExistingEvents:false` の裏返し) | EventLog の bookmark 機構 + RecordId 単調ガード。**受信側 `Radirec.Gui` で完結**(EventLog が履歴を保持)。2 フェーズ(同期 catch-up 読み切り → live watcher) | 契約変更**不要**。Gui 内で閉じる |
-| **A3 失敗の通知**(ADR-0011 で確定・着手) | 現状シグナルは新規取込のみ(EventID 1001)。取込失敗は自由文ログのみ | サービス側が**新 EventID 1002**(取込失敗シグナル)を発行(発行側 de-dup つき)→ 受け手が catch-up 参加で表示。**JSON 契約追加**(1001 拡張ではなく別シグナル。ADR-0011) | 契約を厚くする方向。publisher(Hosting)→ receiver(Gui)の 2 PR。反映失敗は将来さらに別シグナル |
+| **A3 失敗の通知**(ADR-0011・#58 publisher / #59 receiver 実装済み・実機検証待ち) | 現状シグナルは新規取込のみ(EventID 1001)。取込失敗は自由文ログのみ | サービス側が**新 EventID 1002**(取込失敗シグナル)を発行(発行側 de-dup つき)→ 受け手が catch-up 参加で表示。**JSON 契約追加**(1001 拡張ではなく別シグナル。ADR-0011) | 契約を厚くする方向。publisher(Hosting)→ receiver(Gui)の 2 PR。反映失敗は将来さらに別シグナル |
 
 ## 軸B — 制御チャネルの GUI 化(ユーザー→サービス / 操作方向)
 
