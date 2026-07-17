@@ -17,7 +17,14 @@ public sealed record SubscriptionCheckpoint
     public long? LastRecordId { get; init; }
 
     /// <summary>この位置より後(<c>RecordId &gt; LastRecordId</c>)を新規とみなす。未記録なら常に新規。</summary>
-    public bool IsNewer(long recordId) => LastRecordId is not { } last || recordId > last;
+    public bool IsNewer(long recordId) => IsNewer(LastRecordId, recordId);
+
+    /// <summary>
+    /// 単調ガードの本体(<paramref name="lastRecordId"/> 未記録なら常に新規)。ランタイム(購読側)と
+    /// テストの双方がこの 1 実装を呼ぶ — 比較ロジックを二重持ちにしてテストが実物を検証しない事態を防ぐ。
+    /// </summary>
+    public static bool IsNewer(long? lastRecordId, long recordId) =>
+        lastRecordId is not { } last || recordId > last;
 
     public string Serialize() => JsonSerializer.Serialize(this, JsonOptions);
 

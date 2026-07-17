@@ -134,6 +134,32 @@ public sealed class WhileAwaySummaryTests
         Assert.Equal(expected, checkpoint.IsNewer(candidate));
     }
 
+    [Fact]
+    public void 単調ガードの静的実装はランタイムと同じ判定()
+    {
+        // 購読側ランタイムが呼ぶ静的実装。インスタンス版はこれへ委譲する(実物とテストの二重持ち防止)。
+        Assert.True(SubscriptionCheckpoint.IsNewer(null, 1));       // 未記録は常に新規
+        Assert.False(SubscriptionCheckpoint.IsNewer(100, 100));     // 境界(提示済み ID)は新規でない
+        Assert.False(SubscriptionCheckpoint.IsNewer(100, 1));       // ログクリアで巻き戻った ID も新規でない
+        Assert.True(SubscriptionCheckpoint.IsNewer(100, 101));
+    }
+
+    [Fact]
+    public void 同一番組が3シグナルに跨っても放送回を全て統合する()
+    {
+        // O(n^2) 修正(累積リスト)後も件数が落ちないことの回帰。
+        var merged = WhileAwaySummary.Merge([
+            Payload(1, false, Album("J-WAVE", "番組A", Ep("2026-07-10"))),
+            Payload(1, false, Album("J-WAVE", "番組A", Ep("2026-07-11"))),
+            Payload(1, false, Album("J-WAVE", "番組A", Ep("2026-07-12"))),
+        ]);
+
+        var album = Assert.Single(merged.Albums);
+        Assert.Equal(3, album.Episodes.Count);
+        Assert.Equal(["2026-07-10", "2026-07-11", "2026-07-12"],
+            album.Episodes.Select(e => e.BroadcastDate));
+    }
+
     // ---- チェックポイントの永続化往復 ----
 
     [Fact]

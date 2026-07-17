@@ -12,9 +12,7 @@ namespace Radirec.Gui;
 [SupportedOSPlatform("windows")]
 public sealed class CheckpointStore
 {
-    private static readonly string DefaultPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Radirec", "subscription.json");
+    private static readonly string DefaultPath = AppData.File("subscription.json");
 
     private readonly string _path;
 

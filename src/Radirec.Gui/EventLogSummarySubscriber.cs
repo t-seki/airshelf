@@ -45,22 +45,54 @@ public sealed class EventLogSummarySubscriber : IDisposable
         _lastRecordId = checkpoint?.LastRecordId;
     }
 
-    /// <summary>フェーズ1(catch-up 同期読み切り)→ フェーズ2(live watcher)を起動する。</summary>
+    /// <summary>不在中分の読み取り位置と、そこで拾った(=提示対象の)ペイロード。</summary>
+    private readonly record struct DrainResult(
+        EventBookmark? ResumeBookmark,
+        long? MaxRecordId,
+        IReadOnlyList<IngestSummaryPayload> Collected)
+    {
+        /// <summary>catch-up 無し(初回・縮退)。live は「今から先」で開始する。</summary>
+        public static DrainResult ReadFromNow => new(null, null, []);
+    }
+
+    /// <summary>フェーズ1(catch-up 同期読み切り)→ 提示 → フェーズ2(live watcher)を起動する。</summary>
     public void Start()
     {
-        var resumeBookmark = DrainWhileAway();
-        StartLiveWatcher(resumeBookmark);
+        DrainResult drain;
+        try
+        {
+            drain = DrainWhileAway();
+        }
+        catch (Exception ex)
+        {
+            // catch-up は起動を止めてはならない。EventLog 例外以外(ACL 等の想定外)も含めて握り、
+            // read-from-now へ縮退する(トレイが無痕跡で消える失敗モードを作らない)。
+            Warning?.Invoke($"不在中サマリの読取に失敗(縮退します): {ex.Message}");
+            drain = DrainResult.ReadFromNow;
+        }
+
+        EmitWhileAwayAndCheckpoint(drain);
+
+        // resumeBookmark==null(初回/縮退/不在中なし) = 信頼できる購読位置が無い = 「今から先」。
+        // 種として持ち込んだ _lastRecordId(旧チェックポイント)は無効。特にログクリアで RecordId が
+        // 1 に戻ると、旧 baseline(例 5000)が全ライブ通知を IsNewer で潰し続けるため、必ずリセットする。
+        // resumeBookmark が null のときは catch-up で何も通過していない(= 進めていない)ので安全。
+        if (drain.ResumeBookmark is null)
+            ResetBaseline();
+
+        StartLiveWatcher(drain.ResumeBookmark);
     }
 
     /// <summary>
-    /// フェーズ1: 保存 bookmark 起点で既存レコードを同期的に読み切り、不在中分をマージして通知する。
-    /// 返り値は live watcher の起点にする bookmark(読み切った最後のレコード。無ければ null=先頭から)。
-    /// bookmark 失効/破損時は warn して null を返す(縮退 = read-from-now)。
+    /// フェーズ1: 保存 bookmark 起点で既存レコードを同期的に読み切り、不在中分を収集する。副作用は持たず
+    /// (提示・チェックポイント確定は呼び手が担う)、位置と収集結果だけを返す。lastBookmark / maxRecordId は
+    /// **単調ガードを通ったレコードだけ**進める — 全件スキップ(ログクリアで ID 巻き戻り等)なら
+    /// <see cref="DrainResult.ResumeBookmark"/> が null に落ち、呼び手が read-from-now へ縮退できる。
     /// </summary>
-    private EventBookmark? DrainWhileAway()
+    private DrainResult DrainWhileAway()
     {
         if (_initial?.BookmarkXml is not { } bookmarkXml)
-            return null; // 初回起動: catch-up 無しで live のみ。
+            return DrainResult.ReadFromNow; // 初回起動: catch-up 無しで live のみ。
 
         EventBookmark bookmark;
         try
@@ -71,61 +103,66 @@ public sealed class EventLogSummarySubscriber : IDisposable
         {
             // 破損 XML。縮退。
             Warning?.Invoke($"購読 bookmark が不正(縮退します): {ex.Message}");
-            return null;
+            return DrainResult.ReadFromNow;
         }
 
         var collected = new List<IngestSummaryPayload>();
         EventBookmark? lastBookmark = null;
+        long? maxRecordId = null;
 
-        try
+        var query = new EventLogQuery("Application", PathType.LogName, _queryText);
+        using var reader = new EventLogReader(query, bookmark);
+
+        for (EventRecord? record = reader.ReadEvent(); record is not null; record = reader.ReadEvent())
         {
-            var query = new EventLogQuery("Application", PathType.LogName, _queryText);
-            using var reader = new EventLogReader(query, bookmark);
-
-            for (EventRecord? record = reader.ReadEvent(); record is not null; record = reader.ReadEvent())
+            using (record)
             {
-                using (record)
-                {
-                    lastBookmark = record.Bookmark;
-                    // 単調ガード: 提示済み ID 以下(bookmark が境界を再返却しうる)はスキップ。
-                    if (record.RecordId is { } id && !IsNewer(id))
-                        continue;
+                // 単調ガード: 提示済み ID 以下(bookmark が境界を再返却しうる / ログクリアで ID が巻き戻る)は
+                // スキップ。位置(lastBookmark/maxRecordId)はガードを通った分だけ進めるので、全件スキップなら
+                // resumeBookmark=null のまま返り read-from-now へ縮退する(旧 baseline による永久抑制を防ぐ)。
+                if (record.RecordId is not { } id || !IsNewer(id))
+                    continue;
 
-                    if (TryReadPayload(record, out var payload))
-                        collected.Add(payload!);
+                lastBookmark = record.Bookmark; // 1 レコード 1 回だけ materialize。
+                maxRecordId = id;
 
-                    if (record.RecordId is { } newId)
-                        Advance(newId, record.Bookmark);
-                }
+                if (TryReadPayload(record, out var payload))
+                    collected.Add(payload!);
             }
         }
-        catch (EventLogNotFoundException ex)
+
+        return new DrainResult(lastBookmark, maxRecordId, collected);
+    }
+
+    /// <summary>
+    /// 不在中サマリを提示し、成功後にチェックポイントを **1 回だけ** 確定する。提示(トースト表示)は
+    /// 投げうるため広く握る — 失敗時はチェックポイントを進めず、次回起動で再ドレイン・再提示する
+    /// (at-least-once。live 経路が提示後に advance するのと同じ順序で、取りこぼしより重複提示を選ぶ)。
+    /// </summary>
+    private void EmitWhileAwayAndCheckpoint(DrainResult drain)
+    {
+        if (drain.Collected.Count > 0)
         {
-            Warning?.Invoke($"購読位置が失効(縮退します): {ex.Message}");
-            return null;
-        }
-        catch (EventLogException ex)
-        {
-            Warning?.Invoke($"不在中サマリの読取に失敗(縮退します): {ex.Message}");
-            return null;
+            try
+            {
+                WhileAwaySummaryReceived?.Invoke(WhileAwaySummary.Merge(drain.Collected));
+            }
+            catch (Exception ex)
+            {
+                Warning?.Invoke($"不在中サマリの表示に失敗(次回起動で再提示します): {ex.Message}");
+                return; // チェックポイント未確定のまま(= 再提示可能)。
+            }
         }
 
-        if (collected.Count > 0)
-            WhileAwaySummaryReceived?.Invoke(WhileAwaySummary.Merge(collected));
-
-        return lastBookmark;
+        // 提示成功(or 出すものなし)後に、ドレインで通過した最終位置へ 1 度だけ確定する
+        // (per-record 保存を避け、長期不在後の起動を N 件のファイル書き込みでブロックしない)。
+        if (drain.MaxRecordId is { } maxId)
+            Advance(maxId, drain.ResumeBookmark);
     }
 
     /// <summary>フェーズ2: catch-up 済み位置から live watcher を start する。</summary>
     private void StartLiveWatcher(EventBookmark? resumeBookmark)
     {
-        // resumeBookmark==null = 信頼できる購読位置が無い(初回 or 縮退)= 「今から先」。このとき
-        // 種として持ち込んだ _lastRecordId(旧チェックポイント)は無効。特にログクリアで RecordId が
-        // 1 に戻ると、旧 baseline(例 5000)が全ライブ通知を IsNewer で潰し続けるため、必ずリセットする。
-        // catch-up で何も拾っていない(縮退)ので二重提示の恐れはない。
-        if (resumeBookmark is null)
-            _lastRecordId = null;
-
         var query = new EventLogQuery("Application", PathType.LogName, _queryText);
         // resumeBookmark があればそこから先、無ければ(初回/縮退)従来どおり「今から先」。
         _watcher = new EventLogWatcher(query, resumeBookmark, readExistingEvents: false);
@@ -152,14 +189,13 @@ public sealed class EventLogSummarySubscriber : IDisposable
             using var record = e.EventRecord;
 
             // 単調ガード: catch-up と live の境界でギャップ/再配信が起きても二重計上しない。
-            if (record.RecordId is { } id && !IsNewer(id))
+            if (record.RecordId is not { } id || !IsNewer(id))
                 return;
 
             if (TryReadPayload(record, out var payload))
                 SummaryReceived?.Invoke(payload!);
 
-            if (record.RecordId is { } newId)
-                Advance(newId, record.Bookmark);
+            Advance(id, record.Bookmark);
         }
         catch (Exception ex)
         {
@@ -193,10 +229,18 @@ public sealed class EventLogSummarySubscriber : IDisposable
         return false;
     }
 
+    /// <summary>提示済み最大 RecordId(単調ガードの baseline)より新しいか。テスト実物(<see cref="SubscriptionCheckpoint.IsNewer(long?, long)"/>)を共有。</summary>
     private bool IsNewer(long recordId)
     {
         lock (_gate)
-            return _lastRecordId is not { } last || recordId > last;
+            return SubscriptionCheckpoint.IsNewer(_lastRecordId, recordId);
+    }
+
+    /// <summary>信頼できる購読位置が無い(read-from-now)場合に baseline を無効化する。</summary>
+    private void ResetBaseline()
+    {
+        lock (_gate)
+            _lastRecordId = null;
     }
 
     /// <summary>提示位置を進め、チェックポイントを通知する(呼び手が永続化)。</summary>

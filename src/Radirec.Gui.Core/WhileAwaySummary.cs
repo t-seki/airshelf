@@ -21,8 +21,11 @@ public static class WhileAwaySummary
         var total = 0;
         var truncated = false;
 
-        // (Station, Program) → 統合先アルバム。出現順を保つため挿入順を覚える。
-        var byProgram = new Dictionary<(string, string), IngestSummaryAlbumPayload>();
+        // (Station, Program) → (先頭アルバム, 放送回の累積リスト)。放送回は可変リストに追記していき、
+        // 最後に 1 度だけ確定する(同一番組が多数のシグナルに跨っても放送回コピーが二乗にならない)。
+        // 出現順を保つため挿入順を覚える。
+        var byProgram =
+            new Dictionary<(string, string), (IngestSummaryAlbumPayload Header, List<IngestSummaryEpisodePayload> Episodes)>();
         var order = new List<(string, string)>();
 
         foreach (var signal in signals)
@@ -33,16 +36,13 @@ public static class WhileAwaySummary
             foreach (var album in signal.Albums)
             {
                 var key = (album.Station, album.Program);
-                if (byProgram.TryGetValue(key, out var existing))
+                if (byProgram.TryGetValue(key, out var acc))
                 {
-                    byProgram[key] = existing with
-                    {
-                        Episodes = [.. existing.Episodes, .. album.Episodes],
-                    };
+                    acc.Episodes.AddRange(album.Episodes); // 同一 List 参照へ追記。
                 }
                 else
                 {
-                    byProgram[key] = album;
+                    byProgram[key] = (album, [.. album.Episodes]);
                     order.Add(key);
                 }
             }
@@ -53,7 +53,7 @@ public static class WhileAwaySummary
             SchemaVersion = NotificationContract.SupportedSchemaVersion,
             TotalImported = total,
             Truncated = truncated,
-            Albums = [.. order.Select(k => byProgram[k])],
+            Albums = [.. order.Select(k => byProgram[k].Header with { Episodes = byProgram[k].Episodes })],
         };
     }
 }
