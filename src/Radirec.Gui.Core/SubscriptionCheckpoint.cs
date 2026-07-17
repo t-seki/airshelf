@@ -28,19 +28,31 @@ public sealed record SubscriptionCheckpoint
 
     public string Serialize() => JsonSerializer.Serialize(this, JsonOptions);
 
-    /// <summary>永続化文字列から復元する。破損・空なら null(呼び手は縮退=read-from-now)。</summary>
-    public static SubscriptionCheckpoint? TryDeserialize(string? json)
+    /// <summary>永続化文字列の分類(#56)。<see cref="Empty"/>=未記録(正常・無言)、<see cref="Corrupt"/>=
+    /// 非空だが解析不能(呼び手が縮退を warn)、<see cref="Loaded"/>=復元成功。</summary>
+    public enum CheckpointParse { Empty, Corrupt, Loaded }
+
+    /// <summary>
+    /// 永続化文字列を分類しつつ復元する。空/空白は <see cref="CheckpointParse.Empty"/>(正常な未記録=初回起動
+    /// 相当)、非空だが JSON として解析できない/null に化けるものは <see cref="CheckpointParse.Corrupt"/>
+    /// (呼び手が read-from-now への縮退を warn する)、成功は <see cref="CheckpointParse.Loaded"/>。
+    /// 「破損を無言で握り潰さず痕跡を残す」ための判別点(TrayLog 流儀)。
+    /// </summary>
+    public static CheckpointParse Classify(string? json, out SubscriptionCheckpoint? checkpoint)
     {
+        checkpoint = null;
         if (string.IsNullOrWhiteSpace(json))
-            return null;
+            return CheckpointParse.Empty;
         try
         {
-            return JsonSerializer.Deserialize<SubscriptionCheckpoint>(json, JsonOptions);
+            checkpoint = JsonSerializer.Deserialize<SubscriptionCheckpoint>(json, JsonOptions);
         }
         catch (JsonException)
         {
-            return null;
+            return CheckpointParse.Corrupt;
         }
+        // 非空なのに null(例: 文字列 "null")も破損扱い(未記録=空とは区別して warn 対象にする)。
+        return checkpoint is null ? CheckpointParse.Corrupt : CheckpointParse.Loaded;
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()

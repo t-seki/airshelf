@@ -237,20 +237,45 @@ public sealed class WhileAwaySummaryTests
     {
         var original = new SubscriptionCheckpoint { BookmarkXml = "<BookmarkList/>", LastRecordId = 42 };
 
-        var restored = SubscriptionCheckpoint.TryDeserialize(original.Serialize());
-
+        Assert.Equal(SubscriptionCheckpoint.CheckpointParse.Loaded,
+            SubscriptionCheckpoint.Classify(original.Serialize(), out var restored));
         Assert.NotNull(restored);
         Assert.Equal("<BookmarkList/>", restored!.BookmarkXml);
         Assert.Equal(42, restored.LastRecordId);
     }
 
+    // ---- Classify の 3 値分類(#56: 破損だけ warn するための判別。空/破損の縮退もここで担保) ----
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("{ not json")]
-    public void 空や破損はnull_呼び手は縮退する(string? json)
+    public void Classify_空や空白はEmpty_無言(string? json)
     {
-        Assert.Null(SubscriptionCheckpoint.TryDeserialize(json));
+        Assert.Equal(SubscriptionCheckpoint.CheckpointParse.Empty,
+            SubscriptionCheckpoint.Classify(json, out var cp));
+        Assert.Null(cp);
+    }
+
+    [Theory]
+    [InlineData("{ not json")]  // 壊れた JSON
+    [InlineData("null")]        // 非空だが null に化ける
+    [InlineData("[1,2,3]")]     // 型違い(配列)
+    public void Classify_非空だが解析不能はCorrupt(string json)
+    {
+        Assert.Equal(SubscriptionCheckpoint.CheckpointParse.Corrupt,
+            SubscriptionCheckpoint.Classify(json, out var cp));
+        Assert.Null(cp);
+    }
+
+    [Fact]
+    public void Classify_正常はLoadedで値を返す()
+    {
+        var json = new SubscriptionCheckpoint { BookmarkXml = "<BookmarkList/>", LastRecordId = 7 }.Serialize();
+
+        Assert.Equal(SubscriptionCheckpoint.CheckpointParse.Loaded,
+            SubscriptionCheckpoint.Classify(json, out var cp));
+        Assert.NotNull(cp);
+        Assert.Equal(7, cp!.LastRecordId);
     }
 }
