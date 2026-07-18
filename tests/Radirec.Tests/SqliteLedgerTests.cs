@@ -42,6 +42,53 @@ public sealed class SqliteLedgerTests : IDisposable
         new("J-WAVE", program, new DateOnly(2026, 6, 12));
 
     [Fact]
+    public void ListAll_empty_when_no_records()
+    {
+        using var ledger = new SqliteLedger(DbPath);
+        Assert.Empty(ledger.ListAll());
+    }
+
+    [Fact]
+    public void ListAll_returns_entries_newest_first_and_round_trips_fields()
+    {
+        using var ledger = new SqliteLedger(DbPath);
+
+        var older = Entry(Key("番組A"), source: @"I:\radio\a.m4a") with
+        {
+            ImportedAtUtc = new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero),
+        };
+        var newer = Entry(Key("番組B"), source: @"I:\radio\b.m4a", time: new TimeOnly(8, 30), part: 2) with
+        {
+            ImportedAtUtc = new DateTimeOffset(2026, 7, 10, 12, 0, 0, TimeSpan.Zero),
+            OutputPath = @"\\nas\share\b.m4a",
+            UsedFallback = true,
+        };
+        ledger.Record(older);
+        ledger.Record(newer);
+
+        var all = ledger.ListAll();
+
+        Assert.Equal(2, all.Count);
+        // 取込日時の降順(新しい順)。
+        Assert.Equal("番組B", all[0].Program);
+        Assert.Equal("番組A", all[1].Program);
+
+        // 新しい方のフィールドが round-trip する。
+        var b = all[0];
+        Assert.Equal("J-WAVE", b.Station);
+        Assert.Equal(new DateOnly(2026, 6, 12), b.BroadcastDate);
+        Assert.Equal(new TimeOnly(8, 30), b.BroadcastTime);
+        Assert.Equal(2, b.PartIndex);
+        Assert.Equal(@"I:\radio\b.m4a", b.SourcePath);
+        Assert.Equal(@"\\nas\share\b.m4a", b.OutputPath);
+        Assert.True(b.UsedFallback);
+        Assert.Equal(newer.ImportedAtUtc, b.ImportedAtUtc);
+
+        // 時刻なしは null に戻る(TimeKey "" の逆)。
+        Assert.Null(all[1].BroadcastTime);
+    }
+
+    [Fact]
     public void Record_ThenContains_IsTrueForKeyAndSource()
     {
         using var ledger = new SqliteLedger(DbPath);

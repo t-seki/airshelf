@@ -40,6 +40,8 @@ public sealed class IngestServiceTests
             _entries.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
             Sources.Add(entry.SourcePath);
         }
+
+        public IReadOnlyList<LedgerEntry> ListAll() => []; // 取込テストでは履歴列挙を使わない
     }
 
     private sealed class FakeOutputTarget : IOutputTarget

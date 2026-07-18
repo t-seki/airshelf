@@ -13,4 +13,6 @@ public sealed class NullLedger : ILedger
 
     public void Record(LedgerEntry entry)
         => throw new InvalidOperationException("NullLedger には記録できません(dry-run 用)。");
+
+    public IReadOnlyList<LedgerEntry> ListAll() => [];
 }
