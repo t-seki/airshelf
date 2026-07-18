@@ -23,13 +23,14 @@ grill(2026-07-19)で S5(#67 配布・install/データ位置)と S6(#68 更新 U
 ### 配布・インストール(S5 / #67)
 
 - **`Setup.exe`(per-user・非 admin)が zip + `install.ps1` を置換**。`vpk pack` は Setup.exe / full+delta nupkg / portable / フィード manifest(`releases.<channel>.json`)/ 埋め込み `Update.exe` を生成する。
-- **データ位置 = `%LOCALAPPDATA%\radirec\`(Local・非 roaming)**。当初 `%APPDATA%`(Roaming)と記したが誤り: **SQLite 台帳はマシンローカルな取込済み記録**で、roaming すると (a) 稼働中 DB の同期で破損、(b) 別マシンで無意味。config も `I:`/NAS UNC などマシン固有パスを指す。`ConfigPaths.DataRoot` を `CommonApplicationData`(ProgramData)→ `LocalApplicationData` へ変更(ADR-0006 amend)。gui.log(`AppData.cs`)が既に `%LocalAppData%\Radirec` なので、トレイの状態が 1 箇所にまとまる。データは Velopack の versioned app ディレクトリ(`current/`)の**外**に置く(更新で消えないため)。
+- **データ位置 = `%LOCALAPPDATA%\RadirecData\`(Local・非 roaming)**。当初 `%APPDATA%`(Roaming)と記したが誤り: **SQLite 台帳はマシンローカルな取込済み記録**で、roaming すると (a) 稼働中 DB の同期で破損、(b) 別マシンで無意味。config も `I:`/NAS UNC などマシン固有パスを指す。`ConfigPaths.DataRoot` を `CommonApplicationData`(ProgramData)→ `LocalApplicationData` の **`RadirecData`** へ変更(ADR-0006 amend)。
+  - **フォルダ名を `radirec` ではなく `RadirecData` にする**理由: Velopack は packId `Radirec` を per-user インストール先 `%LOCALAPPDATA%\Radirec` にする。Windows は case-insensitive なので旧案の `%LOCALAPPDATA%\radirec` は `\Radirec` と **同一フォルダ**になり、台帳が Velopack の versioned app ツリー内に入る → **アンインストール/修復で台帳ごと消える**(=全再取込)。そこで `RadirecData`(packId と非一致)= Velopack のインストール先と**別名の兄弟フォルダ**に置き、更新/アンインストールで消えないようにする。gui.log(`AppData.cs`)も同じ `RadirecData` に揃え、トレイの状態を 1 箇所にまとめる。
 - **config seeding をアプリへ移設**: `install.ps1` がやっていた「sample から `radirec.json`/`stations.json`/`programs.json` を生成(既存は温存)」を、**トレイ初回起動時**に行う。sample は **EmbeddedResource** でバンドル(loose file を避ける)。
-- **既存データ移行 = 一度きり runbook**(手動)。旧トレイ/サービスを停止 → `%ProgramData%\radirec\*`(`ledger.db` + `-wal` + `-shm` + json)を `%LOCALAPPDATA%\radirec\` へコピー → Velopack 版を起動。ADR-0006 の先例(「データ移行はスクリプト化せず runbook」)に一致。**新規ユーザー(将来 C3)は ProgramData に何も無く移行不要**なので、恒久の自動移行コードは置かない。台帳を運び損ねると次回スキャンで全件が未取込判定 → NAS 全再コピーになるため、runbook で明示。
+- **既存データ移行 = 一度きり runbook**(手動)。旧トレイ/サービスを停止 → `%ProgramData%\radirec\*`(`ledger.db` + `-wal` + `-shm` + json)を `%LOCALAPPDATA%\RadirecData\` へコピー → Velopack 版を起動。ADR-0006 の先例(「データ移行はスクリプト化せず runbook」)に一致。**新規ユーザー(将来 C3)は ProgramData に何も無く移行不要**なので、恒久の自動移行コードは置かない。台帳を運び損ねると次回スキャンで全件が未取込判定 → NAS 全再コピーになるため、runbook で明示。
 - **`deploy/*.ps1` は退役**(install/update は Velopack、uninstall は `Update.exe --uninstall` / Add-Remove Programs)。旧 Windows サービス退役の手順だけ docs の runbook に残す。
 - **`VelopackApp.Build().Run()` を `Program.Main` 先頭**に追加(install/update/uninstall フックの処理)。
 - **dev CLI `radirec.exe` は Velopack バンドルに同梱**(pack ディレクトリへ一緒に publish。`%LOCALAPPDATA%\Radirec\current\` から dev/batch 実行可)。mainExe はトレイ(`-e Radirec.Gui.exe`)。
-- **`release.yml` を vpk 化**: `dotnet publish`(両 exe を 1 フォルダへ)→ `dotnet tool install -g vpk` → `vpk download github`(delta 基準)→ `vpk pack -u Radirec -v <ver> -p <publish> -e Radirec.Gui.exe` → `vpk upload github --publish --tag v<ver>`。既存の「zip + softprops upload」を置換。CI は既存 `GITHUB_TOKEN`(`contents: write`)を使う。
+- **`release.yml` を vpk 化**: `dotnet publish`(両 exe を 1 フォルダへ・self-contained・非 single-file)→ `dotnet tool update -g vpk --version 1.2.0`(永続 runner で冪等 + パッケージ Velopack と版一致固定)→ `vpk download github`(delta 基準・初回は握る)→ `vpk pack -u Radirec -v <ver> -p <publish> -e Radirec.Gui.exe` → `vpk upload github --tag v<ver>`(prerelease は `VPK_PRE`)。既存の「zip + softprops upload」を置換。CI は既存 `GITHUB_TOKEN`(`contents: write`)を使う。
 
 ### private repo フィードのトークン
 

@@ -4,7 +4,7 @@ using System.Runtime.Versioning;
 namespace Radirec.Gui;
 
 /// <summary>
-/// 初回起動時に、データルート(<c>%LocalAppData%\radirec\</c>)へ設定ファイルを埋め込み sample から
+/// 初回起動時に、データルート(<c>%LocalAppData%\RadirecData\</c>)へ設定ファイルを埋め込み sample から
 /// 生成する(既存は温存)。旧 <c>install.ps1</c> の seeding を per-user 移行(ADR-0013 / S5)でアプリへ移設。
 /// </summary>
 [SupportedOSPlatform("windows")]

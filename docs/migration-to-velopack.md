@@ -1,14 +1,14 @@
 # 移行 runbook: 旧 admin 配置 → Velopack per-user(一度きり)
 
 S5(ADR-0013)で配布が **Velopack per-user(Setup.exe・非 admin)** に変わり、データが
-`%ProgramData%\radirec\` → **`%LOCALAPPDATA%\radirec\`** へ移る。既存の box を新モデルへ移す**一度きり**の
+`%ProgramData%\radirec\` → **`%LOCALAPPDATA%\RadirecData\`** へ移る。既存の box を新モデルへ移す**一度きり**の
 手順。**新規ユーザーはこの runbook 不要**(Setup.exe を実行するだけ。`%ProgramData%` に何も無い)。
 
 > ⚠️ **台帳(`ledger.db`)= import-once の権威**。移行し損ねると次回スキャンで全件が「未取込」判定になり
 > NAS へ全再コピーが走る。必ず台帳を運ぶこと。
 >
 > ⚠️ **Setup.exe は導入後アプリを自動起動する**。よって**データ移行(手順 1〜4)を Setup.exe(手順 5)より
-> 先に**行うこと。順序を誤ると、空の `%LOCALAPPDATA%\radirec` にアプリが初回 seed した設定で起動する。
+> 先に**行うこと。順序を誤ると、空の `%LOCALAPPDATA%\RadirecData` にアプリが初回 seed した設定で起動する。
 > ただし**出荷 sample の `RadioRoot`/`OutputRoot` は空(inert)**なので、万一先に起動しても取り込みは
 > 走らない(安全網。§14)。実データを扱うのは移行済み config を置いた後だけ。
 
@@ -26,7 +26,7 @@ S5(ADR-0013)で配布が **Velopack per-user(Setup.exe・非 admin)** に変わ�
 2. **データを %ProgramData% → %LOCALAPPDATA% へコピー**(停止後なら `-wal`/`-shm` 込みで安全):
    ```powershell
    $src = "$env:ProgramData\radirec"
-   $dst = "$env:LOCALAPPDATA\radirec"
+   $dst = "$env:LOCALAPPDATA\RadirecData"
    New-Item -ItemType Directory -Force $dst | Out-Null
    Copy-Item "$src\*" $dst -Recurse -Force    # ledger.db(+ -wal/-shm)・radirec.json・stations.json・programs.json
    ```
@@ -47,7 +47,7 @@ S5(ADR-0013)で配布が **Velopack per-user(Setup.exe・非 admin)** に変わ�
 5. **Velopack 版を導入**: v0.8.0 の GitHub Release から **`Setup.exe`** を落として実行(**admin 不要**)。
    `%LOCALAPPDATA%\Radirec` へ導入・自動起動登録・起動する。
 
-6. **検証**: トレイが起動し、移行した `%LOCALAPPDATA%\radirec\radirec.json` + 台帳で稼働する。
+6. **検証**: トレイが起動し、移行した `%LOCALAPPDATA%\RadirecData\radirec.json` + 台帳で稼働する。
    トレイメニュー「取込履歴…」に**過去の取込が並べば台帳移行成功**(空なら台帳が運べていない → 手順 2/3 を確認)。
    起動時 catch-up スキャンで**新規0件(全て既取込スキップ)**なら import-once が効いている証拠。
 

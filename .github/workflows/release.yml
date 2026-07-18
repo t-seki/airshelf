@@ -71,11 +71,13 @@ jobs:
           dotnet publish src/Radirec.Cli -c Release -r win-x64 --self-contained `
             -p:PublishSingleFile=false -p:Version=$env:VERSION -o $pub
 
-      # Velopack CLI(vpk)をグローバルツールとして導入し、PATH へ通す。
+      # Velopack CLI(vpk)を導入し PATH へ通す。self-hosted runner は永続でツールが残るため、
+      # install(既存だと非ゼロ終了)ではなく **update で冪等**にし、**版を 1.2.0 に固定**する
+      # (パッケージ Velopack 1.2.0 と vpk の版一致が要る。Directory.Packages.props に追従)。
       - name: Install vpk
         shell: pwsh
         run: |
-          dotnet tool install -g vpk
+          dotnet tool update -g vpk --version 1.2.0
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       # 直近リリースを取得して delta の差分基準にする。初回(Velopack リリースがまだ無い)は

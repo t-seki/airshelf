@@ -9,13 +9,16 @@ namespace Radirec.Hosting;
 public static class ConfigPaths
 {
     /// <summary>
-    /// データルート = <c>%LOCALAPPDATA%\radirec\</c>(Windows。他 OS では LocalApplicationData 配下)。
+    /// データルート = <c>%LOCALAPPDATA%\RadirecData\</c>(Windows。他 OS では LocalApplicationData 配下)。
     /// 台帳・設定・マスタを置く。Local(非 roaming)= SQLite 台帳がマシン間同期で壊れないため。
+    /// **フォルダ名は Velopack の packId 'Radirec'(インストール先 <c>%LOCALAPPDATA%\Radirec</c>)と
+    /// 意図的に違える** — Windows は case-insensitive で <c>radirec</c>≒<c>Radirec</c> になり、同一だと
+    /// 台帳が Velopack のアンインストールで消される(=全再取込)。ADR-0013 の衝突回避。
     /// </summary>
     public static string DataRoot =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "radirec");
+            "RadirecData");
 
     /// <summary>引数省略時に探す既定の設定ファイル(<c>%LOCALAPPDATA%\radirec\radirec.json</c>)。</summary>
     public static string DefaultConfigPath => Path.Combine(DataRoot, "radirec.json");
