@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows.Forms;
+using Radirec.Gui.Core;
 using Radirec.Gui.Core.Control;
 
 namespace Radirec.Gui;
@@ -34,7 +35,15 @@ internal sealed class ControlTrayMenu
         _statusLine = new ToolStripMenuItem("状態: 未確認") { Enabled = false };
         _lastScanLine = new ToolStripMenuItem("最終スキャン: —") { Enabled = false };
 
+        // 版情報(S1 / #63)。クリック不可のヘッダー。CI がタグから注入した版、ローカルは 0.0.0-dev。
+        var versionLine = new ToolStripMenuItem($"Radirec {AppVersion.Of(typeof(ControlTrayMenu).Assembly)}")
+        {
+            Enabled = false,
+        };
+
         Menu = new ContextMenuStrip();
+        Menu.Items.Add(versionLine);
+        Menu.Items.Add(new ToolStripSeparator());
         Menu.Items.Add(_rescan);
         Menu.Items.Add(_reload);
         Menu.Items.Add(new ToolStripSeparator());
