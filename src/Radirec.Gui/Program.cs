@@ -33,6 +33,7 @@ internal static class Program
         IHost? host = null;
         IServiceControl? control = null;
         string? degradedReason = null; // control==null の理由(縮退メニュー表示用)。
+        string? ledgerPath = null;     // 取込履歴(S4)。設定が読めていれば worker 起動可否に依らず参照可。
         NotifyIcon trayIcon;
         try
         {
@@ -44,6 +45,8 @@ internal static class Program
             var configPath = ConfigPaths.Resolve(null);
             if (ConfigLoading.TryLoad(configPath, out var config, out var error))
             {
+                // 設定が読めた時点で台帳パスは判る。worker の起動可否に依らず取込履歴は参照できる。
+                ledgerPath = config!.LedgerPath;
                 try
                 {
                     host = BuildHost(config!, configPath);
@@ -82,7 +85,7 @@ internal static class Program
             };
             // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
-            trayIcon.ContextMenuStrip = new ControlTrayMenu(trayIcon, control, degradedReason).Menu;
+            trayIcon.ContextMenuStrip = new ControlTrayMenu(trayIcon, control, degradedReason, ledgerPath).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
         }

@@ -17,18 +17,23 @@ internal sealed class ControlTrayMenu
     private readonly NotifyIcon _tray;
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
+    private readonly string? _ledgerPath;
     private readonly ToolStripMenuItem _rescan;
     private readonly ToolStripMenuItem _reload;
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
+    private IngestHistoryWindow? _historyWindow;
 
     /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
     /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
-    public ControlTrayMenu(NotifyIcon tray, IServiceControl? control, string? degradedReason = null)
+    /// <param name="ledgerPath">台帳の絶対パス(取込履歴 S4 用)。設定未読込なら null で履歴項目を出さない。</param>
+    public ControlTrayMenu(
+        NotifyIcon tray, IServiceControl? control, string? degradedReason = null, string? ledgerPath = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
+        _ledgerPath = ledgerPath;
 
         _rescan = new ToolStripMenuItem("今すぐ再スキャン", image: null, OnRescan);
         _reload = new ToolStripMenuItem("設定リロード…", image: null, OnReload);
@@ -52,6 +57,9 @@ internal sealed class ControlTrayMenu
         Menu.Items.Add(_statusLine);
         Menu.Items.Add(_lastScanLine);
         Menu.Items.Add(new ToolStripSeparator());
+        // 取込履歴(S4 / #66)。設定が読めていれば台帳を参照できる(ワーカー起動失敗の縮退でも過去分は見える)。
+        if (_ledgerPath is not null)
+            Menu.Items.Add("取込履歴…", image: null, OnHistory);
         // 縮退(設定未読込 / ワーカー起動失敗)時は、設定修正後にプロセスごと再起動して復帰できる導線を出す
         // (control==null は復旧経路が無く、再起動しないと取り込みが始まらないため)。
         if (_control is null)
@@ -137,5 +145,22 @@ internal sealed class ControlTrayMenu
             _tray.ShowBalloonTip(3000, "Radirec", "設定リロードを受理しました(反映は取込完了後)", ToolTipIcon.Info);
         else
             _tray.ShowBalloonTip(5000, "Radirec", $"設定リロードは拒否されました: {outcome.Error}", ToolTipIcon.Warning);
+    }
+
+    private void OnHistory(object? sender, EventArgs e)
+    {
+        if (_ledgerPath is null)
+            return;
+
+        // 既に開いていれば前面化する(複数枚を防ぐ)。
+        if (_historyWindow is { IsLoaded: true })
+        {
+            _historyWindow.Activate();
+            return;
+        }
+
+        _historyWindow = new IngestHistoryWindow(() => IngestHistory.Load(_ledgerPath));
+        _historyWindow.Closed += (_, _) => _historyWindow = null;
+        _historyWindow.Show();
     }
 }

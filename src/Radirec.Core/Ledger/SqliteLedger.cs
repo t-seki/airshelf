@@ -236,6 +236,47 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         cmd.ExecuteNonQuery();
     }
 
+    public IReadOnlyList<LedgerEntry> ListAll()
+    {
+        // 使用不能(互換スキーマでない read-only DB 等)は空。書込側 _usable ガードと同基準。
+        if (!_usable)
+            return [];
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            """
+            SELECT identity_key, broadcast_time, part_index, station, program, broadcast_date,
+                   source_path, output_path, rule_version, used_fallback, imported_at
+            FROM imports
+            ORDER BY imported_at DESC;
+            """;
+
+        using var reader = cmd.ExecuteReader();
+        var results = new List<LedgerEntry>();
+        while (reader.Read())
+        {
+            var timeRaw = reader.GetString(1); // "HHmmss"、時刻なしは ""(TimeKey の逆)
+            results.Add(new LedgerEntry
+            {
+                IdentityKey = reader.GetString(0),
+                BroadcastTime = string.IsNullOrEmpty(timeRaw)
+                    ? null
+                    : TimeOnly.ParseExact(timeRaw, "HHmmss", CultureInfo.InvariantCulture),
+                PartIndex = reader.GetInt32(2),
+                Station = reader.GetString(3),
+                Program = reader.GetString(4),
+                BroadcastDate = DateOnly.ParseExact(reader.GetString(5), DateFormat, CultureInfo.InvariantCulture),
+                SourcePath = reader.GetString(6),
+                OutputPath = reader.GetString(7),
+                RuleVersion = reader.GetString(8),
+                UsedFallback = reader.GetInt32(9) != 0,
+                ImportedAtUtc = DateTimeOffset.Parse(
+                    reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            });
+        }
+        return results;
+    }
+
     // ---- IIngestFailureStore(取込失敗の de-dup。ADR-0011)----
 
     public bool IsKnown(string sourcePath, FileFingerprint fingerprint)

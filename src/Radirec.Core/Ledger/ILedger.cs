@@ -17,4 +17,11 @@ public interface ILedger
 
     /// <summary>取り込み済みとして記録する(既存キーは無視)。</summary>
     void Record(LedgerEntry entry);
+
+    /// <summary>
+    /// 取り込み済みの全記録を取込日時の降順(新しい順)で返す(取込履歴ビュー用。S4)。
+    /// 読み取り専用の用途で、書き込み側とは独立の接続から呼ばれうる。使用不能な台帳(dry-run の
+    /// NullLedger・互換スキーマでない read-only DB)は空を返す。
+    /// </summary>
+    IReadOnlyList<LedgerEntry> ListAll();
 }
