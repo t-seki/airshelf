@@ -1,5 +1,10 @@
 # 制御チャネル Windows 実機検証ランブック(ADR-0010 / #33・#50)
 
+> **⚠ OBSOLETE([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) / #64)**: トレイ常駐移行で
+> named pipe 制御チャネルは退役し、制御(rescan/reload/status)はトレイメニューからの in-process 呼び出しに
+> なった。本ランブックと `deploy/verify-control-channel.ps1`(削除済み)が検証する pipe/ACL/`radirec.exe status`
+> verb は存在しない。歴史的記録として残す。
+
 制御チャネル([ADR-0010](adr/0010-gui-service-control-via-named-pipe.md))は、WSL では named pipe の
 ACL(`PipeSecurity` は `PlatformNotSupported`)・実サービスの listener+worker 疎通・SQLite 再オープンが
 **構造的に検証できない**。よって単体テスト(WSL・golden/round-trip/配送不変条件)を通過しても、Windows 実機で

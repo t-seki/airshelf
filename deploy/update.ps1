@@ -1,16 +1,17 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Radirec のバイナリを差し替える(冪等)。
+  Radirec(トレイ常駐)のバイナリを差し替える(冪等)。
 
 .DESCRIPTION
-  稼働中サービスを停止 → radirec.exe を差し替え → 再開する。データ(設定・台帳・マスタ)は
-  %ProgramData%\radirec\ 側にあり触らない(ADR-0006)。台帳スキーマはサービス起動時に自動移行する
-  (ADR-0004)。認証情報は不要(登録済みの run-as アカウントを継承)。取込通知トレイ(Radirec.Gui。
-  ADR-0009)も、稼働中なら停止 → 差し替え → 再起動する(サービスとは独立)。
+  トレイ常駐移行(ADR-0012)後の更新スクリプト。取り込みワーカーはトレイ(Radirec.Gui)が
+  ホストするため、**Windows サービスの停止/起動は行わない**(以前は必要だった)。稼働中のトレイを
+  停止 → exe(Radirec.Gui.exe + 単発 CLI radirec.exe)を差し替え → トレイを再起動する。データ
+  (設定・台帳・マスタ)は %ProgramData%\radirec\ 側にあり触らない。台帳スキーマは起動時に自動移行する
+  (ADR-0004)。認証情報は不要。
 
-  稼働中に publish/コピーすると DLL ロックで失敗するため、必ず停止してから差し替える。
-  サービス未登録なら install.ps1 を先に実行するようエラーにする。
+  稼働中に publish/コピーすると exe/DLL ロックで失敗するため、必ずトレイを停止してから差し替える。
+  ※ Velopack 自己更新(トレイからの online 更新)は S5 / #67 で置き換える予定。
 
 .PARAMETER InstallDir
   実行体の配置先。既定 'C:\Program Files\radirec'。
@@ -23,71 +24,50 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# 取込通知トレイ(Radirec.Gui)の定数・ヘルパ(ADR-0009)。
+# 取込通知トレイ(Radirec.Gui)の定数・ヘルパ。
 . (Join-Path $PSScriptRoot '_TrayCommon.ps1')
 
-$ServiceName = 'Radirec'
 $SourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ExeSource = Join-Path $SourceRoot 'radirec.exe'
 $ExeTarget = Join-Path $InstallDir 'radirec.exe'
-
-# 取込通知トレイ。サービスとは独立に差し替える(ADR-0009)。
 $GuiExeSource = Join-Path $SourceRoot $GuiExeName
 $GuiExeTarget = Join-Path $InstallDir $GuiExeName
 
-if (-not (Test-Path $ExeSource)) {
-    throw "radirec.exe が見つかりません: $ExeSource(Release zip 内の deploy/ から実行してください)"
+if (-not (Test-Path $GuiExeSource)) {
+    throw "$GuiExeName が見つかりません: $GuiExeSource(Release zip 内の deploy/ から実行してください)"
+}
+if (-not (Test-Path $GuiExeTarget)) {
+    throw "トレイが未インストールです($GuiExeTarget)。先に install.ps1 を実行してください。"
 }
 
-$svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if (-not $svc) {
-    throw "サービス '$ServiceName' が未登録です。先に install.ps1 を実行してください。"
-}
+Write-Host "== Radirec 更新(トレイ常駐)==" -ForegroundColor Cyan
 
-Write-Host "== Radirec 更新 ==" -ForegroundColor Cyan
-
-# 1. 停止(DLL ロック回避)。Stop-Service は停止完了まで待つ。
-if ($svc.Status -ne 'Stopped') {
-    Write-Host "サービスを停止しています..."
-    Stop-Service -Name $ServiceName -Force
-    (Get-Service -Name $ServiceName).WaitForStatus('Stopped', '00:00:30')
-    Write-Host "[OK] 停止しました"
-} else {
-    Write-Host "[skip] サービスは既に停止しています"
-}
-
-# 2. バイナリ差し替え
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-Copy-Item -Path $ExeSource -Destination $ExeTarget -Force
-Write-Host "[OK] radirec.exe を差し替えました"
 
-# 3. サービス再開(起動時に台帳を自動移行)。ここまでを critical path として先に完結させる。
-Write-Host "サービスを開始しています..."
-Start-Service -Name $ServiceName
-(Get-Service -Name $ServiceName).WaitForStatus('Running', '00:00:30')
-Write-Host "[OK] 開始しました" -ForegroundColor Green
-
-# 4. 取込通知トレイ(Radirec.Gui)差し替え(サービスとは独立。ADR-0009)。
-#    トレイは cosmetic なので、ここでの失敗(exe ロック等)がサービス更新を巻き添えにしないよう
-#    try/catch で握る(サービスを止めたまま abort しない)。稼働中トレイは停止しロック解放を待つ(F4)。
-if (Test-Path $GuiExeSource) {
-    try {
-        $guiWasRunning = Test-TrayRunning
-        $guiWasInstalled = Test-Path $GuiExeTarget
-        Stop-Tray
-        Copy-Item -Path $GuiExeSource -Destination $GuiExeTarget -Force
-        Write-Host "[OK] $GuiExeName を差し替えました"
-        Register-TrayAutostart -ExePath $GuiExeTarget
-        # 稼働中だった、または今回初めて GUI が入った(未登録)なら起動して常駐を回復/初期化する。
-        if ($guiWasRunning -or -not $guiWasInstalled) {
-            Start-Process -FilePath $GuiExeTarget
-            Write-Host "[OK] 取込通知トレイを起動しました"
-        } else {
-            Write-Host "[skip] トレイは停止中だったため起動しません(次回ログオンで自動起動)"
-        }
-    } catch {
-        Write-Warning "通知トレイの更新に失敗しました(サービスは更新済み)。次回ログオンで回復します: $_"
-    }
+# 稼働状態を控えてトレイを停止(exe/DLL ロック解放を待つ)。
+$guiWasRunning = Test-TrayRunning
+Stop-Tray
+if ($guiWasRunning) {
+    Write-Host "[OK] トレイを停止しました"
 } else {
-    Write-Host "[skip] $GuiExeName が zip に無いため通知トレイは更新しません"
+    Write-Host "[skip] トレイは起動していませんでした"
+}
+
+# バイナリ差し替え(トレイ本体 + 単発 CLI)。
+Copy-Item -Path $GuiExeSource -Destination $GuiExeTarget -Force
+Write-Host "[OK] $GuiExeName を差し替えました"
+if (Test-Path $ExeSource) {
+    Copy-Item -Path $ExeSource -Destination $ExeTarget -Force
+    Write-Host "[OK] radirec.exe(単発 CLI)を差し替えました"
+}
+
+# 自動起動を冪等に確認。
+Register-TrayAutostart -ExePath $GuiExeTarget
+
+# 元々起動していた、または初回配置なら起動する。停止中だったなら次回ログオンで自動起動に任せる。
+if ($guiWasRunning) {
+    Start-Process -FilePath $GuiExeTarget
+    Write-Host "[OK] トレイを再起動しました" -ForegroundColor Green
+} else {
+    Write-Host "[skip] トレイは停止中だったため起動しません(次回ログオンで自動起動)"
 }
