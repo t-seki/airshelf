@@ -1,6 +1,6 @@
 # 取込通知の受け手は非パッケージ WPF トレイアプリ + 従来 WinRT トーストにする
 
-Status: accepted(#19 の受け手 GUI / #5 の tracer slice。#36・#37 でマージ済み)
+Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#19 の受け手 GUI / #5 の tracer slice。#36・#37 でマージ済み)。**ADR-0012 でトレイは「受け手(subscriber)」から「取り込みワーカーを内包する常駐本体」へ**。WPF トレイ + WinRT トースト選定は維持。不在中サマリの機構は変質(EventLog bookmark → 起動時 catch-up スキャン結果の集約)、bookmark / RecordId 単調ガード / catch-up 参加は削除。
 
 [ADR-0008](0008-ingest-notification-via-eventlog-signal.md) でサービスは取込要約シグナルを EventLog(EventID 1001)へ発行するようにした。その**受け手**(ユーザーセッションでネイティブトーストを出す常駐アプリ)を、#5(M5 デスクトップ編集アプリ・保留中)の**最初の tracer slice** として実装する。編集グリッド等の本体は保留のまま、まず「1001 を購読しトースト表示するだけ」の最小 GUI を作る。
 

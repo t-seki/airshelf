@@ -1,6 +1,6 @@
 # 運用者向け配布は PowerShell スクリプト + GitHub Release で行う(MSI/Inno は採らない)
 
-Status: accepted(#16 配布・インストール整備。GUI インストーラ(Inno Setup)は M5 / #5 へ先送り)
+Status: accepted。**[ADR-0012](0012-retire-service-for-tray-resident-per-user.md) / [ADR-0013](0013-velopack-per-user-updates.md) が supersede 予定(決定済み・実装保留)**(#16 配布・インストール整備。GUI インストーラ(Inno Setup)は M5 / #5 へ先送り)。サービス撤去で `New-Service -Credential` / `SeServiceLogonRight` / admin install / `deploy/*.ps1` は廃止、更新は Velopack per-user 自己更新(ADR-0013)へ。**移行実装までは `deploy/*.ps1` + admin install が現行の配布手段**。
 
 導入・更新・削除を「Release を落として `install.ps1` を管理者実行」で完結させるにあたり、インストーラ技術として PowerShell スクリプト・WiX(MSI)・Inno Setup を比較した。#16 の対象者は**運用者本人(管理者)・1〜数台**であり、非技術者向けのダブルクリック配布ではない。
 

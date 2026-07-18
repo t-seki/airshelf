@@ -1,6 +1,6 @@
 # 取込失敗は別 EventID の独立シグナルにする(1 アラート種別 = 1 シグナル)
 
-Status: accepted(軸A A3 / #5 配下。requirements §7.1 / [CONTEXT.md](../../CONTEXT.md) の「取込失敗シグナル」)
+Status: accepted。**[ADR-0012](0012-retire-service-for-tray-resident-per-user.md) が supersede 予定(決定済み・実装保留)**(軸A A3 / #5 配下。requirements §7.1 / [CONTEXT.md](../../CONTEXT.md) の「取込失敗シグナル」)。トレイ常駐 per-user 移行で失敗シグナル(EventID 1002)の EventLog 契約は退役し、ワーカーが in-process で失敗トーストを直接出す。「成功と失敗は別種・同居させない」区別は不変。**移行実装までは EventLog 1002 が現行の生きた契約**。
 
 [ADR-0008](0008-ingest-notification-via-eventlog-signal.md) でサービスは取込**要約**シグナル(成功)を EventLog(EventID 1001)へ発行するようにした。しかし**ファイル単位の失敗**(`IngestOutcome.Failed` = パース失敗・書込/タグ/台帳失敗)は `IngestReport` に入るだけで自由文ログ止まりで、トレイに届かない。A3 はこの失敗をユーザーセッションのトーストへ**能動通知**する。
 
