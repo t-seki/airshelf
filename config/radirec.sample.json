@@ -27,5 +27,12 @@
   "WatchDebounceSeconds": 10,
 
   // 新規取込時に取込通知(トースト)を出す。トレイ常駐が in-process で表示する(ADR-0012)。
-  "NotificationsEnabled": true
+  "NotificationsEnabled": true,
+
+  // アプリ内自己更新(Velopack。S6)。
+  // UpdatePrerelease: prerelease(RC)も更新対象にするか。既定 false(安定版のみ)。RC 検証時だけ true。
+  "UpdatePrerelease": false,
+  // UpdateToken: 更新フィード(GitHub Releases)を読むトークン。**private repo では必須**
+  //   (contents:read の fine-grained PAT)。空なら認証なし(public 扱い)。
+  "UpdateToken": ""
 }

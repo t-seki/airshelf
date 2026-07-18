@@ -18,22 +18,30 @@ internal sealed class ControlTrayMenu
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
     private readonly string? _ledgerPath;
+    private readonly UpdateService? _update;
+    private readonly UpdateCoordinator? _updateCoordinator;
     private readonly ToolStripMenuItem _rescan;
     private readonly ToolStripMenuItem _reload;
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
+    private readonly ToolStripMenuItem? _applyUpdate; // 更新保留時のみ表示(S6)
     private IngestHistoryWindow? _historyWindow;
 
     /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
     /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
     /// <param name="ledgerPath">台帳の絶対パス(取込履歴 S4 用)。設定未読込なら null で履歴項目を出さない。</param>
+    /// <param name="update">自己更新サービス(S6)。null / 未インストール(dev)なら更新項目を出さない。</param>
+    /// <param name="updateCoordinator">手動チェック用(S6)。</param>
     public ControlTrayMenu(
-        NotifyIcon tray, IServiceControl? control, string? degradedReason = null, string? ledgerPath = null)
+        NotifyIcon tray, IServiceControl? control, string? degradedReason = null, string? ledgerPath = null,
+        UpdateService? update = null, UpdateCoordinator? updateCoordinator = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
         _ledgerPath = ledgerPath;
+        _update = update?.IsInstalled == true ? update : null; // dev/portable では更新 UI を出さない
+        _updateCoordinator = updateCoordinator;
 
         _rescan = new ToolStripMenuItem("今すぐ再スキャン", image: null, OnRescan);
         _reload = new ToolStripMenuItem("設定リロード…", image: null, OnReload);
@@ -60,6 +68,15 @@ internal sealed class ControlTrayMenu
         // 取込履歴(S4 / #66)。設定が読めていれば台帳を参照できる(ワーカー起動失敗の縮退でも過去分は見える)。
         if (_ledgerPath is not null)
             Menu.Items.Add("取込履歴…", image: null, OnHistory);
+        // 更新(S6 / #68)。Velopack インストール時のみ。適用項目は保留中だけ表示する。
+        if (_update is not null)
+        {
+            Menu.Items.Add(new ToolStripSeparator());
+            Menu.Items.Add("今すぐ更新を確認", image: null, OnCheckUpdate);
+            _applyUpdate = new ToolStripMenuItem("更新を適用して再起動", image: null, OnApplyUpdate) { Visible = false };
+            Menu.Items.Add(_applyUpdate);
+        }
+        Menu.Items.Add(new ToolStripSeparator());
         // 縮退(設定未読込 / ワーカー起動失敗)時は、設定修正後にプロセスごと再起動して復帰できる導線を出す
         // (control==null は復旧経路が無く、再起動しないと取り込みが始まらないため)。
         if (_control is null)
@@ -73,6 +90,8 @@ internal sealed class ControlTrayMenu
 
     private void OnOpening(object? sender, CancelEventArgs e)
     {
+        RefreshUpdateItem(); // 直近のチェックで見つかった保留更新を反映(S6)
+
         if (_control is null)
         {
             // 取り込みワーカー未起動(設定未読込 or 起動失敗)。制御は不可、理由を明示する。
@@ -177,6 +196,57 @@ internal sealed class ControlTrayMenu
             _historyWindow = null;
             TrayLog.Warn($"取込履歴ウィンドウを開けませんでした: {ex}");
             _tray.ShowBalloonTip(4000, "Radirec", "取込履歴を開けませんでした(gui.log 参照)", ToolTipIcon.Warning);
+        }
+    }
+
+    private async void OnCheckUpdate(object? sender, EventArgs e)
+    {
+        if (_updateCoordinator is null)
+            return;
+        await _updateCoordinator.CheckAndNotifyAsync(manual: true); // 結果はバルーンで返る
+        RefreshUpdateItem();
+    }
+
+    private async void OnApplyUpdate(object? sender, EventArgs e)
+    {
+        if (_update is null)
+            return;
+
+        var confirm = MessageBox.Show(
+            $"更新 v{_update.PendingVersion} を適用してアプリを再起動します。取り込み中でも import-once で安全です。よろしいですか?",
+            "更新の適用",
+            MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button1);
+        if (confirm != DialogResult.OK)
+            return;
+
+        try
+        {
+            await _update.ApplyAndRestartAsync(); // 成功時は再起動して戻らない
+        }
+        catch (Exception ex)
+        {
+            TrayLog.Warn($"更新の適用に失敗しました: {ex}");
+            _tray.ShowBalloonTip(4000, "Radirec", "更新の適用に失敗しました(gui.log 参照)。", ToolTipIcon.Warning);
+        }
+    }
+
+    // 保留中の更新があれば「更新 vX を適用…」項目を出す。無ければ隠す。Opening と手動チェック後に呼ぶ。
+    private void RefreshUpdateItem()
+    {
+        if (_applyUpdate is null || _update is null)
+            return;
+
+        var version = _update.PendingVersion;
+        if (version is null)
+        {
+            _applyUpdate.Visible = false;
+        }
+        else
+        {
+            _applyUpdate.Text = $"更新 v{version} を適用して再起動";
+            _applyUpdate.Visible = true;
         }
     }
 }

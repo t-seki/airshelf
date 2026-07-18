@@ -43,8 +43,20 @@ public sealed class RadirecConfig
     public int WatchDebounceSeconds { get; set; } = 10;
 
     /// <summary>
-    /// 新規取込時に取込要約シグナル(EventLog EventID 1001)を発行するか(ADR-0008)。
-    /// 受け手(GUI/常駐)がこれを購読しデスクトップ通知を表示する。既定 true。
+    /// 新規取込時に取込通知(トースト)を出すか。トレイ常駐が in-process で表示する(ADR-0012)。既定 true。
     /// </summary>
     public bool NotificationsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// アプリ内自己更新(Velopack)で prerelease(RC)も対象にするか。既定 false(安定版のみ)。
+    /// RC の更新フロー検証時のみ true にする(S6 / ADR-0013)。
+    /// </summary>
+    public bool UpdatePrerelease { get; set; }
+
+    /// <summary>
+    /// 更新フィード(GitHub Releases)を読むためのトークン。**private repo では必須**
+    /// (contents:read の fine-grained PAT)。空なら public 扱いで認証なし。バイナリには埋め込まず
+    /// ここ(ローカル config)にだけ置く(ADR-0013)。
+    /// </summary>
+    public string UpdateToken { get; set; } = string.Empty;
 }
