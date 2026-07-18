@@ -18,8 +18,35 @@ Status: accepted([ADR-0012](0012-retire-service-for-tray-resident-per-user.md) �
 
 ## Consequences
 
-- `release.yml` を Velopack 成果物(`vpk pack` / full + delta + フィード用メタ)生成へ書き換える。GitHub Releases アセットとして発行し、Velopack のフィードにする。
-- トレイに更新チェック UI(現在版表示 = 元 item 1、「更新があります」通知、適用ボタン)を持たせる。適用は再起動を伴う。
-- prerelease タグ(`-rc` 等)の扱い(#45 相当)を Velopack のチャネル機能で維持する。
+grill(2026-07-19)で S5(#67 配布・install/データ位置)と S6(#68 更新 UX)の具体を決めた。
+
+### 配布・インストール(S5 / #67)
+
+- **`Setup.exe`(per-user・非 admin)が zip + `install.ps1` を置換**。`vpk pack` は Setup.exe / full+delta nupkg / portable / フィード manifest(`releases.<channel>.json`)/ 埋め込み `Update.exe` を生成する。
+- **データ位置 = `%LOCALAPPDATA%\radirec\`(Local・非 roaming)**。当初 `%APPDATA%`(Roaming)と記したが誤り: **SQLite 台帳はマシンローカルな取込済み記録**で、roaming すると (a) 稼働中 DB の同期で破損、(b) 別マシンで無意味。config も `I:`/NAS UNC などマシン固有パスを指す。`ConfigPaths.DataRoot` を `CommonApplicationData`(ProgramData)→ `LocalApplicationData` へ変更(ADR-0006 amend)。gui.log(`AppData.cs`)が既に `%LocalAppData%\Radirec` なので、トレイの状態が 1 箇所にまとまる。データは Velopack の versioned app ディレクトリ(`current/`)の**外**に置く(更新で消えないため)。
+- **config seeding をアプリへ移設**: `install.ps1` がやっていた「sample から `radirec.json`/`stations.json`/`programs.json` を生成(既存は温存)」を、**トレイ初回起動時**に行う。sample は **EmbeddedResource** でバンドル(loose file を避ける)。
+- **既存データ移行 = 一度きり runbook**(手動)。旧トレイ/サービスを停止 → `%ProgramData%\radirec\*`(`ledger.db` + `-wal` + `-shm` + json)を `%LOCALAPPDATA%\radirec\` へコピー → Velopack 版を起動。ADR-0006 の先例(「データ移行はスクリプト化せず runbook」)に一致。**新規ユーザー(将来 C3)は ProgramData に何も無く移行不要**なので、恒久の自動移行コードは置かない。台帳を運び損ねると次回スキャンで全件が未取込判定 → NAS 全再コピーになるため、runbook で明示。
+- **`deploy/*.ps1` は退役**(install/update は Velopack、uninstall は `Update.exe --uninstall` / Add-Remove Programs)。旧 Windows サービス退役の手順だけ docs の runbook に残す。
+- **`VelopackApp.Build().Run()` を `Program.Main` 先頭**に追加(install/update/uninstall フックの処理)。
+- **dev CLI `radirec.exe` は Velopack バンドルに同梱**(pack ディレクトリへ一緒に publish。`%LOCALAPPDATA%\Radirec\current\` から dev/batch 実行可)。mainExe はトレイ(`-e Radirec.Gui.exe`)。
+- **`release.yml` を vpk 化**: `dotnet publish`(両 exe を 1 フォルダへ)→ `dotnet tool install -g vpk` → `vpk download github`(delta 基準)→ `vpk pack -u Radirec -v <ver> -p <publish> -e Radirec.Gui.exe` → `vpk upload github --publish --tag v<ver>`。既存の「zip + softprops upload」を置換。CI は既存 `GITHUB_TOKEN`(`contents: write`)を使う。
+
+### private repo フィードのトークン
+
+- 本 repo は **private**。発行(CI)は `GITHUB_TOKEN` で動くが、**アプリの更新チェック/DL は private Release の asset 認証が要る**。`GithubSource(repoUrl, accessToken, prerelease)` の第 2 引数にトークンが必要。
+- **トークンは config に置く**(既存 `JellyfinApiKey` と同じ流儀。fine-grained・当 repo の contents:read のみ)。**配布バイナリには埋め込まない**(埋め込むと誰でも抽出して private repo を読める)。単一機の今はこれで十分。
+- **C3(他人配布)着手時は「Release だけ別の public repo」**へ切り替え、トークン依存を消す(コードは private のまま)。
+
+### 更新 UX(S6 / #68)
+
+- `UpdateManager(new GithubSource(repoUrl, configToken, updatePrerelease))` → `CheckForUpdatesAsync` → `DownloadUpdatesAsync` → `ApplyUpdatesAndRestart`。
+- **チェック時機 = 起動時 + 定期(24h)+ 手動「今すぐ更新を確認」メニュー項目**(常駐は滅多に再起動しないので起動時だけでは気づけない。手動項目は RC 検証にも必須)。
+- **提示 = トレイメニュー項目「更新があります(x.y.z)」を主 + 初回検知時のみトースト 1 回**。S1 の版行に「更新あり」を併記。
+- **適用 = 確認ダイアログ → DL → 適用 → 再起動**。取り込み中でも import-once + catch-up(ADR-0003)で再起動は安全。
+- **`UpdatePrerelease` config トグル(既定 false = 安定版のみ)**。RC(prerelease)の更新フロー E2E を可能にし、prerelease opt-in も兼ねる。
+- **RC の E2E**: ① 各 RC の `Setup.exe`(prerelease に添付)を手動導入(admin 不要)で install 検証。② `UpdatePrerelease=true` にして rc1 導入 → rc2 発行 → アプリが検知・適用、で更新機構を検証。本番は false に戻す。
+
+### 共通
+
 - 依存として Velopack ランタイム/ツール(`vpk`)を導入する。
-- 他人配布(C3)着手時は、本 Velopack を土台に winget 発見導線やコード署名を被せる。
+- コード署名 / SmartScreen 対策は引き続き非目標(単一ユーザー機)。C3 着手時に winget 発見導線と署名を被せる。
