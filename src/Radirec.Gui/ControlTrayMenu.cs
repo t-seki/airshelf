@@ -16,15 +16,19 @@ internal sealed class ControlTrayMenu
 {
     private readonly NotifyIcon _tray;
     private readonly IServiceControl? _control;
+    private readonly string? _degradedReason;
     private readonly ToolStripMenuItem _rescan;
     private readonly ToolStripMenuItem _reload;
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
 
-    public ControlTrayMenu(NotifyIcon tray, IServiceControl? control)
+    /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
+    /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
+    public ControlTrayMenu(NotifyIcon tray, IServiceControl? control, string? degradedReason = null)
     {
         _tray = tray;
         _control = control;
+        _degradedReason = degradedReason;
 
         _rescan = new ToolStripMenuItem("今すぐ再スキャン", image: null, OnRescan);
         _reload = new ToolStripMenuItem("設定リロード…", image: null, OnReload);
@@ -48,6 +52,10 @@ internal sealed class ControlTrayMenu
         Menu.Items.Add(_statusLine);
         Menu.Items.Add(_lastScanLine);
         Menu.Items.Add(new ToolStripSeparator());
+        // 縮退(設定未読込 / ワーカー起動失敗)時は、設定修正後にプロセスごと再起動して復帰できる導線を出す
+        // (control==null は復旧経路が無く、再起動しないと取り込みが始まらないため)。
+        if (_control is null)
+            Menu.Items.Add("再読み込みして再起動", image: null, (_, _) => Application.Restart());
         Menu.Items.Add("終了", image: null, (_, _) => Application.Exit());
 
         Menu.Opening += OnOpening;
@@ -59,10 +67,10 @@ internal sealed class ControlTrayMenu
     {
         if (_control is null)
         {
-            // 取り込みワーカー未起動(設定未読込)。制御は不可、状態は「停止中」で表示する。
+            // 取り込みワーカー未起動(設定未読込 or 起動失敗)。制御は不可、理由を明示する。
             _rescan.Enabled = false;
             _reload.Enabled = false;
-            _statusLine.Text = "状態: 取り込み停止中(設定未読込)";
+            _statusLine.Text = $"状態: 取り込み停止中({_degradedReason ?? "未起動"})";
             _lastScanLine.Text = "最終スキャン: —";
             return;
         }
@@ -73,6 +81,17 @@ internal sealed class ControlTrayMenu
 
     private void ApplyReachable(ServiceStatusSnapshot status)
     {
+        // ワーカーが異常終了してもトレイ(メッセージループ)は生存しうる。その場合「稼働中」と偽らず、
+        // 停止を明示して rescan/reload を伏せる(誤って「動いている」と信じさせない。ADR-0012)。
+        if (!status.Running)
+        {
+            _rescan.Enabled = false;
+            _reload.Enabled = false;
+            _statusLine.Text = "状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)";
+            _lastScanLine.Text = "最終スキャン: —";
+            return;
+        }
+
         _rescan.Enabled = true;
         _reload.Enabled = true;
 

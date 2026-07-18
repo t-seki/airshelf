@@ -20,32 +20,43 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        // 単一インスタンス化。トレイがワーカー(台帳オープン・I: 監視)を内包するため、二重起動すると
+        // 台帳ロックで片方が縮退したり、最悪二重取り込み + 重複トーストになる。既に起動済みなら黙って終了。
+        using var singleInstance = new Mutex(initiallyOwned: true, @"Local\Radirec.Gui.SingleInstance", out var isNew);
+        if (!isNew)
+            return;
+
         ApplicationConfiguration.Initialize();
 
         // 起動シーケンス(自己登録・ホスト構築・トレイ生成)は WinExe でコンソールが無く、失敗すると
         // 無痕跡でトレイが現れないだけになる。ログに残して初回起動失敗を診断可能にする。
         IHost? host = null;
         IServiceControl? control = null;
+        string? degradedReason = null; // control==null の理由(縮退メニュー表示用)。
         NotifyIcon trayIcon;
         try
         {
             var exePath = Environment.ProcessPath ?? Application.ExecutablePath;
             StartupRegistrar.Register(exePath); // ログオン自動起動を自己登録(冪等)
 
-            // 設定を読み、取り込みワーカーをこのプロセスでホストする。設定が読めないときは取り込みを
-            // 起動せず、トレイ(版表示・終了)だけを出す縮退にする(無痕跡で消えるより診断可能)。
+            // 設定を読み、取り込みワーカーをこのプロセスでホストする。設定が読めない/ワーカー起動に失敗
+            // したときは取り込みを起動せず、トレイ(版表示・終了・再起動)だけを出す縮退にする。
             var configPath = ConfigPaths.Resolve(null);
             if (ConfigLoading.TryLoad(configPath, out var config, out var error))
             {
                 try
                 {
                     host = BuildHost(config!, configPath);
-                    // 起動は独自 try で包む。ワーカー構築(台帳オープン)や起動時スキャンが失敗しても
-                    // (ログオン時点で NAS 未接続・SQLite ロック・stations/programs 解析失敗等)、ここで
-                    // return せず control=null の縮退トレイへフォールバックする。無痕跡でトレイが消えるより
-                    // 「アプリは生きているが取り込み停止中」を可視化する(旧受け手トレイと同じ耐性)。
-                    host.Start();
+                    // ワーカーを解決(ctor = 台帳オープン。ローカルディスクで速い)。ここで throw すれば縮退。
                     control = host.Services.GetRequiredService<RadioMonitorWorker>();
+                    // ★ host の起動は UI スレッドで走らせない。BackgroundService の同期プレフィックス
+                    // (CleanupOrphans が I: = NAS を列挙、StartWatcher)は最初の await までホスト起動を
+                    // 呼んだスレッドで動くため、ログオン時に NAS 未接続だと数十秒ハングしトレイ生成を
+                    // ブロックしうる。別スレッドで起動してトレイを即出す(ハングは try/catch で捕まらない)。
+                    _ = Task.Run(() => host!.StartAsync())
+                        .ContinueWith(
+                            t => TrayLog.Warn($"取り込みワーカーのホスト起動が失敗しました(状態は「停止」に反映): {t.Exception}"),
+                            TaskContinuationOptions.OnlyOnFaulted);
                     TrayLog.Info("取り込みワーカーを起動しました");
                 }
                 catch (Exception ex)
@@ -54,11 +65,13 @@ internal static class Program
                     StopHost(host);
                     host = null;
                     control = null;
+                    degradedReason = "取り込みの起動に失敗しました(gui.log 参照)";
                 }
             }
             else
             {
                 TrayLog.Warn($"設定の読み込みに失敗しました({error})。取り込みは起動せずトレイのみ表示します");
+                degradedReason = "設定を読み込めませんでした";
             }
 
             trayIcon = new NotifyIcon
@@ -68,8 +81,8 @@ internal static class Program
                 Visible = true,
             };
             // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
-            // control が null(設定未読込)ならメニューは縮退表示する。
-            trayIcon.ContextMenuStrip = new ControlTrayMenu(trayIcon, control).Menu;
+            // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
+            trayIcon.ContextMenuStrip = new ControlTrayMenu(trayIcon, control, degradedReason).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
         }

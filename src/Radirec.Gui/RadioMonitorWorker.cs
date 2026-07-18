@@ -96,8 +96,12 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// <summary>手動再スキャン。既存の要求チャネルへ coalesce される冪等操作(受理まで)。</summary>
     public void RequestRescan() => Request("手動");
 
-    /// <summary>ライブ状態のスナップショット(在中スキャン中でも直列チャネルを介さず即応)。</summary>
-    public ServiceStatusSnapshot GetStatus() => _status;
+    /// <summary>
+    /// ライブ状態のスナップショット(在中スキャン中でも直列チャネルを介さず即応)。
+    /// 取り込みループの生死(<see cref="_running"/>)を毎回反映する。トレイは生存したまま
+    /// ワーカーだけ異常終了した場合に「稼働中」と偽らないため(ADR-0012)。
+    /// </summary>
+    public ServiceStatusSnapshot GetStatus() => _status with { Running = _running };
 
     /// <summary>
     /// 設定リロード。新 config の読込+構文検証だけ**同期実行**(グラフに触れない)し、妥当なら再構築を

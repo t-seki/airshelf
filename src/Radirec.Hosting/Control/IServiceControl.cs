@@ -1,14 +1,14 @@
 namespace Radirec.Hosting.Control;
 
 /// <summary>
-/// listener が常駐 worker へ触れる**狭い仲介面**(ADR-0010)。実装は <c>RadioMonitorWorker</c>。
-/// listener は worker の内部実装ではなくこの interface だけに依存し、結合を最小化する。
+/// トレイメニューが常駐 worker へ触れる**狭い仲介面**(ADR-0010 / 0012)。実装は <c>RadioMonitorWorker</c>。
+/// 呼び出し側は worker の内部実装ではなくこの interface だけに依存し、結合を最小化する。
 /// DI singleton として worker と同一インスタンスを共有する。
 /// <para>
-/// **スレッド安全性契約**: 制御チャネルは接続を並行に捌く(<c>ControlPipeServer</c> の
-/// <c>MaxConcurrentConnections</c>。#43)ため、本 interface のメソッドは**複数スレッドから同時に**
-/// 呼ばれうる。実装はスレッドセーフであること(非アトミックな可変状態を足さない)。既定実装は
-/// rescan=Channel・status=volatile 参照読み・reload=Interlocked/lock で満たす。
+/// **スレッド安全性契約**: トレイ常駐移行(ADR-0012)後は UI スレッドから呼ばれ、ワーカーは別スレッドで
+/// 走る。メソッドは**別スレッドと並行に**呼ばれうる(status 読み取り中に worker が状態を更新する等)ため、
+/// 実装はスレッドセーフであること。既定実装は rescan=Channel・status=volatile 参照読み・
+/// reload=Interlocked/lock で満たす。
 /// </para>
 /// </summary>
 public interface IServiceControl
