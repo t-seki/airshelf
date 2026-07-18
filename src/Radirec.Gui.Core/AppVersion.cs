@@ -29,9 +29,10 @@ public static class AppVersion
         var version = informationalVersion.Trim();
 
         // build metadata(SemVer の '+' 以降。SourceLink の +<commit> 等)は表示に含めない。
+        // 切り出した後にもう一度 Trim する('+' 直前の空白が末尾に残るのを防ぐ)。
         var plus = version.IndexOf('+');
         if (plus >= 0)
-            version = version[..plus];
+            version = version[..plus].Trim();
 
         return version.Length == 0 ? Unknown : version;
     }

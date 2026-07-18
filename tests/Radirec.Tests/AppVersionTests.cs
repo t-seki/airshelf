@@ -10,6 +10,7 @@ public class AppVersionTests
     [InlineData("0.3.0+abc123", "0.3.0")]           // build metadata を落とす
     [InlineData("0.3.0-rc1+abc123", "0.3.0-rc1")]   // prerelease は残し metadata だけ落とす
     [InlineData("  0.3.0  ", "0.3.0")]              // 前後空白を除去
+    [InlineData("0.3.0 +abc123", "0.3.0")]          // '+' 直前の空白も残さない
     public void Format_strips_build_metadata_keeps_prerelease(string input, string expected) =>
         Assert.Equal(expected, AppVersion.Format(input));
 
