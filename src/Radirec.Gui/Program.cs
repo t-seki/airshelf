@@ -39,6 +39,8 @@ internal static class Program
         IServiceControl? control = null;
         string? degradedReason = null; // control==null の理由(縮退メニュー表示用)。
         string? ledgerPath = null;     // 取込履歴(S4)。設定が読めていれば worker 起動可否に依らず参照可。
+        UpdateService? updateService = null;       // 自己更新(S6)。設定が読めたときだけ。
+        UpdateCoordinator? updateCoordinator = null;
         NotifyIcon trayIcon;
         try
         {
@@ -55,6 +57,17 @@ internal static class Program
             {
                 // 設定が読めた時点で台帳パスは判る。worker の起動可否に依らず取込履歴は参照できる。
                 ledgerPath = config!.LedgerPath;
+
+                // 自己更新(S6)。dev/portable(未 Velopack)では UpdateService.IsInstalled が false になり
+                // 更新 UI は出ない。生成自体が失敗してもトレイは壊さない。
+                try
+                {
+                    updateService = new UpdateService(config.UpdateToken, config.UpdatePrerelease);
+                }
+                catch (Exception ex)
+                {
+                    TrayLog.Warn($"自己更新の初期化に失敗しました(更新無効で継続): {ex.Message}");
+                }
                 try
                 {
                     host = BuildHost(config!, configPath);
@@ -91,9 +104,36 @@ internal static class Program
                 Text = "Radirec",
                 Visible = true,
             };
+            // 自己更新の自動チェック(起動時 + 24h。S6)。**Velopack インストール時のみ**実働する
+            // (dev/portable で no-op タイマーを作らない)。生成失敗はトレイを壊さない。
+            if (updateService?.IsInstalled == true)
+            {
+                try
+                {
+                    updateCoordinator = new UpdateCoordinator(updateService, trayIcon);
+                }
+                catch (Exception ex)
+                {
+                    TrayLog.Warn($"更新チェックの初期化に失敗しました(更新無効で継続): {ex.Message}");
+                    updateCoordinator = null;
+                }
+            }
+
+            // 更新適用直前にワーカーを graceful 停止するコールバック(在中スキャン完了・SQLite クローズ →
+            // 取込中断/ファイルロックを避ける。S6 レビュー)。ワーカー未起動時は null。
+            var capturedHost = host;
+            Func<Task>? drainWorker = capturedHost is null
+                ? null
+                : async () =>
+                {
+                    try { await capturedHost.StopAsync(TimeSpan.FromSeconds(15)); }
+                    catch (Exception ex) { TrayLog.Warn($"更新適用前のワーカー停止で例外: {ex.Message}"); }
+                };
+
             // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
-            trayIcon.ContextMenuStrip = new ControlTrayMenu(trayIcon, control, degradedReason, ledgerPath).Menu;
+            trayIcon.ContextMenuStrip = new ControlTrayMenu(
+                trayIcon, control, degradedReason, ledgerPath, updateService, updateCoordinator, drainWorker).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
         }
@@ -110,7 +150,8 @@ internal static class Program
             trayIcon.Visible = false;
         }
 
-        // メッセージループ終了(終了メニュー)後、ワーカーを graceful に停止する。
+        // 更新チェックタイマーを止め、ワーカーを graceful に停止する。
+        updateCoordinator?.Dispose();
         StopHost(host);
     }
 
