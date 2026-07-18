@@ -12,21 +12,13 @@ namespace Radirec.Gui;
 [SupportedOSPlatform("windows")]
 public sealed class ToastPresenter
 {
-    /// <summary>ライブ取込通知(「新規取込 N件」)を表示する。</summary>
+    /// <summary>取込通知(「新規取込 N件」)を表示する。起動時 catch-up の集約もこれで出す(ADR-0012)。</summary>
     public void Show(IngestSummaryPayload payload) =>
         Show(IngestToastFormatter.BuildTexts(payload));
 
-    /// <summary>不在中サマリ(「不在中の取込 N件」)を表示する(軸A A2)。</summary>
-    public void ShowWhileAway(IngestSummaryPayload payload) =>
-        Show(IngestToastFormatter.BuildWhileAwayTexts(payload));
-
-    /// <summary>ライブ取込失敗通知(「取込失敗 N件」)を表示する(軸A A3)。</summary>
+    /// <summary>取込失敗通知(「取込失敗 N件」)を表示する(ADR-0011)。</summary>
     public void ShowFailure(IngestFailurePayload payload) =>
         Show(IngestToastFormatter.BuildFailureTexts(payload));
-
-    /// <summary>不在中サマリの失敗版(「不在中の失敗 N件」)を表示する(軸A A3)。</summary>
-    public void ShowWhileAwayFailure(IngestFailurePayload payload) =>
-        Show(IngestToastFormatter.BuildWhileAwayFailureTexts(payload));
 
     private static void Show(IReadOnlyList<string> texts)
     {

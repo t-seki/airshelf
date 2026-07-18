@@ -14,14 +14,9 @@ app.Configure(config =>
     config.AddCommand<RefreshCommand>("refresh")
         .WithDescription("Jellyfin のライブラリ更新を手動で起動する")
         .WithExample("refresh", "--config", "radirec.json");
-    config.AddCommand<ServiceCommand>("service")
-        .WithDescription("Windows サービスとして常駐し録音を自動取り込みする");
-    config.AddCommand<RescanCommand>("rescan")
-        .WithDescription("常駐サービスへ手動再スキャンを要求する(制御チャネル)");
-    config.AddCommand<StatusCommand>("status")
-        .WithDescription("常駐サービスのライブ状態を取得して表示する(制御チャネル)");
-    config.AddCommand<ReloadCommand>("reload")
-        .WithDescription("常駐サービスに radirec.json の再読込を要求する(制御チャネル)");
+    // 常駐(service)と制御 verb(rescan/status/reload)は撤去した。常駐はトレイ(Radirec.Gui)が
+    // 担い、制御はトレイメニューから in-process で行う(ADR-0012)。radirec.exe は dev/batch 用の
+    // 単発 CLI(ingest / refresh)に縮小。
 });
 
 return await app.RunAsync(args);

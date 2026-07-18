@@ -1,12 +1,12 @@
 namespace Radirec.Gui.Core;
 
 /// <summary>
-/// 取込要約シグナル(EventLog EventID 1001)の JSON envelope に対応する受け手側 DTO(ADR-0008 / 0009)。
-/// 発行側(Hosting)の C# 型は共有せず、バージョン付き JSON 契約として受ける。ドリフトは契約テストで検出する。
+/// 取込要約をトースト表示するための presentation view model(ADR-0012)。トレイ常駐移行で取込通知は
+/// in-process 化したため、Core の <c>IngestSummary</c> を publisher 側で本型へ写して
+/// <see cref="IngestToastFormatter"/> に渡す(放送日/時刻は表示用の文字列で持つ)。
 /// </summary>
 public sealed record IngestSummaryPayload
 {
-    public int SchemaVersion { get; init; }
     public int TotalImported { get; init; }
     public bool Truncated { get; init; }
     public IReadOnlyList<IngestSummaryAlbumPayload> Albums { get; init; } = [];

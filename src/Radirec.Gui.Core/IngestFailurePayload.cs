@@ -1,14 +1,13 @@
 namespace Radirec.Gui.Core;
 
 /// <summary>
-/// 取込失敗シグナル(EventLog EventID 1002)の JSON envelope に対応する受け手側 DTO(ADR-0011)。
-/// 発行側(Hosting)の C# 型は共有せず、バージョン付き JSON 契約として受ける。ドリフトは契約テストで検出する。
+/// 取込失敗をトースト表示するための presentation view model(ADR-0011/0012)。トレイ常駐移行で
+/// 取込通知は in-process 化したため、Core の <c>IngestFailureSignal</c> を publisher 側で本型へ写して
+/// <see cref="IngestToastFormatter"/> に渡す。
 /// </summary>
 public sealed record IngestFailurePayload
 {
-    public int SchemaVersion { get; init; }
-
-    /// <summary>新しく現れた失敗の総数(発行側で de-dup 済み。キャップ前の実数)。</summary>
+    /// <summary>新しく現れた失敗の総数(de-dup 済み。キャップ前の実数)。</summary>
     public int FailedCount { get; init; }
 
     /// <summary>表示上限により files を間引いたか。</summary>

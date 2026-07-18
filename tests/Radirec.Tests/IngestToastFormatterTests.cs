@@ -7,7 +7,6 @@ public sealed class IngestToastFormatterTests
     private static IngestSummaryPayload Payload(
         int total, bool truncated, params IngestSummaryAlbumPayload[] albums) => new()
     {
-        SchemaVersion = 1,
         TotalImported = total,
         Truncated = truncated,
         Albums = albums,

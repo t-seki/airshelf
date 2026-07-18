@@ -34,7 +34,8 @@ Status: accepted(常駐モデルの構造転換。ADR-0003/0005/0006/0007/0008/0
 ## Consequences
 
 - **C2 を先行実施(かつ C2 より大きい)**: これまでの「2 ツリー・共有 ProjectReference 無し・JSON 契約でのみ接続」という疎結合の不変条件を**意図的に退役**する。ただし C2 は本来「編集グリッドがタグ書込のため Core を呼ぶ」だけの参照だったのに対し、本移行は**監視・キャッチアップ・取り込みワーカー一式をトレイプロセスにホストする**もので、C2 より踏み込んだ統合になる。疎結合の存在理由(Session 0 橋)が消えるため首尾一貫している。
-  - **参照の実体は `Radirec.Gui → Radirec.Hosting → Radirec.Core`**(当初「Gui→Core」と記したが不正確だった)。ワーカーは `CompositionRoot`(Hosting)に依存するため、Gui は Hosting を参照する。Hosting は移行後、**dev/batch CLI(`Radirec.Cli`)と常駐トレイ(`Radirec.Gui`)の 2 フロントエンドが共有する合成 + ワーカー層**になる(だから Hosting は Cli に畳まず独立を保つ)。ワーカー `RadioMonitorWorker` は `Radirec.Cli` から Hosting へ移す。※ワーカーは `SystemEvents.PowerModeChanged`(Windows 専用)に依存するため、Hosting のどの TFM/切り分けに置くかは実装時に詰める。
+  - **参照の実体は `Radirec.Gui → Radirec.Hosting → Radirec.Core`**(当初「Gui→Core」と記したが不正確だった)。ワーカーは `CompositionRoot`(Hosting)に依存するため、Gui は Hosting を参照する。Hosting は移行後、**dev/batch CLI(`Radirec.Cli`)と常駐トレイ(`Radirec.Gui`)の 2 フロントエンドが共有する合成層**になる(だから Hosting は Cli に畳まず独立を保つ)。
+  - **ワーカー `RadioMonitorWorker` は `Radirec.Cli` から `Radirec.Gui` へ移す**(Hosting ではなく)。理由: ワーカーは `SystemEvents.PowerModeChanged`(Windows 専用)に依存するため、Hosting に置くと Hosting が `net10.0-windows` 化し、それを参照する `Radirec.Tests`(net10.0・Linux CI)まで巻き添えになる。移行後ワーカーを host するのは Gui(既に `net10.0-windows`)だけなので、Gui に置けば Hosting/Core はクロスプラットフォームのまま保てる。共有が必要な `ConfigLoading` / `ServiceRuntimeOptions` は Cli → Hosting へ移す。
   - `Radirec.Gui.Core` は分離を維持するが役割が変わる: EventLog subscriber 契約(JSON DTO・購読 parse・制御 DTO)は削除され、**CI で走らせられない WinRT/WPF/WinForms シェルから隔離した「テスト可能な提示ロジック」(トースト文面整形・履歴行整形・版表示)** の置き場になる。
 - **supersede/amend される決定**:
   - [ADR-0005](0005-single-exe-cli-service-merge.md)(**amend**): `radirec.exe` の `service` verb を廃止。`radirec.exe` は dev/batch の単発 CLI(`ingest`/`refresh`/`dry-run`)専用に縮小。単一 exe 原則は CLI 側で維持。

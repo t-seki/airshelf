@@ -1,32 +1,30 @@
 using System.ComponentModel;
 using System.Windows.Forms;
 using Radirec.Gui.Core;
-using Radirec.Gui.Core.Control;
+using Radirec.Hosting.Control;
 
 namespace Radirec.Gui;
 
 /// <summary>
-/// トレイの制御チャネル窓口(ADR-0010 / 軸B)。rescan / status / reload をメニューから叩く。
-/// status はメニューを開いた瞬間(<see cref="ToolStripDropDown.Opening"/>)に 1 回問い合わせ、結果で
-/// 表示を書き換える(常時ポーリング=B2 はしない)。パイプ呼び出しは <c>async void</c> ハンドラで行い、
-/// <c>await</c> 継続が UI スレッドへ戻る性質でメニューを固めずに項目を更新する。サービス未達
-/// (<see cref="ControlUnavailableException"/>)は「サービス停止中」表示 + rescan/reload グレーアウトへ縮退し、
-/// エラーダイアログは出さない(サービス未起動は正常な状態の 1 つ)。
+/// トレイの制御メニュー(ADR-0012)。rescan / status / reload を、同一プロセスでホストする
+/// 取り込みワーカーの <see cref="IServiceControl"/> を**直接 in-process 呼び出し**で叩く(named pipe は退役)。
+/// status はメニューを開いた瞬間(<see cref="ToolStripDropDown.Opening"/>)にスナップショットを読んで表示を
+/// 更新する。取り込みワーカー未起動(設定未読込 = <see cref="IServiceControl"/> が null)のときは
+/// rescan/reload をグレーアウトし「取り込み停止中」を表示する縮退にする。
 /// </summary>
 internal sealed class ControlTrayMenu
 {
     private readonly NotifyIcon _tray;
+    private readonly IServiceControl? _control;
     private readonly ToolStripMenuItem _rescan;
     private readonly ToolStripMenuItem _reload;
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
-    private CancellationTokenSource? _statusCts;
-    // rescan/reload の多重発火防止。全ハンドラは UI スレッド上で直列化されるので単純な bool で足りる。
-    private bool _commandInFlight;
 
-    public ControlTrayMenu(NotifyIcon tray)
+    public ControlTrayMenu(NotifyIcon tray, IServiceControl? control)
     {
         _tray = tray;
+        _control = control;
 
         _rescan = new ToolStripMenuItem("今すぐ再スキャン", image: null, OnRescan);
         _reload = new ToolStripMenuItem("設定リロード…", image: null, OnReload);
@@ -57,36 +55,20 @@ internal sealed class ControlTrayMenu
 
     public ContextMenuStrip Menu { get; }
 
-    private async void OnOpening(object? sender, CancelEventArgs e)
+    private void OnOpening(object? sender, CancelEventArgs e)
     {
-        // 前回の開き掛け問い合わせが残っていればキャンセルして最新だけを反映する。ここで Dispose は
-        // しない — in-flight な SendAsync が linked token 経由で参照している窓で ObjectDisposedException を
-        // 招きうるため。CancelAfter 無しの CTS なので未 Dispose のコストは無視できる(GC 回収)。
-        _statusCts?.Cancel();
-        var cts = _statusCts = new CancellationTokenSource();
+        if (_control is null)
+        {
+            // 取り込みワーカー未起動(設定未読込)。制御は不可、状態は「停止中」で表示する。
+            _rescan.Enabled = false;
+            _reload.Enabled = false;
+            _statusLine.Text = "状態: 取り込み停止中(設定未読込)";
+            _lastScanLine.Text = "最終スキャン: —";
+            return;
+        }
 
-        _statusLine.Text = "状態: 確認中…";
-        _lastScanLine.Text = "最終スキャン: —";
-
-        try
-        {
-            var status = await ControlClient.GetStatusAsync(cancellationToken: cts.Token);
-            if (cts != _statusCts)
-                return; // 後続の Opening に追い抜かれた。古い結果で上書きしない。
-            ApplyReachable(status);
-        }
-        catch (OperationCanceledException)
-        {
-            // 次の Opening に追い抜かれた。何もしない。
-        }
-        catch (ControlUnavailableException)
-        {
-            // キャンセル(supersession)が IOException 経由で ControlUnavailable に正規化される経路がある。
-            // 追い抜かれていたら「サービス停止中」で新しい稼働中表示を潰さない。
-            if (cts != _statusCts)
-                return;
-            ApplyUnavailable();
-        }
+        // in-process なのでスナップショットを直接・即時に読める(pipe 往復・非同期は不要)。
+        ApplyReachable(_control.GetStatus());
     }
 
     private void ApplyReachable(ServiceStatusSnapshot status)
@@ -109,41 +91,20 @@ internal sealed class ControlTrayMenu
         }
     }
 
-    private void ApplyUnavailable()
+    private void OnRescan(object? sender, EventArgs e)
     {
-        _rescan.Enabled = false;
-        _reload.Enabled = false;
-        _statusLine.Text = "状態: サービス停止中";
-        _lastScanLine.Text = "最終スキャン: —";
+        // 要求チャネルへ coalesce される冪等操作。即座に返る(スキャン完了は待たない)。
+        _control?.RequestRescan();
+        _tray.ShowBalloonTip(3000, "Radirec", "手動再スキャンを要求しました", ToolTipIcon.Info);
     }
 
-    private async void OnRescan(object? sender, EventArgs e)
+    private void OnReload(object? sender, EventArgs e)
     {
-        if (_commandInFlight)
-            return;
-        _commandInFlight = true;
-        try
-        {
-            await ControlClient.RequestRescanAsync();
-            _tray.ShowBalloonTip(3000, "Radirec", "手動再スキャンを要求しました", ToolTipIcon.Info);
-        }
-        catch (ControlUnavailableException ex)
-        {
-            NotifyUnavailable(ex);
-        }
-        finally
-        {
-            _commandInFlight = false;
-        }
-    }
-
-    private async void OnReload(object? sender, EventArgs e)
-    {
-        if (_commandInFlight)
+        if (_control is null)
             return;
 
         var confirm = MessageBox.Show(
-            "設定を再読み込みします。サービスが実質再起動されます(取込は一時停止し、再構築されます)。よろしいですか?",
+            "設定を再読み込みします。取り込みは一時停止し、再構築されます。よろしいですか?",
             "設定リロード",
             MessageBoxButtons.OKCancel,
             MessageBoxIcon.Warning,
@@ -151,25 +112,11 @@ internal sealed class ControlTrayMenu
         if (confirm != DialogResult.OK)
             return;
 
-        _commandInFlight = true;
-        try
-        {
-            var outcome = await ControlClient.RequestReloadAsync();
-            if (outcome.Accepted)
-                _tray.ShowBalloonTip(3000, "Radirec", "設定リロードを受理しました(反映は取込完了後)", ToolTipIcon.Info);
-            else
-                _tray.ShowBalloonTip(5000, "Radirec", $"設定リロードは拒否されました: {outcome.Error}", ToolTipIcon.Warning);
-        }
-        catch (ControlUnavailableException ex)
-        {
-            NotifyUnavailable(ex);
-        }
-        finally
-        {
-            _commandInFlight = false;
-        }
+        // 読込+構文検証だけ同期実行して受理/拒否が即返る(実グラフ差し替えは在中スキャン完了後)。
+        var outcome = _control.RequestReload();
+        if (outcome.Accepted)
+            _tray.ShowBalloonTip(3000, "Radirec", "設定リロードを受理しました(反映は取込完了後)", ToolTipIcon.Info);
+        else
+            _tray.ShowBalloonTip(5000, "Radirec", $"設定リロードは拒否されました: {outcome.Error}", ToolTipIcon.Warning);
     }
-
-    private void NotifyUnavailable(ControlUnavailableException ex) =>
-        _tray.ShowBalloonTip(4000, "Radirec", ex.Message, ToolTipIcon.Warning);
 }
