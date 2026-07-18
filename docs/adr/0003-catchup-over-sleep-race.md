@@ -1,6 +1,6 @@
 # 取りこぼしゼロは「スリープ復帰キャッチアップ + 冪等」で担保する(30秒競争に賭けない)
 
-Status: accepted(M3 常駐化の設計。#3)
+Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(M3 常駐化の設計。#3)。**ADR-0012 で電源イベント購読(`PowerModeChanged`)とキャッチアップ機構はユーザーセッションのワーカーへ移設**(撤去せず)。取りこぼしゼロの担保(catch-up + 冪等 + 中断耐性)は不変。
 
 らじれこは録音終了後 ~30 秒で **Windows を能動的に強制スリープ**させる(アプリが `SetSuspendState`
 相当を呼ぶ設定。ユーザー確認済み)。当初は「常駐サービスがこの 30 秒でファイルを検知し NAS へコピーし

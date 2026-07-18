@@ -77,6 +77,11 @@
 
 ### 3.1 実行形態(単一 exe:常駐サービス + 単発 CLI)【確定】
 
+> **⚠ [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で改訂中**: 本番の常駐を
+> **Windows サービス → トレイ常駐(ユーザーセッション自動起動・非 admin per-user)** へ移行する。
+> 取り込みワーカーは `Radirec.Gui` に畳み、`radirec.exe` は dev/batch 単発 CLI 専用に縮小。以下の
+> 「常駐サービス」記述はこの移行後の姿に読み替える(UNC 資格情報・EventLog・named pipe の前提は退役)。
+
 本番形態は **単一 exe `radirec.exe`**。同一の取り込みエンジン(`Radirec.Core`)を、常駐サービスと
 単発 CLI の 2 通りで動かす。両者は 1 つの実行体に **verb** で統合し、配布物を 1 本化して Core
 バージョン不一致事故を構造的に防ぐ([ADR-0005](adr/0005-single-exe-cli-service-merge.md))。
@@ -409,6 +414,11 @@ radirec-tool/
 以下の**編集本体**は同プロジェクトへの後載せで、CLI 運用で不足が判明したら着手する。差別化は
 「一覧グリッドでの対話編集」。実装可否は運用後に判断。GUI(トレイ + 編集)の将来オプションの俯瞰は
 [roadmap.md](roadmap.md) を参照。
+
+> **注**: [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) の常駐移行が
+> `Radirec.Gui → Radirec.Core` 直接参照(C2 の 2 ツリー統合)を**先に確立**する。よって編集本体着手時は
+> 構造前提が既に整っており、残るは編集機能そのもの。ただし**「CLI 運用で不足が判明したら着手」の
+> ゲート自体は維持**(移行は常駐単純化が動機で、編集本体の greenlight ではない)。
 
 - **一覧編集 UI**: アルバム/回のグリッドで title/artist/album/albumartist/disc/track 等を直接編集。
 - 編集後は Jellyfin API リフレッシュを起動。台帳・alias とは競合しない(編集側が Z: の権威、§8)。
