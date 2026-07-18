@@ -4,8 +4,9 @@ using System.Runtime.Versioning;
 namespace Radirec.Gui;
 
 /// <summary>
-/// 受け手トレイのローカル状態を置く <c>%LocalAppData%\Radirec</c> の単一の権威。ログ(<see cref="TrayLog"/>)・
-/// 購読チェックポイント(<see cref="CheckpointStore"/>)が同じ基点を共有し、配置場所が分岐しないようにする。
+/// 常駐トレイのローカル状態を置く <c>%LocalAppData%\Radirec</c> の単一の権威。ログ(<see cref="TrayLog"/>)が
+/// この基点を使う。取込データ(台帳・設定)は別で、<c>%ProgramData%\radirec</c> にある(ADR-0006。
+/// per-user 化は S5 / #67)。
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static class AppData

@@ -18,6 +18,13 @@ public sealed record ServiceStatusSnapshot
     /// <summary>FileSystemWatcher が有効か(false = ルート不在で定期スキャンのみ)。</summary>
     public required bool Watching { get; init; }
 
+    /// <summary>
+    /// 取り込みループが生きているか。トレイ常駐(ADR-0012)ではワーカーが異常終了しても
+    /// トレイ(メッセージループ)は生存しうるため、「稼働中」と偽って表示しないための健全性フラグ。
+    /// ExecuteAsync が抜けた(正常停止 or 異常終了)後は false。
+    /// </summary>
+    public bool Running { get; init; } = true;
+
     /// <summary>最後にスキャンを完了した時刻(UTC)。未走査なら null。</summary>
     public DateTimeOffset? LastScanCompletedUtc { get; init; }
 

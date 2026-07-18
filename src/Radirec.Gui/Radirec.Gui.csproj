@@ -32,6 +32,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Radirec.Gui.Core\Radirec.Gui.Core.csproj" />
+    <!-- トレイ常駐移行(ADR-0012): 取り込みワーカーをトレイプロセスでホストするため
+         合成層(Hosting)を直接参照する(Gui→Hosting→Core)。 -->
+    <ProjectReference Include="..\Radirec.Hosting\Radirec.Hosting.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -41,6 +44,9 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.WinUI.Notifications" />
+    <!-- 取り込みワーカーのホスティング(BackgroundService / Host)と電源イベント購読(ADR-0003/0012)。 -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" />
   </ItemGroup>
 
 </Project>

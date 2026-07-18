@@ -27,11 +27,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 常駐/制御(Hosting・WindowsServices・EventLog・SystemEvents)は撤去済み(ADR-0012)。
+         radirec.exe は単発 CLI(ingest / refresh)専用に縮小した。 -->
     <PackageReference Include="Spectre.Console.Cli" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
-    <PackageReference Include="Microsoft.Extensions.Logging.EventLog" />
-    <PackageReference Include="Microsoft.Win32.SystemEvents" />
   </ItemGroup>
 
 </Project>

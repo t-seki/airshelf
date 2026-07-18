@@ -1,35 +1,45 @@
+using System.IO;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using Radirec.Core.Ingestion;
+using Radirec.Gui.Core;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
+// WinForms プロジェクトでは System.Windows.Forms.Timer と衝突するため、ワーカーが使う
+// スレッドタイマーを明示エイリアスで固定する。
+using Timer = System.Threading.Timer;
 
-namespace Radirec.Cli;
+namespace Radirec.Gui;
 
 /// <summary>
 /// I: を監視し録音を検知即取り込みする常駐ワーカー。正しさはキャッチアップ + import-once 冪等で
 /// 担保する(ADR-0003)。トリガ①FileSystemWatcher ②スリープ復帰(電源イベント)③起動時 ④定期
-/// ⑤手動(制御チャネル)⑥リロードはすべて単一の要求チャネルへ投げ、ExecuteAsync 内の**単一直列
+/// ⑤手動(トレイメニュー)⑥リロードはすべて単一の要求チャネルへ投げ、ExecuteAsync 内の**単一直列
 /// コンシューマ**が順に処理する。これにより fire-and-forget を排し、停止時に在中スキャンをまたいで
-/// リソースを破棄するレースを避ける。制御チャネル(ADR-0010)の <see cref="IServiceControl"/> 実装も
+/// リソースを破棄するレースを避ける。in-process 制御(ADR-0012)の <see cref="IServiceControl"/> 実装も
 /// 兼ね、rescan は要求チャネルへ、status はスレッドセーフな状態スナップショットを直接返し、reload は
 /// **config 由来ランタイム一式(グラフ + watcher + タイマー)をプロセス内で丸ごと再構築**する
 /// (部分 hot-swap はしない)。
+///
+/// トレイ常駐移行(ADR-0012)で、取込通知は EventLog シグナルではなく**注入された in-process publisher**
+/// (トレイのトースト)で発行する。ホストは <see cref="Radirec.Gui"/> のユーザーセッションプロセス。
 /// </summary>
 public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 {
     private readonly ILogger<RadioMonitorWorker> _log;
     private readonly string _configPath;
+    private readonly IIngestSummaryPublisher _summaryPublisher;
+    private readonly IIngestFailurePublisher _failurePublisher;
 
     // config 由来のランタイム。reload で丸ごと差し替わるため readonly ではない(書き手は直列ループのみ)。
     private RadirecConfig _config;
     private IngestService _ingest;
     private IDisposable? _resources;
 
-    // 制御チャネルの status が読む状態。immutable record を差し替える(単一書き手 = ExecuteAsync
-    // スレッド、読み手 = listener スレッド)。ADR-0010。
+    // in-process 制御の status が読む状態。immutable record を差し替える(単一書き手 = ExecuteAsync
+    // スレッド、読み手 = UI スレッド)。ADR-0010/0012。
     private volatile ServiceStatusSnapshot _status;
 
     // 直列コンシューマループが reload を処理できる状態か。起動〜稼働中は true(ループ開始前の reload も
@@ -51,30 +61,47 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     private Timer? _debounceTimer; // 書き込み中の連続イベントを束ねる(単一の再利用タイマー)
     private Timer? _periodicTimer; // 定期(安全網)
 
-    public RadioMonitorWorker(RadirecConfig config, ServiceRuntimeOptions options, ILogger<RadioMonitorWorker> log)
+    public RadioMonitorWorker(
+        RadirecConfig config,
+        ServiceRuntimeOptions options,
+        IIngestSummaryPublisher summaryPublisher,
+        IIngestFailurePublisher failurePublisher,
+        ILogger<RadioMonitorWorker> log)
     {
         _config = config;
         _configPath = options.ConfigPath;
+        _summaryPublisher = summaryPublisher;
+        _failurePublisher = failurePublisher;
         _log = log;
         _pendingReload = new PendingReloadSlot<RadirecConfig>(() => Request("リロード"));
-        // 常駐サービスのみ取込要約シグナルを発行する(ADR-0008)。
-        (_ingest, _resources) = CompositionRoot.Build(config, dryRun: false, notify: true);
+        // 取込通知は注入された in-process publisher で発行する(トレイのトースト。ADR-0012)。
+        (_ingest, _resources) = BuildGraph(config);
         _status = new ServiceStatusSnapshot
         {
-            Version = VersionInfo.Current,
+            Version = AppVersion.Of(typeof(RadioMonitorWorker).Assembly),
             StartedUtc = TimeProvider.System.GetUtcNow(),
             RadioRoot = config.RadioRoot,
             Watching = false, // StartWatcher 後に更新する
         };
     }
 
-    // --- IServiceControl(制御チャネル。ADR-0010)-----------------------------------------
+    // 注入された in-process publisher を渡して取り込みグラフを組む(ADR-0012)。
+    private (IngestService, IDisposable?) BuildGraph(RadirecConfig config) =>
+        CompositionRoot.Build(
+            config, dryRun: false, notify: true,
+            summaryPublisher: _summaryPublisher, failurePublisher: _failurePublisher);
+
+    // --- IServiceControl(in-process 制御。ADR-0010/0012)------------------------------------
 
     /// <summary>手動再スキャン。既存の要求チャネルへ coalesce される冪等操作(受理まで)。</summary>
     public void RequestRescan() => Request("手動");
 
-    /// <summary>ライブ状態のスナップショット(在中スキャン中でも直列チャネルを介さず即応)。</summary>
-    public ServiceStatusSnapshot GetStatus() => _status;
+    /// <summary>
+    /// ライブ状態のスナップショット(在中スキャン中でも直列チャネルを介さず即応)。
+    /// 取り込みループの生死(<see cref="_running"/>)を毎回反映する。トレイは生存したまま
+    /// ワーカーだけ異常終了した場合に「稼働中」と偽らないため(ADR-0012)。
+    /// </summary>
+    public ServiceStatusSnapshot GetStatus() => _status with { Running = _running };
 
     /// <summary>
     /// 設定リロード。新 config の読込+構文検証だけ**同期実行**(グラフに触れない)し、妥当なら再構築を
@@ -87,7 +114,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         if (!_running)
             return ReloadResult.Failed("サービスが停止処理中のため受理できません");
 
-        // 制御チャネルは並行に捌かれる(#43)ので reload も同時に来うる。読込→Set を lock で直列化し、
+        // 制御は並行に捌かれる(#43)ので reload も同時に来うる。読込→Set を lock で直列化し、
         // 「最後に受理した reload の config が適用される」順序保証を保つ(読込と Set の間に別 reload が
         // 割り込んで古い内容が最終値になるドリフトを防ぐ)。読込は速く lock 競合は実害にならない。
         lock (_reloadGate)
@@ -102,7 +129,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _log.LogInformation("Radirec サービス開始。監視ルート: {Root}", _config.RadioRoot);
+        _log.LogInformation("Radirec 常駐取り込み開始。監視ルート: {Root}", _config.RadioRoot);
 
         var orphans = _ingest.CleanupOrphans();
         if (orphans > 0)
@@ -148,19 +175,19 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         IDisposable? newResources;
         try
         {
-            (newIngest, newResources) = CompositionRoot.Build(newConfig, dryRun: false, notify: true);
+            (newIngest, newResources) = BuildGraph(newConfig);
         }
         catch (Exception ex)
         {
-            // 旧構成(グラフ + watcher + タイマー)は無傷。reload だけ失敗し、サービスは死なせない。
+            // 旧構成(グラフ + watcher + タイマー)は無傷。reload だけ失敗し、常駐は死なせない。
             _log.LogError(ex, "設定リロード: 新グラフの構築に失敗しました。旧構成を維持して継続します");
             return;
         }
 
         // 新グラフ構築成功 → 旧 config 由来ランタイムを破棄し、watcher/タイマーも新 config で張り直す。
         // この swap 相は直列ループスレッド上。ここで throw を漏らすと BackgroundService が fault し、
-        // 既定の StopHost でサービス全体が落ちる(旧構成 teardown 済み)ため、必ず捕捉して継続する。
-        // StartWatcher は非 throw 化済みだが、想定外の例外でもサービスを死なせない最後の砦。
+        // 既定の StopHost で常駐全体が落ちる(旧構成 teardown 済み)ため、必ず捕捉して継続する。
+        // StartWatcher は非 throw 化済みだが、想定外の例外でも常駐を死なせない最後の砦。
         try
         {
             TeardownConfigRuntime();
@@ -197,7 +224,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         }
 
         // FileSystemWatcher の生成は Directory.Exists を通っても失敗しうる(長すぎるパス・TOCTOU で
-        // 直後に消えた等)。ここで throw すると reload の swap 相を巻き込みサービスを落とすため、
+        // 直後に消えた等)。ここで throw すると reload の swap 相を巻き込み常駐を落とすため、
         // 失敗は定期スキャンのみへの degrade として扱い、throw しない(watcher は次回起動/再 reload で回収)。
         try
         {
@@ -279,7 +306,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                     trigger, imported, failed, refresh, notify, failNotify);
             }
 
-            // 走査ごとに status スナップショットを更新(制御チャネル。ADR-0010)。0 件走査でも
+            // 走査ごとに status スナップショットを更新(in-process 制御)。0 件走査でも
             // 「最後にいつ走ったか」を反映する。書き手はこの直列コンシューマ 1 つだけ。
             _status = _status with
             {

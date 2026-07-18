@@ -4,9 +4,10 @@ using Radirec.Hosting;
 namespace Radirec.Tests;
 
 /// <summary>
-/// <see cref="CompositionRoot.SelectPublishers"/> の分岐(注入 / EventLog 既定 / 非発行)を検証する。
-/// トレイ常駐(ADR-0012)の in-process publisher 注入経路と、既存のサービス経路 EventLog、
-/// 非 Windows での非発行が正しく分かれることを保証する。
+/// <see cref="CompositionRoot.SelectPublishers"/> の分岐を検証する。トレイ常駐移行(ADR-0012)後、
+/// 取込通知の唯一の経路は注入された in-process publisher(トレイのトースト)。両方注入 + 通知有効 +
+/// 非 dry-run のときだけ発行し、それ以外(未注入・notify=false・dry-run・通知無効)は発行しない。
+/// 片側だけの注入は ADR-0011 のサイレント抑制を招くため禁止する。
 /// </summary>
 public class CompositionRootPublisherSelectionTests
 {
@@ -23,14 +24,14 @@ public class CompositionRootPublisherSelectionTests
     }
 
     [Theory]
-    [InlineData(false, false, true, true)]   // notify=false
-    [InlineData(true, true, true, true)]     // dry-run
-    [InlineData(true, false, false, true)]   // 通知無効
+    [InlineData(false, false, true)]  // notify=false
+    [InlineData(true, true, true)]    // dry-run
+    [InlineData(true, false, false)]  // 通知無効
     public void Gated_off_yields_null_publishers_and_no_store(
-        bool notify, bool dryRun, bool notificationsEnabled, bool isWindows)
+        bool notify, bool dryRun, bool notificationsEnabled)
     {
         var (summary, failure, useStore) = CompositionRoot.SelectPublishers(
-            notify, dryRun, notificationsEnabled, isWindows, injectedSummary: null, injectedFailure: null);
+            notify, dryRun, notificationsEnabled, injectedSummary: null, injectedFailure: null);
 
         Assert.IsType<NullIngestSummaryPublisher>(summary);
         Assert.IsType<NullIngestFailurePublisher>(failure);
@@ -38,22 +39,11 @@ public class CompositionRootPublisherSelectionTests
     }
 
     [Fact]
-    public void Windows_without_injection_falls_back_to_eventlog()
+    public void No_injection_does_not_publish_even_when_enabled()
     {
+        // 移行後は既定の EventLog 経路が無い。注入が無ければ通知有効でも発行しない。
         var (summary, failure, useStore) = CompositionRoot.SelectPublishers(
-            notify: true, dryRun: false, notificationsEnabled: true, isWindows: true,
-            injectedSummary: null, injectedFailure: null);
-
-        Assert.IsType<EventLogIngestSummaryPublisher>(summary);
-        Assert.IsType<EventLogIngestFailurePublisher>(failure);
-        Assert.True(useStore);
-    }
-
-    [Fact]
-    public void NonWindows_without_injection_does_not_publish()
-    {
-        var (summary, failure, useStore) = CompositionRoot.SelectPublishers(
-            notify: true, dryRun: false, notificationsEnabled: true, isWindows: false,
+            notify: true, dryRun: false, notificationsEnabled: true,
             injectedSummary: null, injectedFailure: null);
 
         Assert.IsType<NullIngestSummaryPublisher>(summary);
@@ -62,14 +52,13 @@ public class CompositionRootPublisherSelectionTests
     }
 
     [Fact]
-    public void Both_injected_publishers_used_regardless_of_platform_and_enable_store()
+    public void Both_injected_publishers_used_and_enable_store()
     {
         var summaryFake = new FakeSummaryPublisher();
         var failureFake = new FakeFailurePublisher();
 
-        // 非 Windows でも注入経路は発行する(in-process トーストはプラットフォーム非依存)。
         var (summary, failure, useStore) = CompositionRoot.SelectPublishers(
-            notify: true, dryRun: false, notificationsEnabled: true, isWindows: false,
+            notify: true, dryRun: false, notificationsEnabled: true,
             injectedSummary: summaryFake, injectedFailure: failureFake);
 
         Assert.Same(summaryFake, summary);
@@ -78,18 +67,19 @@ public class CompositionRootPublisherSelectionTests
     }
 
     [Fact]
-    public void Injection_wins_over_eventlog_on_windows()
+    public void Injection_ignored_when_notify_off()
     {
         var summaryFake = new FakeSummaryPublisher();
         var failureFake = new FakeFailurePublisher();
 
-        // Windows(実ターゲット)でも、注入があれば EventLog 既定ではなく注入を使う。
-        var (summary, failure, _) = CompositionRoot.SelectPublishers(
-            notify: true, dryRun: false, notificationsEnabled: true, isWindows: true,
+        // notify=false(単発 CLI 経路)では、たとえ注入があっても発行しない。
+        var (summary, failure, useStore) = CompositionRoot.SelectPublishers(
+            notify: false, dryRun: false, notificationsEnabled: true,
             injectedSummary: summaryFake, injectedFailure: failureFake);
 
-        Assert.Same(summaryFake, summary);
-        Assert.Same(failureFake, failure);
+        Assert.IsType<NullIngestSummaryPublisher>(summary);
+        Assert.IsType<NullIngestFailurePublisher>(failure);
+        Assert.False(useStore);
     }
 
     [Theory]
@@ -99,7 +89,7 @@ public class CompositionRootPublisherSelectionTests
     {
         // 片側だけの注入は ADR-0011 のサイレント抑制を招くため禁止(両方 or どちらも)。
         Assert.Throws<ArgumentException>(() => CompositionRoot.SelectPublishers(
-            notify: true, dryRun: false, notificationsEnabled: true, isWindows: true,
+            notify: true, dryRun: false, notificationsEnabled: true,
             injectedSummary: injectSummary ? new FakeSummaryPublisher() : null,
             injectedFailure: injectFailure ? new FakeFailurePublisher() : null));
     }

@@ -14,6 +14,8 @@ public static class TrayLog
 
     private static readonly Lock Gate = new();
 
+    public static void Error(string message) => Write("ERROR", message);
+
     public static void Warn(string message) => Write("WARN", message);
 
     public static void Info(string message) => Write("INFO", message);

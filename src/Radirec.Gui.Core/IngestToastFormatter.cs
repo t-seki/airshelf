@@ -15,23 +15,15 @@ public static class IngestToastFormatter
 
     // ---- 取込要約(1001)----
 
-    /// <summary>ライブ取込通知(「新規取込 N件」)の text 要素列。</summary>
+    /// <summary>取込通知(「新規取込 N件」)の text 要素列。起動時 catch-up の集約もこれで表示する(ADR-0012)。</summary>
     public static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload) =>
         Compose($"新規取込 {payload.TotalImported}件", FormatAlbums(payload), payload.Truncated);
 
-    /// <summary>不在中サマリ(「不在中の取込 N件」)の text 要素列(While-Away Summary。ADR-0009 拡張)。</summary>
-    public static IReadOnlyList<string> BuildWhileAwayTexts(IngestSummaryPayload payload) =>
-        Compose($"不在中の取込 {payload.TotalImported}件", FormatAlbums(payload), payload.Truncated);
+    // ---- 取込失敗(ADR-0011)----
 
-    // ---- 取込失敗(1002。ADR-0011)----
-
-    /// <summary>ライブ取込失敗通知(「取込失敗 N件」)の text 要素列。</summary>
+    /// <summary>取込失敗通知(「取込失敗 N件」)の text 要素列。</summary>
     public static IReadOnlyList<string> BuildFailureTexts(IngestFailurePayload payload) =>
         Compose($"取込失敗 {payload.FailedCount}件", FormatFiles(payload), payload.Truncated);
-
-    /// <summary>不在中サマリの失敗版(「不在中の失敗 N件」)の text 要素列。</summary>
-    public static IReadOnlyList<string> BuildWhileAwayFailureTexts(IngestFailurePayload payload) =>
-        Compose($"不在中の失敗 {payload.FailedCount}件", FormatFiles(payload), payload.Truncated);
 
     /// <summary>
     /// 表題 + 本文行(整形済み)から text 要素列を組み立てる。要約・失敗・不在中で共通の切り詰めロジック
