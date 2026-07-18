@@ -106,21 +106,24 @@ public static class CompositionRoot
         bool notify, bool dryRun, bool notificationsEnabled, bool isWindows,
         IIngestSummaryPublisher? injectedSummary, IIngestFailurePublisher? injectedFailure)
     {
+        // 片側だけの注入は禁止する。成功要約(1001)を in-process で出しつつ失敗(1002)を Null にすると、
+        // 失敗が「de-dup ストアに記録されるのに通知されない」= ADR-0011 が禁じる恒久サイレント抑制に陥る。
+        // 両方指定(トレイ常駐)か、どちらも省略(既定=EventLog / 非発行)のいずれかだけを許す。
+        if (injectedSummary is null != (injectedFailure is null))
+            throw new ArgumentException(
+                "summaryPublisher と failurePublisher は両方指定するか両方省略してください(片側のみの注入は不可)。");
+
         if (!notify || dryRun || !notificationsEnabled)
             return (new NullIngestSummaryPublisher(), new NullIngestFailurePublisher(), false);
 
-        if (injectedSummary is not null || injectedFailure is not null)
-        {
-            // 呼び出し側注入(in-process)。片側だけ注入なら欠けた側は Null。
-            return (
-                injectedSummary ?? new NullIngestSummaryPublisher(),
-                injectedFailure ?? new NullIngestFailurePublisher(),
-                true);
-        }
+        // 両方注入されている(in-process トースト。ADR-0012)。プラットフォームを問わず、EventLog より優先する。
+        if (injectedSummary is not null)
+            return (injectedSummary, injectedFailure!, true);
 
         if (isWindows)
             return (new EventLogIngestSummaryPublisher(), new EventLogIngestFailurePublisher(), true);
 
+        // 非 Windows・未注入: 発行しない(既存の Linux 挙動を保つ)。
         return (new NullIngestSummaryPublisher(), new NullIngestFailurePublisher(), false);
     }
 

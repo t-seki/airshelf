@@ -16,6 +16,12 @@ public class CompositionRootPublisherSelectionTests
             Task.CompletedTask;
     }
 
+    private sealed class FakeFailurePublisher : IIngestFailurePublisher
+    {
+        public Task PublishAsync(IngestFailureSignal signal, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
     [Theory]
     [InlineData(false, false, true, true)]   // notify=false
     [InlineData(true, true, true, true)]     // dry-run
@@ -56,17 +62,45 @@ public class CompositionRootPublisherSelectionTests
     }
 
     [Fact]
-    public void Injected_publisher_is_used_regardless_of_platform_and_enables_store()
+    public void Both_injected_publishers_used_regardless_of_platform_and_enable_store()
     {
-        var fake = new FakeSummaryPublisher();
+        var summaryFake = new FakeSummaryPublisher();
+        var failureFake = new FakeFailurePublisher();
 
         // 非 Windows でも注入経路は発行する(in-process トーストはプラットフォーム非依存)。
         var (summary, failure, useStore) = CompositionRoot.SelectPublishers(
             notify: true, dryRun: false, notificationsEnabled: true, isWindows: false,
-            injectedSummary: fake, injectedFailure: null);
+            injectedSummary: summaryFake, injectedFailure: failureFake);
 
-        Assert.Same(fake, summary);
-        Assert.IsType<NullIngestFailurePublisher>(failure); // 片側だけ注入 → 欠けた側は Null
+        Assert.Same(summaryFake, summary);
+        Assert.Same(failureFake, failure);
         Assert.True(useStore);
+    }
+
+    [Fact]
+    public void Injection_wins_over_eventlog_on_windows()
+    {
+        var summaryFake = new FakeSummaryPublisher();
+        var failureFake = new FakeFailurePublisher();
+
+        // Windows(実ターゲット)でも、注入があれば EventLog 既定ではなく注入を使う。
+        var (summary, failure, _) = CompositionRoot.SelectPublishers(
+            notify: true, dryRun: false, notificationsEnabled: true, isWindows: true,
+            injectedSummary: summaryFake, injectedFailure: failureFake);
+
+        Assert.Same(summaryFake, summary);
+        Assert.Same(failureFake, failure);
+    }
+
+    [Theory]
+    [InlineData(true, false)]  // summary のみ注入
+    [InlineData(false, true)]  // failure のみ注入
+    public void Partial_injection_throws(bool injectSummary, bool injectFailure)
+    {
+        // 片側だけの注入は ADR-0011 のサイレント抑制を招くため禁止(両方 or どちらも)。
+        Assert.Throws<ArgumentException>(() => CompositionRoot.SelectPublishers(
+            notify: true, dryRun: false, notificationsEnabled: true, isWindows: true,
+            injectedSummary: injectSummary ? new FakeSummaryPublisher() : null,
+            injectedFailure: injectFailure ? new FakeFailurePublisher() : null));
     }
 }
