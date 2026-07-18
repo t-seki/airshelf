@@ -20,12 +20,19 @@ public static class CompositionRoot
     /// null なら <see cref="RadirecConfig.RadioRoot"/> を使う。
     /// </param>
     /// <param name="notify">
-    /// 取込要約シグナルを発行するか。**常駐サービス経路のみ true**(ADR-0008)。手動 <c>ingest</c> は
-    /// 対話コマンドで受け手 GUI へ通知する意味が無く、未登録ソースへの書込失敗も招くため false。
+    /// 取込通知を発行するか。**常駐経路のみ true**(ADR-0008)。手動 <c>ingest</c> は
+    /// 対話コマンドで受け手へ通知する意味が無く、既定経路(EventLog)では未登録ソースへの書込失敗も
+    /// 招くため false。
     /// </param>
+    /// <param name="summaryPublisher">
+    /// 取込要約通知の publisher を注入する(トレイ常駐の in-process トースト。ADR-0012)。null なら
+    /// 既定のサービス経路 = EventLog(Windows のみ)へフォールバックする。
+    /// </param>
+    /// <param name="failurePublisher">取込失敗通知の publisher。<paramref name="summaryPublisher"/> と同様。</param>
     /// <returns>サービスと、破棄すべきリソース(台帳。NullLedger 時は null)。</returns>
     public static (IngestService Service, IDisposable? Disposable) Build(
-        RadirecConfig config, bool dryRun, string? rootOverride = null, bool notify = false)
+        RadirecConfig config, bool dryRun, string? rootOverride = null, bool notify = false,
+        IIngestSummaryPublisher? summaryPublisher = null, IIngestFailurePublisher? failurePublisher = null)
     {
         var fileSystem = new FileSystem();
 
@@ -44,18 +51,13 @@ public static class CompositionRoot
         if (!dryRun)
             (refresher, refresherDisposable) = BuildRefresher(config);
 
-        // 発行はサービス経路のみ(notify)。dry-run / 通知無効 / 非 Windows は発行しない。取込失敗の
-        // de-dup ストアも notify 経路でだけ実体を使う(非 notify 走査が失敗を記録して初回通知を潰さないため。
-        // ADR-0011)。成功要約(1001)と失敗(1002)は同じゲートで揃える。
-        IIngestSummaryPublisher summaryPublisher = new NullIngestSummaryPublisher();
-        IIngestFailurePublisher failurePublisher = new NullIngestFailurePublisher();
-        IIngestFailureStore failureStore = new NullIngestFailureStore();
-        if (notify && !dryRun && config.NotificationsEnabled && OperatingSystem.IsWindows())
-        {
-            summaryPublisher = new EventLogIngestSummaryPublisher();
-            failurePublisher = new EventLogIngestFailurePublisher();
-            failureStore = failureStoreFacet;
-        }
+        // 発行するか・どの publisher を使うかを純粋関数で決める(テスト可能)。取込失敗の de-dup ストアも
+        // 発行経路でだけ実体を使う(非発行走査が失敗を記録して初回通知を潰さないため。ADR-0011)。
+        // 成功要約(1001)と失敗(1002)は同じゲートで揃える。
+        var (summaryPub, failurePub, useFailureStore) = SelectPublishers(
+            notify, dryRun, config.NotificationsEnabled, OperatingSystem.IsWindows(),
+            summaryPublisher, failurePublisher);
+        IIngestFailureStore failureStore = useFailureStore ? failureStoreFacet : new NullIngestFailureStore();
 
         // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> radirec.json の Genre > 既定。
         var genre = string.IsNullOrWhiteSpace(programs.Defaults.Genre)
@@ -86,11 +88,43 @@ public static class CompositionRoot
             TimeProvider.System,
             genre,
             refresher,
-            summaryPublisher,
+            summaryPub,
             failureStore,
-            failurePublisher);
+            failurePub);
 
         return (service, Combine(ledgerDisposable, refresherDisposable));
+    }
+
+    /// <summary>
+    /// 取込通知の publisher と、失敗 de-dup ストアを使うかを決める純粋関数(テスト可能)。
+    /// 呼び出し側が publisher を注入すれば(トレイ常駐の in-process トースト。ADR-0012)それを使い、
+    /// プラットフォームを問わない。未注入なら既定のサービス経路 = EventLog(Windows のみ。ADR-0008/0011)へ
+    /// フォールバックし、非 Windows・未注入では発行しない(既存の Linux 挙動を保つ)。
+    /// dry-run / 通知無効 / notify=false では一切発行しない。
+    /// </summary>
+    public static (IIngestSummaryPublisher Summary, IIngestFailurePublisher Failure, bool UseFailureStore) SelectPublishers(
+        bool notify, bool dryRun, bool notificationsEnabled, bool isWindows,
+        IIngestSummaryPublisher? injectedSummary, IIngestFailurePublisher? injectedFailure)
+    {
+        // 片側だけの注入は禁止する。成功要約(1001)を in-process で出しつつ失敗(1002)を Null にすると、
+        // 失敗が「de-dup ストアに記録されるのに通知されない」= ADR-0011 が禁じる恒久サイレント抑制に陥る。
+        // 両方指定(トレイ常駐)か、どちらも省略(既定=EventLog / 非発行)のいずれかだけを許す。
+        if (injectedSummary is null != (injectedFailure is null))
+            throw new ArgumentException(
+                "summaryPublisher と failurePublisher は両方指定するか両方省略してください(片側のみの注入は不可)。");
+
+        if (!notify || dryRun || !notificationsEnabled)
+            return (new NullIngestSummaryPublisher(), new NullIngestFailurePublisher(), false);
+
+        // 両方注入されている(in-process トースト。ADR-0012)。プラットフォームを問わず、EventLog より優先する。
+        if (injectedSummary is not null)
+            return (injectedSummary, injectedFailure!, true);
+
+        if (isWindows)
+            return (new EventLogIngestSummaryPublisher(), new EventLogIngestFailurePublisher(), true);
+
+        // 非 Windows・未注入: 発行しない(既存の Linux 挙動を保つ)。
+        return (new NullIngestSummaryPublisher(), new NullIngestFailurePublisher(), false);
     }
 
     /// <summary>
