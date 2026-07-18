@@ -104,13 +104,36 @@ internal static class Program
                 Text = "Radirec",
                 Visible = true,
             };
-            // 自己更新の自動チェック(起動時 + 24h。S6)。Velopack インストール時のみ実働する。
-            if (updateService is not null)
-                updateCoordinator = new UpdateCoordinator(updateService, trayIcon);
+            // 自己更新の自動チェック(起動時 + 24h。S6)。**Velopack インストール時のみ**実働する
+            // (dev/portable で no-op タイマーを作らない)。生成失敗はトレイを壊さない。
+            if (updateService?.IsInstalled == true)
+            {
+                try
+                {
+                    updateCoordinator = new UpdateCoordinator(updateService, trayIcon);
+                }
+                catch (Exception ex)
+                {
+                    TrayLog.Warn($"更新チェックの初期化に失敗しました(更新無効で継続): {ex.Message}");
+                    updateCoordinator = null;
+                }
+            }
+
+            // 更新適用直前にワーカーを graceful 停止するコールバック(在中スキャン完了・SQLite クローズ →
+            // 取込中断/ファイルロックを避ける。S6 レビュー)。ワーカー未起動時は null。
+            var capturedHost = host;
+            Func<Task>? drainWorker = capturedHost is null
+                ? null
+                : async () =>
+                {
+                    try { await capturedHost.StopAsync(TimeSpan.FromSeconds(15)); }
+                    catch (Exception ex) { TrayLog.Warn($"更新適用前のワーカー停止で例外: {ex.Message}"); }
+                };
+
             // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
-            trayIcon.ContextMenuStrip =
-                new ControlTrayMenu(trayIcon, control, degradedReason, ledgerPath, updateService, updateCoordinator).Menu;
+            trayIcon.ContextMenuStrip = new ControlTrayMenu(
+                trayIcon, control, degradedReason, ledgerPath, updateService, updateCoordinator, drainWorker).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
         }

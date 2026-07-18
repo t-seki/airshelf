@@ -31,26 +31,35 @@ internal sealed class UpdateService
     public string? PendingVersion => _pending?.TargetFullRelease?.Version?.ToString();
 
     /// <summary>
-    /// 更新を照会し、あれば保留にして true を返す。未インストール(dev)や更新無しは false。
-    /// 例外(ネットワーク・認証失敗)は呼び出し側が握って UI を壊さない。
+    /// 更新を照会し、**適用可能な**更新があれば保留にして true を返す。未インストール(dev)・更新無し・
+    /// 版が取れない場合は false(通知したのに適用できない乖離を避けるため <see cref="PendingVersion"/> と
+    /// 判定を一致させる)。例外(ネットワーク・認証失敗)は呼び出し側が握って UI を壊さない。
     /// </summary>
     public async Task<bool> CheckAsync()
     {
         if (!_manager.IsInstalled)
             return false;
 
-        _pending = await _manager.CheckForUpdatesAsync();
+        var info = await _manager.CheckForUpdatesAsync();
+        // 版が取れない UpdateInfo は「適用できない更新」として扱い保留にしない(PendingVersion と整合)。
+        _pending = info?.TargetFullRelease?.Version is not null ? info : null;
         return _pending is not null;
     }
 
-    /// <summary>保留中の更新を DL・適用して再起動する(成功時は戻らない)。</summary>
-    public async Task ApplyAndRestartAsync()
+    /// <summary>
+    /// 保留中の更新を DL し、<paramref name="drainBeforeRestart"/>(ワーカーの graceful 停止)を実行してから
+    /// 適用・再起動する(成功時は戻らない)。DL はワーカー稼働中でよい(import-once)。差し替え直前にだけ
+    /// 在中スキャンを畳んで SQLite を閉じ、取込中断・ファイルロックを避ける(S6 レビュー)。
+    /// </summary>
+    public async Task ApplyAndRestartAsync(Func<Task>? drainBeforeRestart)
     {
         var update = _pending;
         if (update is null)
             return;
 
         await _manager.DownloadUpdatesAsync(update);
+        if (drainBeforeRestart is not null)
+            await drainBeforeRestart();
         _manager.ApplyUpdatesAndRestart(update);
     }
 }

@@ -20,6 +20,7 @@ internal sealed class UpdateCoordinator : IDisposable
     private readonly NotifyIcon _tray;
     private readonly Timer _timer;
     private bool _notified;
+    private bool _checking; // 自動 tick と手動チェックの同時実行(二重照会)を防ぐ。UI スレッド上なので bool で足りる。
 
     public UpdateCoordinator(UpdateService update, NotifyIcon tray)
     {
@@ -42,6 +43,16 @@ internal sealed class UpdateCoordinator : IDisposable
     /// </summary>
     public async Task CheckAndNotifyAsync(bool manual)
     {
+        // 自動 tick と手動チェックが重なると同一 UpdateManager へ二重照会になる。既に照会中なら、
+        // 手動はその旨を返し、自動は黙って諦める(次回 tick で拾う)。
+        if (_checking)
+        {
+            if (manual)
+                _tray.ShowBalloonTip(3000, "Radirec", "更新を確認中です。少し待って再度お試しください。", ToolTipIcon.Info);
+            return;
+        }
+
+        _checking = true;
         try
         {
             var found = await _update.CheckAsync();
@@ -57,12 +68,20 @@ internal sealed class UpdateCoordinator : IDisposable
             {
                 _tray.ShowBalloonTip(3000, "Radirec", "最新版です。", ToolTipIcon.Info);
             }
+
+            // 更新が無い状態に戻ったら通知フラグをリセット(適用/取り下げ後、次の新版で再通知できる)。
+            if (!found)
+                _notified = false;
         }
         catch (Exception ex)
         {
             TrayLog.Warn($"更新チェックに失敗しました: {ex.Message}");
             if (manual)
                 _tray.ShowBalloonTip(4000, "Radirec", "更新チェックに失敗しました(gui.log 参照)。", ToolTipIcon.Warning);
+        }
+        finally
+        {
+            _checking = false;
         }
     }
 

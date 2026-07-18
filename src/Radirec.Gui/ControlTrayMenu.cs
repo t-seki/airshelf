@@ -20,6 +20,7 @@ internal sealed class ControlTrayMenu
     private readonly string? _ledgerPath;
     private readonly UpdateService? _update;
     private readonly UpdateCoordinator? _updateCoordinator;
+    private readonly Func<Task>? _drainWorker; // 更新適用前にワーカーを graceful 停止(S6 レビュー #0)
     private readonly ToolStripMenuItem _rescan;
     private readonly ToolStripMenuItem _reload;
     private readonly ToolStripMenuItem _statusLine;
@@ -32,9 +33,10 @@ internal sealed class ControlTrayMenu
     /// <param name="ledgerPath">台帳の絶対パス(取込履歴 S4 用)。設定未読込なら null で履歴項目を出さない。</param>
     /// <param name="update">自己更新サービス(S6)。null / 未インストール(dev)なら更新項目を出さない。</param>
     /// <param name="updateCoordinator">手動チェック用(S6)。</param>
+    /// <param name="drainWorker">更新適用直前にワーカーを graceful 停止するコールバック(S6)。</param>
     public ControlTrayMenu(
         NotifyIcon tray, IServiceControl? control, string? degradedReason = null, string? ledgerPath = null,
-        UpdateService? update = null, UpdateCoordinator? updateCoordinator = null)
+        UpdateService? update = null, UpdateCoordinator? updateCoordinator = null, Func<Task>? drainWorker = null)
     {
         _tray = tray;
         _control = control;
@@ -42,6 +44,7 @@ internal sealed class ControlTrayMenu
         _ledgerPath = ledgerPath;
         _update = update?.IsInstalled == true ? update : null; // dev/portable では更新 UI を出さない
         _updateCoordinator = updateCoordinator;
+        _drainWorker = drainWorker;
 
         _rescan = new ToolStripMenuItem("今すぐ再スキャン", image: null, OnRescan);
         _reload = new ToolStripMenuItem("設定リロード…", image: null, OnReload);
@@ -76,7 +79,7 @@ internal sealed class ControlTrayMenu
             _applyUpdate = new ToolStripMenuItem("更新を適用して再起動", image: null, OnApplyUpdate) { Visible = false };
             Menu.Items.Add(_applyUpdate);
         }
-        Menu.Items.Add(new ToolStripSeparator());
+        AddSeparatorIfNeeded(); // 直前が separator(履歴も更新も無い縮退時)なら足さない(二重線防止)
         // 縮退(設定未読込 / ワーカー起動失敗)時は、設定修正後にプロセスごと再起動して復帰できる導線を出す
         // (control==null は復旧経路が無く、再起動しないと取り込みが始まらないため)。
         if (_control is null)
@@ -87,6 +90,13 @@ internal sealed class ControlTrayMenu
     }
 
     public ContextMenuStrip Menu { get; }
+
+    // 末尾が既に区切り線なら足さない(オプション項目が無い縮退時の二重線を防ぐ)。
+    private void AddSeparatorIfNeeded()
+    {
+        if (Menu.Items.Count > 0 && Menu.Items[^1] is not ToolStripSeparator)
+            Menu.Items.Add(new ToolStripSeparator());
+    }
 
     private void OnOpening(object? sender, CancelEventArgs e)
     {
@@ -212,8 +222,18 @@ internal sealed class ControlTrayMenu
         if (_update is null)
             return;
 
+        // メニューを開いてから確定までの間に、自動チェックが保留更新を取り下げる(release 撤回等)ことがある。
+        // その場合は無反応にせず知らせて項目を隠す。
+        var version = _update.PendingVersion;
+        if (version is null)
+        {
+            _tray.ShowBalloonTip(3000, "Radirec", "適用できる更新はありません(最新か、取り下げられました)。", ToolTipIcon.Info);
+            RefreshUpdateItem();
+            return;
+        }
+
         var confirm = MessageBox.Show(
-            $"更新 v{_update.PendingVersion} を適用してアプリを再起動します。取り込み中でも import-once で安全です。よろしいですか?",
+            $"更新 v{version} を適用してアプリを再起動します。取り込み中の走査は完了を待ってから安全に再起動します。よろしいですか?",
             "更新の適用",
             MessageBoxButtons.OKCancel,
             MessageBoxIcon.Question,
@@ -223,7 +243,8 @@ internal sealed class ControlTrayMenu
 
         try
         {
-            await _update.ApplyAndRestartAsync(); // 成功時は再起動して戻らない
+            // DL → ワーカーを graceful 停止(在中スキャン完了・SQLite クローズ)→ 適用・再起動(戻らない)。
+            await _update.ApplyAndRestartAsync(_drainWorker);
         }
         catch (Exception ex)
         {
