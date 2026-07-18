@@ -163,7 +163,10 @@ public sealed class WhileAwaySummaryTests
     // ---- ドレイン判定リデューサ(過去 2 度バグった要のロジック) ----
 
     private static DrainRecord Rec(long? id, string bookmark, IngestSummaryPayload? parsed = null) =>
-        new(id, bookmark, parsed);
+        new(id, bookmark, parsed, null);
+
+    private static DrainRecord FailRec(long? id, string bookmark, IngestFailurePayload? parsed) =>
+        new(id, bookmark, null, parsed);
 
     [Fact]
     public void Drain_全件baseline以下ならresumeはnull_縮退する()
@@ -176,7 +179,7 @@ public sealed class WhileAwaySummaryTests
 
         Assert.Null(outcome.ResumeBookmarkXml); // → 呼び手は read-from-now へ縮退
         Assert.Null(outcome.MaxRecordId);
-        Assert.Empty(outcome.Collected);
+        Assert.Empty(outcome.Summaries);
     }
 
     [Fact]
@@ -189,7 +192,7 @@ public sealed class WhileAwaySummaryTests
 
         Assert.Equal("bm102", outcome.ResumeBookmarkXml);
         Assert.Equal(102, outcome.MaxRecordId);
-        Assert.Equal(2, outcome.Collected.Count);
+        Assert.Equal(2, outcome.Summaries.Count);
     }
 
     [Fact]
@@ -204,7 +207,7 @@ public sealed class WhileAwaySummaryTests
 
         Assert.Equal("bm101", outcome.ResumeBookmarkXml);
         Assert.Equal(101, outcome.MaxRecordId);
-        Assert.Single(outcome.Collected);
+        Assert.Single(outcome.Summaries);
     }
 
     [Fact]
@@ -214,7 +217,7 @@ public sealed class WhileAwaySummaryTests
 
         Assert.Null(outcome.ResumeBookmarkXml);
         Assert.Null(outcome.MaxRecordId);
-        Assert.Empty(outcome.Collected);
+        Assert.Empty(outcome.Summaries);
     }
 
     [Fact]
@@ -227,7 +230,24 @@ public sealed class WhileAwaySummaryTests
 
         Assert.Equal("bm1", outcome.ResumeBookmarkXml);
         Assert.Equal(1, outcome.MaxRecordId);
-        Assert.Empty(outcome.Collected);
+        Assert.Empty(outcome.Summaries);
+    }
+
+    [Fact]
+    public void Drain_成功と失敗をEventIDで別コレクションに振り分ける_単一チェックポイント()
+    {
+        // 1001(要約)と 1002(失敗)が混在しても、単一チェックポイントで両方通過し、成功・失敗を
+        // 別コレクションへ集約する(ADR-0011: 別トーストになる)。
+        var failure = new IngestFailurePayload { SchemaVersion = 1, FailedCount = 1, Files = [] };
+        var outcome = WhileAwayDrain.Plan(baseline: 100, records: [
+            Rec(101, "bm101", Payload(1, false, Album("J-WAVE", "番組A", Ep("2026-07-10")))),
+            FailRec(102, "bm102", failure),
+        ]);
+
+        Assert.Single(outcome.Summaries);
+        Assert.Single(outcome.Failures);
+        Assert.Equal("bm102", outcome.ResumeBookmarkXml); // 最後(失敗)まで位置が進む
+        Assert.Equal(102, outcome.MaxRecordId);
     }
 
     // ---- チェックポイントの永続化往復 ----

@@ -34,6 +34,9 @@ internal static class Program
             // Show() が投げても subscriber 側の try/catch が握るため(Warning に流れる)、ここは素直に呼ぶ。
             subscriber.SummaryReceived += payload => presenter.Show(payload);
             subscriber.WhileAwaySummaryReceived += payload => presenter.ShowWhileAway(payload);
+            // 取込失敗(1002。ADR-0011)。成功とは別トースト(「取込失敗 N件」/「不在中の失敗 N件」)。
+            subscriber.FailureReceived += payload => presenter.ShowFailure(payload);
+            subscriber.WhileAwayFailureReceived += payload => presenter.ShowWhileAwayFailure(payload);
             subscriber.CheckpointAdvanced += checkpoints.Save;
             subscriber.Warning += TrayLog.Warn;
 

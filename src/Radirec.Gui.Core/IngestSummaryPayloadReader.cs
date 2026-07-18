@@ -8,10 +8,7 @@ public static class IngestSummaryPayloadReader
     /// <summary>受け手が理解できる schemaVersion。</summary>
     public const int SupportedSchemaVersion = NotificationContract.SupportedSchemaVersion;
 
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
+    private static readonly JsonSerializerOptions Options = NotificationContract.PayloadJsonOptions;
 
     /// <summary>
     /// JSON を <see cref="IngestSummaryPayload"/> に解析する。成功時 true。

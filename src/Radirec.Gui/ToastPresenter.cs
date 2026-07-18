@@ -20,6 +20,14 @@ public sealed class ToastPresenter
     public void ShowWhileAway(IngestSummaryPayload payload) =>
         Show(IngestToastFormatter.BuildWhileAwayTexts(payload));
 
+    /// <summary>ライブ取込失敗通知(「取込失敗 N件」)を表示する(軸A A3)。</summary>
+    public void ShowFailure(IngestFailurePayload payload) =>
+        Show(IngestToastFormatter.BuildFailureTexts(payload));
+
+    /// <summary>不在中サマリの失敗版(「不在中の失敗 N件」)を表示する(軸A A3)。</summary>
+    public void ShowWhileAwayFailure(IngestFailurePayload payload) =>
+        Show(IngestToastFormatter.BuildWhileAwayFailureTexts(payload));
+
     private static void Show(IReadOnlyList<string> texts)
     {
         // 要素数上限への切り詰めは formatter(テスト可能な純粋関数)に集約済み。ここは
