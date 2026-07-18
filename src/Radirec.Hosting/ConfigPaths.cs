@@ -1,19 +1,23 @@
 namespace Radirec.Hosting;
 
 /// <summary>
-/// 設定ファイルの発見と、設定内相対パスの解決基準を一元化する(ADR-0006)。
-/// バイナリ(<c>C:\Program Files\radirec\</c>)とデータ(<c>%ProgramData%\radirec\</c>)を分離したため、
-/// 設定は ProgramData 側を既定発見し、設定内の相対パスは**設定ファイル自身のディレクトリ基準**で解決する。
+/// 設定ファイルの発見と、設定内相対パスの解決基準を一元化する(ADR-0006 / 0012 / 0013)。
+/// トレイ常駐 per-user 移行(ADR-0012/0013)で、データは per-user の <c>%LOCALAPPDATA%\radirec\</c> に置く
+/// (Velopack の versioned app ディレクトリの外・非 admin・非 roaming。SQLite 台帳は roaming 不可)。
+/// 設定は DataRoot 側を既定発見し、設定内の相対パスは**設定ファイル自身のディレクトリ基準**で解決する。
 /// </summary>
 public static class ConfigPaths
 {
-    /// <summary>データルート = <c>%ProgramData%\radirec\</c>(Windows。他 OS では CommonApplicationData 配下)。</summary>
+    /// <summary>
+    /// データルート = <c>%LOCALAPPDATA%\radirec\</c>(Windows。他 OS では LocalApplicationData 配下)。
+    /// 台帳・設定・マスタを置く。Local(非 roaming)= SQLite 台帳がマシン間同期で壊れないため。
+    /// </summary>
     public static string DataRoot =>
         Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "radirec");
 
-    /// <summary>引数省略時に探す既定の設定ファイル(<c>%ProgramData%\radirec\radirec.json</c>)。</summary>
+    /// <summary>引数省略時に探す既定の設定ファイル(<c>%LOCALAPPDATA%\radirec\radirec.json</c>)。</summary>
     public static string DefaultConfigPath => Path.Combine(DataRoot, "radirec.json");
 
     /// <summary>明示パスがあればそれを、無ければ <see cref="DefaultConfigPath"/> を返す。</summary>

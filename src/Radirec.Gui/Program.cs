@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Radirec.Core.Ingestion;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
+using Velopack;
 
 namespace Radirec.Gui;
 
@@ -20,6 +21,10 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        // Velopack のフック処理(install/update/uninstall 時に Setup.exe が特殊引数で本 exe を起動する)。
+        // 最初に呼ぶ必要がある — フックならここで処理して終了する(通常起動なら素通り。ADR-0013 / S5)。
+        VelopackApp.Build().Run();
+
         // 単一インスタンス化。トレイがワーカー(台帳オープン・I: 監視)を内包するため、二重起動すると
         // 台帳ロックで片方が縮退したり、最悪二重取り込み + 重複トーストになる。既に起動済みなら黙って終了。
         using var singleInstance = new Mutex(initiallyOwned: true, @"Local\Radirec.Gui.SingleInstance", out var isNew);
@@ -42,6 +47,9 @@ internal static class Program
 
             // 設定を読み、取り込みワーカーをこのプロセスでホストする。設定が読めない/ワーカー起動に失敗
             // したときは取り込みを起動せず、トレイ(版表示・終了・再起動)だけを出す縮退にする。
+            // 初回起動時は %LocalAppData%\radirec\ に設定を sample から生成する(既存は温存。ADR-0013 / S5)。
+            ConfigSeeder.SeedIfAbsent(ConfigPaths.DataRoot);
+
             var configPath = ConfigPaths.Resolve(null);
             if (ConfigLoading.TryLoad(configPath, out var config, out var error))
             {

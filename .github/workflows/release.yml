@@ -57,41 +57,50 @@ jobs:
         shell: pwsh
         run: dotnet test Radirec.slnx -c Release --nologo
 
-      - name: Publish single-file exe
+      # トレイ(Radirec.Gui.exe)と単発 CLI(radirec.exe)を **1 フォルダ**へ publish する。
+      # Velopack は「フォルダ一式」を配布物として扱うため、単一 exe ではなく self-contained の
+      # 通常 publish にする(PublishSingleFile を明示 off で csproj の Release 既定を上書き)。ADR-0013。
+      - name: Publish app folder
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          # サービス/CLI(radirec.exe)と取込通知トレイ(Radirec.Gui.exe)を別ディレクトリへ publish。
-          # 両者とも単一自己完結 exe(ADR-0005 / 0009)。GUI は Windows ランナー上で WPF がビルドされる。
-          dotnet publish src/Radirec.Cli -c Release -p:Version=$env:VERSION -o publish/cli
-          dotnet publish src/Radirec.Gui -c Release -p:Version=$env:VERSION -o publish/gui
+          $pub = "publish"
+          dotnet publish src/Radirec.Gui -c Release -r win-x64 --self-contained `
+            -p:PublishSingleFile=false -p:Version=$env:VERSION -o $pub
+          dotnet publish src/Radirec.Cli -c Release -r win-x64 --self-contained `
+            -p:PublishSingleFile=false -p:Version=$env:VERSION -o $pub
 
-      - name: Assemble release package
-        id: pkg
+      # Velopack CLI(vpk)をグローバルツールとして導入し、PATH へ通す。
+      - name: Install vpk
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      # 直近リリースを取得して delta の差分基準にする。初回(Velopack リリースがまだ無い)は
+      # 取得対象が無く失敗しうるので握りつぶす(delta は最適化・full package は常に出る)。
+      - name: Download previous release (delta base)
+        continue-on-error: true
+        shell: pwsh
+        env:
+          VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: vpk download github --repoUrl "${{ github.server_url }}/${{ github.repository }}"
+
+      # Setup.exe / full+delta nupkg / portable / フィード manifest を生成し、GitHub Release へ発行する。
+      # bool フラグ(--publish / --pre)は値を取るため env 変数(VPK_PUBLISH / VPK_PRE)で渡す。
+      # prerelease semver(タグに '-'。例 v0.7.0-rc1)は VPK_PRE=true で prerelease として発行(#45)。
+      # private repo でも CI の GITHUB_TOKEN(contents:write)で発行できる(受け手側のトークンは別・ADR-0013)。
+      - name: Pack and upload (Velopack)
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ github.ref_name }}
+          VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VPK_PUBLISH: "true"
+          VPK_PRE: ${{ contains(github.ref_name, '-') }}
         run: |
-          $stage = "radirec-$env:VERSION-win-x64"
-          New-Item -ItemType Directory -Path "$stage/deploy", "$stage/config" -Force | Out-Null
-          # 配布物: 2 つの単一 exe(サービス/CLI + 取込通知トレイ)+ 運用スクリプト + sample 設定のみ。
-          # 実 config・pdb は含めない。
-          Copy-Item publish/cli/radirec.exe "$stage/"
-          Copy-Item publish/gui/Radirec.Gui.exe "$stage/"
-          Copy-Item deploy/*.ps1 "$stage/deploy/"
-          Copy-Item config/*.sample.json "$stage/config/"
-          $zip = "$stage.zip"
-          # ディレクトリごと圧縮し、展開時に radirec-<ver>-win-x64/ ラッパーを保つ(ファイル散乱を防ぐ)。
-          Compress-Archive -Path $stage -DestinationPath $zip -Force
-          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
-        with:
-          files: ${{ steps.pkg.outputs.zip }}
-          fail_on_unmatched_files: true
-          generate_release_notes: true
-          # prerelease semver(タグ名に '-' を含む。例 v0.3.0-rc1)は prerelease として発行し、
-          # RC が /releases/latest を汚染しないようにする(#45)。安定版(v0.3.0 等)は false。
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          $repo = "${{ github.server_url }}/${{ github.repository }}"
+          vpk pack -u Radirec -v $env:VERSION -p publish -e Radirec.Gui.exe `
+            --packTitle "Radirec" --icon src/Radirec.Gui/Assets/radirec.ico
+          vpk upload github --repoUrl $repo --tag $env:TAG --releaseName "Radirec $env:VERSION"
