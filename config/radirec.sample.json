@@ -1,9 +1,11 @@
 {
-  "RadioRoot": "I:\\radio\\tmp",
-  "OutputRoot": "\\\\192.168.11.121\\share\\media\\radio",
+  // 取込元・出力先は各自の環境に合わせて設定する。**出荷デフォルトは安全な空値**(§14)。
+  // 空のままだと取り込みは一切行われない(初回起動→設定前の誤インポートを防ぐ)。
+  "RadioRoot": "",   // 例: "I:\\radio\\tmp\\RADIO"(らじれこの録音ルート)
+  "OutputRoot": "",  // 例: "\\\\NAS\\share\\media\\radio"(Jellyfin ライブラリ。UNC 推奨)
 
   // 相対パスは radirec.json のあるディレクトリ基準で解決される(ADR-0006)。
-  // 既定では ledger / stations / programs は %ProgramData%\radirec\ に同居する。
+  // 既定では ledger / stations / programs は %LocalAppData%\radirec\ に同居する(ADR-0013)。
   "LedgerPath": "ledger.db",
   "StationsFile": "stations.json",
   "ProgramsFile": "programs.json",
@@ -24,7 +26,6 @@
   "ScanIntervalSeconds": 120,
   "WatchDebounceSeconds": 10,
 
-  // 新規取込時に取込要約シグナル(EventLog EventID 1001)を発行する(ADR-0008)。
-  // 受け手(GUI/常駐)がこれを購読しデスクトップ通知を表示する。
+  // 新規取込時に取込通知(トースト)を出す。トレイ常駐が in-process で表示する(ADR-0012)。
   "NotificationsEnabled": true
 }
