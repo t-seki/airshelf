@@ -152,15 +152,31 @@ internal sealed class ControlTrayMenu
         if (_ledgerPath is null)
             return;
 
-        // 既に開いていれば前面化する(複数枚を防ぐ)。
-        if (_historyWindow is { IsLoaded: true })
+        try
         {
-            _historyWindow.Activate();
-            return;
-        }
+            // 既に開いていれば前面化する(複数枚を防ぐ)。最小化されていれば通常表示へ戻してから前面化する
+            // (Activate=SetForegroundWindow は最小化を解除しないため、クリックが無反応に見えるのを防ぐ)。
+            if (_historyWindow is { IsLoaded: true })
+            {
+                if (_historyWindow.WindowState == System.Windows.WindowState.Minimized)
+                    _historyWindow.WindowState = System.Windows.WindowState.Normal;
+                _historyWindow.Activate();
+                return;
+            }
 
-        _historyWindow = new IngestHistoryWindow(() => IngestHistory.Load(_ledgerPath));
-        _historyWindow.Closed += (_, _) => _historyWindow = null;
-        _historyWindow.Show();
+            var window = new IngestHistoryWindow(() => IngestHistory.Load(_ledgerPath));
+            window.Closed += (_, _) => _historyWindow = null;
+            _historyWindow = window;
+            window.Show();
+        }
+        catch (Exception ex)
+        {
+            // このプロセス初の WPF ウィンドウ。WPF プレゼンテーション初期化や Show の失敗が WinForms の
+            // クリックハンドラを抜けて未処理例外(ThreadException)になり、トレイ全体を巻き添えに落とすのを防ぐ。
+            // (Load 失敗は窓内の Reload が別途握るので、ここは主に WPF 初期化・Show の失敗を対象にする。)
+            _historyWindow = null;
+            TrayLog.Warn($"取込履歴ウィンドウを開けませんでした: {ex}");
+            _tray.ShowBalloonTip(4000, "Radirec", "取込履歴を開けませんでした(gui.log 参照)", ToolTipIcon.Warning);
+        }
     }
 }
