@@ -67,7 +67,8 @@ public sealed class SourceOrganizerTests
         var item = Assert.Single(Build(fs, new RajirekoImporter()).Run(dryRun: false, copy: false).Items);
 
         Assert.Equal(OrganizeOutcome.Moved, item.Outcome);
-        Assert.Equal($"/dst/ニッポン放送/オードリーのオールナイトニッポン/{name}", item.TargetPath);
+        // 期待パスは production と同じ fs.Path.Combine で組む(OS のパス区切り差で崩れないように)。
+        Assert.Equal(fs.Path.Combine(To, "ニッポン放送", "オードリーのオールナイトニッポン", name), item.TargetPath);
         Assert.True(fs.File.Exists(item.TargetPath!));
         Assert.False(fs.File.Exists(src)); // 移動した
     }
@@ -85,7 +86,8 @@ public sealed class SourceOrganizerTests
         Assert.Equal(OrganizeOutcome.Moved, item.Outcome);
         // 局は未登録 → fallback で "TBSラジオ"、番組フォルダは (1) 付きのまま。
         Assert.Equal(
-            "/dst/TBSラジオ/パンサー向井のふらっと(1)/[TBSラジオ]パンサー向井のふらっと(TimeFree)_20241223083000.m4a",
+            fs.Path.Combine(To, "TBSラジオ", "パンサー向井のふらっと(1)",
+                "[TBSラジオ]パンサー向井のふらっと(TimeFree)_20241223083000.m4a"),
             item.TargetPath);
     }
 
@@ -110,7 +112,8 @@ public sealed class SourceOrganizerTests
         var item = Assert.Single(Build(fs, importer).Run(false, false).Items);
 
         Assert.Equal(
-            "/dst/ニッポン放送/オードリーのオールナイトニッポン/オードリーのオールナイトニッポン_20200823.mp3",
+            fs.Path.Combine(To, "ニッポン放送", "オードリーのオールナイトニッポン",
+                "オードリーのオールナイトニッポン_20200823.mp3"),
             item.TargetPath);
     }
 
@@ -127,7 +130,7 @@ public sealed class SourceOrganizerTests
         var item = Assert.Single(Build(fs, new RajirekoImporter()).Run(false, false).Items);
 
         Assert.Equal(OrganizeOutcome.Moved, item.Outcome);
-        Assert.StartsWith("/dst/NHK-FM（東京）/", item.TargetPath);
+        Assert.StartsWith(fs.Path.Combine(To, "NHK-FM（東京）"), item.TargetPath);
     }
 
     [Fact]
@@ -248,7 +251,8 @@ public sealed class SourceOrganizerTests
         var item = Assert.Single(Build(fs, new RajirekoImporter()).Run(false, false).Items);
 
         Assert.Equal(
-            "/dst/ニッポン放送/番組/[ニッポン放送]番組(TimeFree)_20240101010000.m4a", item.TargetPath);
+            fs.Path.Combine(To, "ニッポン放送", "番組", "[ニッポン放送]番組(TimeFree)_20240101010000.m4a"),
+            item.TargetPath);
     }
 
     [Fact]
