@@ -11,6 +11,8 @@ public sealed class NullLedger : ILedger
 
     public bool ContainsSource(string sourcePath) => false;
 
+    public bool ContainsContent(FileFingerprint fingerprint, DateOnly broadcastDate, TimeOnly? broadcastTime) => false;
+
     public void Record(LedgerEntry entry)
         => throw new InvalidOperationException("NullLedger には記録できません(dry-run 用)。");
 

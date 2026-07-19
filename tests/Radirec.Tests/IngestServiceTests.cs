@@ -26,6 +26,7 @@ public sealed class IngestServiceTests
     private sealed class FakeLedger : ILedger
     {
         private readonly List<(string Key, TimeOnly? Time, int Part)> _entries = [];
+        private readonly List<(FileFingerprint Fp, DateOnly Date, TimeOnly? Time)> _content = [];
         public HashSet<string> Sources { get; } = [];
         public IReadOnlyList<string> Keys => _entries.Select(e => e.Key).ToList();
 
@@ -35,10 +36,15 @@ public sealed class IngestServiceTests
 
         public bool ContainsSource(string sourcePath) => Sources.Contains(sourcePath);
 
+        // content ゲート(#79 / ADR-0014)。パス/フォルダ非依存で内容 + 放送日時が一致すれば取込済み。
+        public bool ContainsContent(FileFingerprint fingerprint, DateOnly broadcastDate, TimeOnly? broadcastTime) =>
+            _content.Any(c => c.Fp == fingerprint && c.Date == broadcastDate && c.Time == broadcastTime);
+
         public void Record(LedgerEntry entry)
         {
             _entries.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
             Sources.Add(entry.SourcePath);
+            _content.Add((entry.Fingerprint, entry.BroadcastDate, entry.BroadcastTime));
         }
 
         public IReadOnlyList<LedgerEntry> ListAll() => []; // 取込テストでは履歴列挙を使わない
@@ -253,6 +259,41 @@ public sealed class IngestServiceTests
 
         Assert.Equal(1, second.Count(IngestOutcome.SkippedAlreadyImported));
         Assert.Single(_target.Written); // 2 回目は書き込まない
+    }
+
+    [Fact]
+    public async Task SameContent_RenamedProgramFolder_IsSkippedByContentGate()
+    {
+        // #79 の事故再現: 同一内容(同 size + 同 mtime・同ファイル名タイムスタンプ)を、番組フォルダ名だけ
+        // 変えて再取込。identity(フォルダ由来 ADR-0001)も source パスも変わり Contains/ContainsSource は
+        // 外れるが、content ゲート(フィンガープリント + 放送日時)が捕捉して重複コピーを作らない。
+        var first = Rec("[TBSラジオ]番組(TimeFree)_20241223083000.m4a",
+            station: "TBSラジオ", program: "パンサー向井のふらっと(1)", size: 5000);
+        await Build([first]).RunOnceAsync(dryRun: false);
+        Assert.Single(_target.Written);
+
+        var renamed = Rec("[TBSラジオ]別プレフィクス(TimeFree)_20241223083000.m4a",
+            station: "TBSラジオ", program: "パンサー向井のふらっと(2)", size: 5000);
+        var second = await Build([renamed]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, second.Count(IngestOutcome.SkippedAlreadyImported));
+        Assert.Single(_target.Written); // 2 回目は書き込まない(… 0830 重複を生成しない)
+    }
+
+    [Fact]
+    public async Task DifferentContent_SameSlot_BothImported_ContentGateNotOverAggressive()
+    {
+        // content ゲートが過剰にスキップしない保証: 同じ放送日時でも内容(size)が違えば別物として両方取り込む。
+        // フィンガープリントが放送日時だけで誤一致 → 別放送を取りこぼす、を防ぐ(advisor 指摘の非対称リスク)。
+        var a = Rec("[TBSラジオ]番組A(TimeFree)_20241223083000.m4a",
+            station: "TBSラジオ", program: "番組A", size: 5000);
+        var b = Rec("[TBSラジオ]番組B(TimeFree)_20241223083000.m4a",
+            station: "TBSラジオ", program: "番組B", size: 6000);
+
+        var report = await Build([a, b]).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(2, report.Count(IngestOutcome.Imported));
+        Assert.Equal(2, _target.Written.Count);
     }
 
     [Fact]

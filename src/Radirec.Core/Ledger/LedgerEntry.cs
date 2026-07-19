@@ -21,4 +21,11 @@ public sealed record LedgerEntry
     public required string RuleVersion { get; init; }
     public required bool UsedFallback { get; init; }
     public required DateTimeOffset ImportedAtUtc { get; init; }
+
+    /// <summary>
+    /// ソースの内容フィンガープリント(サイズ + 最終更新)。取込元パス/番組フォルダ名に非依存で
+    /// 「同一内容は取込済み」と判定する content ゲートに使う(#79 / ADR-0014)。既定 (0,0) は
+    /// 「不明」(旧スキーマからの移送行)を表し、実ファイル(サイズ > 0)には一致しない。
+    /// </summary>
+    public FileFingerprint Fingerprint { get; init; }
 }
