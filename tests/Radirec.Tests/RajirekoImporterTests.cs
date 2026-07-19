@@ -156,6 +156,7 @@ public sealed class RajirekoImporterTests
     [InlineData("番組(TimeFree).m4a", false)]              // タイムスタンプ無し
     [InlineData("[局]番組_20200823.mp3", false)]           // radikool 命名(8桁)は掴まない → RadikoolImporter へ
     [InlineData("番組_20221112000000.mp3", false)]         // [局]無しの裸14桁mp3は保険で対象外(radikool 変換の疑い)
+    [InlineData("[局番組(TimeFree)_20231005000000.mp3", false)] // 開き括弧のみ(閉じ ']' 無し)は対象外(Failed にしない)
     [InlineData("[TBSラジオ]番組(TimeFree)_20231005000000(2).mp3", false)] // 末尾 (N) マーカーは現状 対象外(統合folderとのpart合成は別issue)
     public void CanHandle_DiscriminatesByExtensionAndTimestamp(string fileName, bool expected)
     {

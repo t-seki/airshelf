@@ -40,12 +40,15 @@ public sealed class RajirekoImporter : ISourceImporter
         if (file.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // MP3 は radikool と共有する。らじれこも一部の局/設定で MP3 を出すが、**放送局ブラケット [局] が
-        // ある**もの(形状 A/B)だけ受理する。ブラケット無しの裸 MP3(radikool 由来、または radikool の
+        // MP3 は radikool と共有する。らじれこも一部の局/設定で MP3 を出すが、**閉じた放送局ブラケット
+        // [局] がある**もの(形状 A/B)だけ受理する。ブラケット無しの裸 MP3(radikool 由来、または radikool の
         // 8桁が _…000000 の 14桁へ変換された等)を Rajireko semantics(番組=フォルダ・局=フォルダ・
         // 時刻=00:00)で無音のまま誤取込しないための保険。裸 MP3 は対象外に留めて可視化し、人手判断に委ねる。
+        // 開き括弧のみの壊れ名は Parse が ']' 欠如で throw(=Failed)するため、ここで閉じ括弧も要求して
+        // 対象外(可視・非 Failed)に留める。
         return file.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
-               && file.FileName.StartsWith('[');
+               && file.FileName.StartsWith('[')
+               && file.FileName.Contains(']');
     }
 
     public ParsedSource Parse(RecordingFile file)
