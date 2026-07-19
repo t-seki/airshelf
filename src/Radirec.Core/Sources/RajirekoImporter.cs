@@ -5,14 +5,21 @@ using Radirec.Core.Model;
 namespace Radirec.Core.Sources;
 
 /// <summary>
-/// らじれこ出力(M4A)の importer。<b>末尾タイムスタンプ <c>_{YYYYMMDDHHMMSS}</c> を唯一の
-/// 普遍アンカー</b>にして、ファイル名から <b>放送局・録音種別・放送日時のみ</b>を抽出する
-/// (実データ 2176 件で検証した 3 形状に対応):
+/// らじれこ出力(既定は M4A。一部の局/設定で MP3 も出る)の importer。<b>末尾タイムスタンプ
+/// <c>_{YYYYMMDDHHMMSS}</c>(14桁)を唯一の普遍アンカー</b>にして、ファイル名から
+/// <b>放送局・録音種別・放送日時のみ</b>を抽出する
+/// (実データで検証した 3 形状。<c>_ts</c> = 14桁タイムスタンプ):
 /// <list type="bullet">
-///   <item>A: <c>[局]番組(TimeFree)_ts.m4a</c>(標準)</item>
-///   <item>B: <c>[局]番組_ts.m4a</c>(録音種別マーカー無し)</item>
-///   <item>C: <c>番組_ts.m4a</c>(局プレフィックス無し。局はフォルダ名を権威にする)</item>
+///   <item>A: <c>[局]番組(TimeFree)_ts</c>(標準)</item>
+///   <item>B: <c>[局]番組_ts</c>(録音種別マーカー無し)</item>
+///   <item>C: <c>番組_ts</c>(局プレフィックス無し。局はフォルダ名を権威にする)</item>
 /// </list>
+/// <b>拡張子ごとの受理範囲</b>(#84):<c>.m4a</c> は らじれこ専用フォーマットで radikool(常に MP3)と
+/// 衝突しないため<b>全形状 A/B/C を受理</b>。<c>.mp3</c> は radikool と共有するため、放送局ブラケット
+/// <c>[局]</c> を持つ<b>形状 A/B のみ受理</b>し、ブラケット無しの形状 C の MP3 は受理しない(対象外)。
+/// これは radikool 由来 or 8桁日付が <c>_…000000</c> の 14桁へ変換された「裸の MP3」を Rajireko
+/// semantics(番組=フォルダ・局=フォルダ・時刻=00:00)で無音のまま誤取込しないための保険。radikool の
+/// 実ファイルは <c>[局]</c> を持たないため、このブラケット判定で radikool と らじれこ MP3 を実務上分離できる。
 /// <b>番組の同一性(アルバム)は常にフォルダ名を拠り所にする</b>(ADR-0001)。ファイル名の
 /// 番組部は週替わりゲスト等で変動するため識別には使わない。録音種別マーカーは既知許可リストに
 /// 一致する末尾のものだけ剥がす(番組名やフォルダ名が含む括弧を誤って切り落とさないため)。
@@ -31,8 +38,24 @@ public sealed class RajirekoImporter : ISourceImporter
         => _knownRecordingKinds = (knownRecordingKinds ?? ["TimeFree"]).ToArray();
 
     public bool CanHandle(RecordingFile file)
-        => file.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
-           && TimestampSuffix.IsMatch(file.FileName);
+    {
+        if (!TimestampSuffix.IsMatch(file.FileName))
+            return false;
+
+        // M4A は らじれこ専用フォーマットで radikool(常に MP3)と衝突しない → 全形状(A/B/C)を受理。
+        if (file.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // MP3 は radikool と共有する。らじれこも一部の局/設定で MP3 を出すが、**閉じた放送局ブラケット
+        // [局] がある**もの(形状 A/B)だけ受理する。ブラケット無しの裸 MP3(radikool 由来、または radikool の
+        // 8桁が _…000000 の 14桁へ変換された等)を Rajireko semantics(番組=フォルダ・局=フォルダ・
+        // 時刻=00:00)で無音のまま誤取込しないための保険。裸 MP3 は対象外に留めて可視化し、人手判断に委ねる。
+        // 開き括弧のみの壊れ名は Parse が ']' 欠如で throw(=Failed)するため、ここで閉じ括弧も要求して
+        // 対象外(可視・非 Failed)に留める。
+        return file.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
+               && file.FileName.StartsWith('[')
+               && file.FileName.Contains(']');
+    }
 
     public ParsedSource Parse(RecordingFile file)
     {
