@@ -23,7 +23,11 @@ internal static class Program
     {
         // Velopack のフック処理(install/update/uninstall 時に Setup.exe が特殊引数で本 exe を起動する)。
         // 最初に呼ぶ必要がある — フックならここで処理して終了する(通常起動なら素通り。ADR-0013 / S5)。
-        VelopackApp.Build().Run();
+        // アンインストール時は自己登録したログオン自動起動(HKCU Run)を消す。Velopack は app 自身が
+        // 登録した Run 値までは掃除しないため、ここで落として stale なエントリを残さない。
+        VelopackApp.Build()
+            .OnBeforeUninstallFastCallback(_ => StartupRegistrar.Unregister())
+            .Run();
 
         // 単一インスタンス化。トレイがワーカー(台帳オープン・I: 監視)を内包するため、二重起動すると
         // 台帳ロックで片方が縮退したり、最悪二重取り込み + 重複トーストになる。既に起動済みなら黙って終了。
