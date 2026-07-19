@@ -10,34 +10,30 @@
 
 ## ステータス
 
-**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M3(Windows サービス常駐)/ M4-A(radikool 移行)/
-M6(取込通知・制御チャネル)実装済み**。
-単一 exe + install スクリプト + タグ駆動 Release を提供([最新リリース](https://github.com/t-seki/radirec-tool/releases))。
-ソース跨ぎのアルバム統合(M4-C)/ 配布・編集 GUI(M5)は未実装。
+**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M4-A(radikool 移行)実装済み**。
+常駐は **トレイ常駐 per-user モデル**(`Radirec.Gui`)で、取り込みワーカーをトレイプロセスが内包し、
+取込通知は in-process トースト、制御はトレイメニュー、更新は Velopack のアプリ内自己更新で行う
+([ADR-0012](docs/adr/0012-retire-service-for-tray-resident-per-user.md) /
+[ADR-0013](docs/adr/0013-velopack-per-user-updates.md)。旧 Windows サービス/EventLog/named pipe は退役)。
+配布は **Velopack の per-user インストーラ(非 admin)+ タグ駆動 Release**
+([最新リリース](https://github.com/t-seki/radirec-tool/releases))。
+ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装。
 
-## インストール・更新(Windows・運用)
+## インストール・更新(Windows・per-user・非 admin)
 
-常駐運用は [Releases](https://github.com/t-seki/radirec-tool/releases) の zip を使います(ランタイム不要の単一 exe。
-実行体 = `C:\Program Files\radirec\`、データ = `%ProgramData%\radirec\`)。zip を展開し、**管理者 PowerShell** で:
+[Releases](https://github.com/t-seki/radirec-tool/releases) の **`Radirec-win-Setup.exe`** をダウンロードして実行
+するだけ(**管理者不要**)。`%LocalAppData%\Radirec` へ導入し、ログオン自動起動を登録して起動します。
+データ(設定・台帳・マスタ・ログ)は `%LocalAppData%\RadirecData\` に置かれ、初回起動時に設定を sample から
+生成します(`RadioRoot` / `OutputRoot` / Jellyfin を編集)。
 
-```powershell
-# 新規: EventLog 登録 → 設定生成 → サービス登録 + 取込通知トレイ配置・起動(自分のアカウント。冪等)
-.\deploy\install.ps1
-# → %ProgramData%\radirec\radirec.json を編集して Start-Service Radirec
+- **更新**: トレイメニュー「今すぐ更新を確認」→「更新を適用して再起動」(起動時・定期にも自動チェック)。
+  private repo のため、更新フィード読取用トークンを `radirec.json` の `UpdateToken` に設定する。
+- **アンインストール**: 設定 → アプリ →「Radirec」、または `%LocalAppData%\Radirec\Update.exe --uninstall`。
+- **取込通知**: 新規取込時にトレイが in-process でトースト表示(`NotificationsEnabled: false` で無効化)。
 
-# 更新: 停止 → radirec.exe / Radirec.Gui.exe 差し替え → 再開(認証不要・設定/台帳はそのまま)
-.\deploy\update.ps1
-
-# 削除: サービス/EventLog/exe/通知トレイ(自動起動含む)を削除(データは残す。-PurgeData で全消し)
-.\deploy\uninstall.ps1
-```
-
-新規取込があると、常駐サービスが発するシグナルを **取込通知トレイ(Radirec.Gui)** が受けてデスクトップに
-トースト表示します(ADR-0008 / 0009)。トレイは初回起動でログオン自動起動に自己登録され、無効化は
-`radirec.json` の `NotificationsEnabled: false`(発行側)またはトレイ終了で行えます。
-
-新版は `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z` で CI が Release に zip を自動添付します。
-導入・更新・移行の詳細は [利用ガイド §6–8](docs/usage.md)。
+新版は `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z` で CI(`vpk`)が Setup.exe/更新フィードを Release へ
+発行します。導入・運用・**旧環境からの移行**の詳細は
+[利用ガイド §6](docs/usage.md) と [移行 runbook](docs/migration-to-velopack.md)。
 
 ## 開発時の実行(SDK から)
 
@@ -66,16 +62,16 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 ## 技術スタック
 
 - C# / .NET 10(実行は Windows ネイティブ)
-- タグ操作: TagLib# / 台帳: SQLite / CLI: Spectre.Console.Cli
-- ファイル監視: FileSystemWatcher(Windows サービス, M3)/ Jellyfin 連携: REST API(M2)
+- タグ操作: TagLib# / 台帳: SQLite / CLI: Spectre.Console.Cli / 配布・自己更新: Velopack
+- ファイル監視: FileSystemWatcher(トレイ常駐のワーカー)/ Jellyfin 連携: REST API / 通知: WinRT トースト
 
 ## 構成
 
 | プロジェクト | 役割 | 状態 |
 |------|------|------|
 | `Radirec.Core` | ドメインロジック(パース/正規化/import-once/タグ/出力ターゲット) | 実装済み |
-| `Radirec.Hosting` | 合成ルート + 環境設定・パス解決(Core と入口の橋渡し) | 実装済み |
-| `Radirec.Cli` | 単一 exe `radirec.exe`(CLI + 常駐サービス。`ingest`/`refresh`/`service`) | 実装済み |
-| `Radirec.Gui` | 取込通知トレイ(独立 exe)。将来の配布フロントエンド兼編集 UI(M5)は後載せ | トレイ実装済み(M6)/ 編集 UI は予定(M5) |
-| `Radirec.Gui.Core` | `Radirec.Gui` のテスト可能ロジック(要約シグナル JSON DTO・購読) | 実装済み |
+| `Radirec.Hosting` | 合成ルート + 環境設定・パス解決(Core と入口の橋渡し。CLI と常駐トレイが共有) | 実装済み |
+| `Radirec.Cli` | 単一 exe `radirec.exe`。dev/batch 用の単発 CLI(`ingest`/`refresh`) | 実装済み |
+| `Radirec.Gui` | **常駐トレイ**(独立 exe)。取り込みワーカーを内包し、通知/制御/取込履歴/自己更新を担う(ADR-0012) | 実装済み |
+| `Radirec.Gui.Core` | `Radirec.Gui` のテスト可能な提示ロジック(トースト整形・履歴行整形・版表示) | 実装済み |
 | `Radirec.Tests` | 単体・統合テスト | 実装済み |
