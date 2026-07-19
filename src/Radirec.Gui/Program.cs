@@ -26,7 +26,13 @@ internal static class Program
         // アンインストール時は自己登録したログオン自動起動(HKCU Run)を消す。Velopack は app 自身が
         // 登録した Run 値までは掃除しないため、ここで落として stale なエントリを残さない。
         VelopackApp.Build()
-            .OnBeforeUninstallFastCallback(_ => StartupRegistrar.Unregister())
+            .OnBeforeUninstallFastCallback(_ =>
+            {
+                // 自動起動(HKCU Run)の掃除は best-effort。group policy 等でレジストリ書込が拒否されても
+                // アンインストール自体は失敗させない(掃除漏れはユーザーが手動で消せる)。
+                try { StartupRegistrar.Unregister(); }
+                catch { /* uninstall を壊さない */ }
+            })
             .Run();
 
         // 単一インスタンス化。トレイがワーカー(台帳オープン・I: 監視)を内包するため、二重起動すると
