@@ -20,8 +20,10 @@ namespace Radirec.Core.Sources;
 /// </summary>
 public sealed class RajirekoImporter : ISourceImporter
 {
+    // 末尾 "_{14桁}" + 任意の同日重複マーカー "(N)"。らじれこは MP3 出力で時刻を 000000 固定にする
+    // ことがあり、同日の複数回を時刻で区別できないため radikool と同様に "(N)" を付ける。(N) は part 序数。
     private static readonly Regex TimestampSuffix =
-        new(@"_(?<ts>[0-9]{14})\.[^.]+$", RegexOptions.Compiled);
+        new(@"_(?<ts>[0-9]{14})(?:\((?<part>[0-9]{1,3})\))?\.[^.]+$", RegexOptions.Compiled);
 
     private readonly IReadOnlyList<string> _knownRecordingKinds;
 
@@ -31,13 +33,22 @@ public sealed class RajirekoImporter : ISourceImporter
     public RajirekoImporter(IEnumerable<string>? knownRecordingKinds = null)
         => _knownRecordingKinds = (knownRecordingKinds ?? ["TimeFree"]).ToArray();
 
-    // らじれこは通常 M4A だが一部の局/設定で MP3 も出す。命名(末尾 14桁タイムスタンプ)が唯一のアンカーで
-    // 音声コンテナには依存しないため .m4a / .mp3 の両方を受理する。radikool の MP3 は 8桁日付で
-    // TimestampSuffix(14桁)に当たらないため、ここでは掴まない(SourceRouter が RadikoolImporter へ回す)。
     public bool CanHandle(RecordingFile file)
-        => (file.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
-            || file.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase))
-           && TimestampSuffix.IsMatch(file.FileName);
+    {
+        if (!TimestampSuffix.IsMatch(file.FileName))
+            return false;
+
+        // M4A は らじれこ専用フォーマットで radikool(常に MP3)と衝突しない → 全形状(A/B/C)を受理。
+        if (file.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // MP3 は radikool と共有する。らじれこも一部の局/設定で MP3 を出すが、**放送局ブラケット [局] が
+        // ある**もの(形状 A/B)だけ受理する。ブラケット無しの裸 MP3(radikool 由来、または radikool の
+        // 8桁が _…000000 の 14桁へ変換された等)を Rajireko semantics(番組=フォルダ・局=フォルダ・
+        // 時刻=00:00)で無音のまま誤取込しないための保険。裸 MP3 は対象外に留めて可視化し、人手判断に委ねる。
+        return file.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
+               && file.FileName.StartsWith('[');
+    }
 
     public ParsedSource Parse(RecordingFile file)
     {
@@ -58,7 +69,13 @@ public sealed class RajirekoImporter : ISourceImporter
         var date = DateOnly.FromDateTime(broadcast);
         var time = TimeOnly.FromDateTime(broadcast);
 
-        // ファイル名から末尾 "_{14桁}.ext" を除いた部分。
+        // 同日重複マーカー "(N)"(あれば)。時刻が 000000 固定の MP3 等で、同日の複数回を part で区別する
+        // (ADR-0004。radikool と同じ扱い)。1〜3 桁に制限済みなので int.Parse はオーバーフローしない。
+        int? partIndex = match.Groups["part"].Success
+            ? int.Parse(match.Groups["part"].Value, CultureInfo.InvariantCulture)
+            : null;
+
+        // ファイル名から末尾 "_{14桁}[(N)].ext" を除いた部分。
         var stem = name[..match.Index];
 
         string rawStation;
@@ -96,6 +113,7 @@ public sealed class RajirekoImporter : ISourceImporter
             BroadcastTime = time,
             RecordingKind = kind,
             StationFromFolder = stationFromFolder,
+            PartIndex = partIndex,
         };
     }
 

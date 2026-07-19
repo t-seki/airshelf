@@ -151,15 +151,37 @@ public sealed class RajirekoImporterTests
 
     [Theory]
     [InlineData("[J-WAVE]番組(TimeFree)_20260612223000.m4a", true)]
-    [InlineData("番組_20260612223000.m4a", true)]
-    [InlineData("[文化放送]番組(TimeFree)_20221112000000.mp3", true)] // らじれこ命名の .mp3(14桁)も受理(#84)
+    [InlineData("番組_20260612223000.m4a", true)]                    // 形状 C(裸)m4a も受理
+    [InlineData("[文化放送]番組(TimeFree)_20221112000000.mp3", true)] // らじれこ命名の .mp3(14桁・[局]付き)を受理(#84)
+    [InlineData("[TBSラジオ]番組(TimeFree)_20231005000000(2).mp3", true)] // 末尾 (N) マーカー付きも受理(#84)
     [InlineData("番組(TimeFree).m4a", false)]              // タイムスタンプ無し
     [InlineData("[局]番組_20200823.mp3", false)]           // radikool 命名(8桁)は掴まない → RadikoolImporter へ
+    [InlineData("番組_20221112000000.mp3", false)]         // [局]無しの裸14桁mp3は保険で対象外(radikool 変換の疑い)
     public void CanHandle_DiscriminatesByExtensionAndTimestamp(string fileName, bool expected)
     {
         var file = Make(fileName);
 
         Assert.Equal(expected, _sut.CanHandle(file));
+    }
+
+    [Fact]
+    public void Mp3_SameDayDuplicateMarker_MapsToPartIndex()
+    {
+        // 時刻 000000 固定の MP3 では同日の複数回を末尾 (N) で区別する(radikool と同じ。ADR-0004)。
+        var p1 = _sut.Parse(Make(
+            "[TBSラジオ]ふらっと(TimeFree)_20231005000000(1).mp3",
+            stationFolder: "TBSラジオ", programFolder: "パンサー向井のふらっと(1)"));
+        var p2 = _sut.Parse(Make(
+            "[TBSラジオ]ふらっと(TimeFree)_20231005000000(2).mp3",
+            stationFolder: "TBSラジオ", programFolder: "パンサー向井のふらっと(1)"));
+
+        Assert.Equal(1, p1.PartIndex);
+        Assert.Equal(2, p2.PartIndex);
+        Assert.Equal(new DateOnly(2023, 10, 5), p1.BroadcastDate);
+        // マーカー無しは part なし(既存挙動)。
+        Assert.Null(_sut.Parse(Make(
+            "[TBSラジオ]ふらっと(TimeFree)_20231005000000.mp3",
+            stationFolder: "TBSラジオ", programFolder: "パンサー向井のふらっと(1)")).PartIndex);
     }
 
     [Fact]
@@ -204,5 +226,9 @@ public sealed class RajirekoImporterTests
         Assert.Equal("文化放送", k.RawStation);                 // genre タグ由来 = radikool semantics
         Assert.Equal("オードリー", k.RawProgram);                // ファイル名 stem
         Assert.Null(k.BroadcastTime);                           // radikool は時刻なし
+
+        // [局]無しの裸14桁 mp3 はどちらも扱わない(radikool の 8→14桁変換等を Rajireko で誤取込しない保険)。
+        var bareMp3 = Make("オードリー_20200823000000.mp3", stationFolder: "LFR", programFolder: "LFR");
+        Assert.False(router.CanHandle(bareMp3));
     }
 }
