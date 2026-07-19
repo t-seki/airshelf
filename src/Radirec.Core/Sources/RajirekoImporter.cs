@@ -20,10 +20,8 @@ namespace Radirec.Core.Sources;
 /// </summary>
 public sealed class RajirekoImporter : ISourceImporter
 {
-    // 末尾 "_{14桁}" + 任意の同日重複マーカー "(N)"。らじれこは MP3 出力で時刻を 000000 固定にする
-    // ことがあり、同日の複数回を時刻で区別できないため radikool と同様に "(N)" を付ける。(N) は part 序数。
     private static readonly Regex TimestampSuffix =
-        new(@"_(?<ts>[0-9]{14})(?:\((?<part>[0-9]{1,3})\))?\.[^.]+$", RegexOptions.Compiled);
+        new(@"_(?<ts>[0-9]{14})\.[^.]+$", RegexOptions.Compiled);
 
     private readonly IReadOnlyList<string> _knownRecordingKinds;
 
@@ -69,13 +67,7 @@ public sealed class RajirekoImporter : ISourceImporter
         var date = DateOnly.FromDateTime(broadcast);
         var time = TimeOnly.FromDateTime(broadcast);
 
-        // 同日重複マーカー "(N)"(あれば)。時刻が 000000 固定の MP3 等で、同日の複数回を part で区別する
-        // (ADR-0004。radikool と同じ扱い)。1〜3 桁に制限済みなので int.Parse はオーバーフローしない。
-        int? partIndex = match.Groups["part"].Success
-            ? int.Parse(match.Groups["part"].Value, CultureInfo.InvariantCulture)
-            : null;
-
-        // ファイル名から末尾 "_{14桁}[(N)].ext" を除いた部分。
+        // ファイル名から末尾 "_{14桁}.ext" を除いた部分。
         var stem = name[..match.Index];
 
         string rawStation;
@@ -113,7 +105,6 @@ public sealed class RajirekoImporter : ISourceImporter
             BroadcastTime = time,
             RecordingKind = kind,
             StationFromFolder = stationFromFolder,
-            PartIndex = partIndex,
         };
     }
 
