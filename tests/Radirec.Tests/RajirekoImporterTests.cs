@@ -1,4 +1,5 @@
 using Radirec.Core.Model;
+using Radirec.Core.Output;
 using Radirec.Core.Sources;
 
 namespace Radirec.Tests;
@@ -151,12 +152,57 @@ public sealed class RajirekoImporterTests
     [Theory]
     [InlineData("[J-WAVE]番組(TimeFree)_20260612223000.m4a", true)]
     [InlineData("番組_20260612223000.m4a", true)]
+    [InlineData("[文化放送]番組(TimeFree)_20221112000000.mp3", true)] // らじれこ命名の .mp3(14桁)も受理(#84)
     [InlineData("番組(TimeFree).m4a", false)]              // タイムスタンプ無し
-    [InlineData("[局]番組_20200823.mp3", false)]           // 別拡張子(radikool)
+    [InlineData("[局]番組_20200823.mp3", false)]           // radikool 命名(8桁)は掴まない → RadikoolImporter へ
     public void CanHandle_DiscriminatesByExtensionAndTimestamp(string fileName, bool expected)
     {
         var file = Make(fileName);
 
         Assert.Equal(expected, _sut.CanHandle(file));
+    }
+
+    [Fact]
+    public void Mp3_WithRajirekoNaming_ParsesLikeM4a()
+    {
+        // らじれこ命名の .mp3 も M4A と同じくファイル名/フォルダから抽出できる(#84)。
+        var file = Make(
+            "[文化放送]ますだおかだ…おかしば 11時～12時(TimeFree)_20221112000000.mp3",
+            stationFolder: "文化放送", programFolder: "ますだおかだ…おかしば11時1");
+
+        var r = _sut.Parse(file);
+
+        Assert.Equal("文化放送", r.RawStation);
+        Assert.Equal("ますだおかだ…おかしば11時1", r.RawProgram); // 番組はフォルダ名(ADR-0001)
+        Assert.Equal("TimeFree", r.RecordingKind);
+        Assert.Equal(new DateOnly(2022, 11, 12), r.BroadcastDate);
+        Assert.Equal(new TimeOnly(0, 0, 0), r.BroadcastTime);
+    }
+
+    // タグ(genre=局)を返すだけの fake(radikool の識別に使う)。
+    private sealed class FakeTagReader(string? genre) : ITagReader
+    {
+        public string? ReadArtist(string filePath) => null;
+        public RawTags ReadTags(string filePath) => new(genre, null);
+    }
+
+    [Fact]
+    public void SourceRouter_RoutesMp3ByTimestampDigits()
+    {
+        // .mp3 は 14桁=らじれこ / 8桁=radikool で自動判別され、正しい importer に回る(#84)。
+        var router = new SourceRouter([new RajirekoImporter(), new RadikoolImporter(new FakeTagReader("文化放送"))]);
+
+        var rajirekoMp3 = Make(
+            "[文化放送]おかしば(TimeFree)_20221112000000.mp3",
+            stationFolder: "文化放送", programFolder: "おかしば11時1");
+        var r = router.Parse(rajirekoMp3);
+        Assert.Equal("おかしば11時1", r.RawProgram);            // フォルダ名 = らじれこ semantics
+        Assert.Equal(new TimeOnly(0, 0, 0), r.BroadcastTime);   // 14桁の時刻を持つ
+
+        var radikoolMp3 = Make("オードリー_20200823.mp3", stationFolder: "LFR", programFolder: "LFR");
+        var k = router.Parse(radikoolMp3);
+        Assert.Equal("文化放送", k.RawStation);                 // genre タグ由来 = radikool semantics
+        Assert.Equal("オードリー", k.RawProgram);                // ファイル名 stem
+        Assert.Null(k.BroadcastTime);                           // radikool は時刻なし
     }
 }

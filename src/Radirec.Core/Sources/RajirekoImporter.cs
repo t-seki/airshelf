@@ -5,8 +5,9 @@ using Radirec.Core.Model;
 namespace Radirec.Core.Sources;
 
 /// <summary>
-/// らじれこ出力(M4A)の importer。<b>末尾タイムスタンプ <c>_{YYYYMMDDHHMMSS}</c> を唯一の
-/// 普遍アンカー</b>にして、ファイル名から <b>放送局・録音種別・放送日時のみ</b>を抽出する
+/// らじれこ出力(既定は M4A。一部の局/設定で MP3 も出る)の importer。<b>末尾タイムスタンプ
+/// <c>_{YYYYMMDDHHMMSS}</c>(14桁)を唯一の普遍アンカー</b>にして、ファイル名から
+/// <b>放送局・録音種別・放送日時のみ</b>を抽出する
 /// (実データ 2176 件で検証した 3 形状に対応):
 /// <list type="bullet">
 ///   <item>A: <c>[局]番組(TimeFree)_ts.m4a</c>(標準)</item>
@@ -30,8 +31,12 @@ public sealed class RajirekoImporter : ISourceImporter
     public RajirekoImporter(IEnumerable<string>? knownRecordingKinds = null)
         => _knownRecordingKinds = (knownRecordingKinds ?? ["TimeFree"]).ToArray();
 
+    // らじれこは通常 M4A だが一部の局/設定で MP3 も出す。命名(末尾 14桁タイムスタンプ)が唯一のアンカーで
+    // 音声コンテナには依存しないため .m4a / .mp3 の両方を受理する。radikool の MP3 は 8桁日付で
+    // TimestampSuffix(14桁)に当たらないため、ここでは掴まない(SourceRouter が RadikoolImporter へ回す)。
     public bool CanHandle(RecordingFile file)
-        => file.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
+        => (file.Extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
+            || file.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase))
            && TimestampSuffix.IsMatch(file.FileName);
 
     public ParsedSource Parse(RecordingFile file)
