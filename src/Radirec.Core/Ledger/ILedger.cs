@@ -15,6 +15,15 @@ public interface ILedger
     /// <summary>同一ソースパスが取り込み済みか(フォールバックキーの重複コピー抑止)。</summary>
     bool ContainsSource(string sourcePath);
 
+    /// <summary>
+    /// 同一「内容」が同じ放送スロット(放送日 + 放送時刻)で取り込み済みか。取込元パス/番組フォルダ名に
+    /// 非依存で判定するため、ソースフォルダのリネームや台帳喪失後でも重複取込を防ぐ(#79 / ADR-0014)。
+    /// 内容の同一性は <paramref name="fingerprint"/>(サイズ + 最終更新)で近似する。放送日/時刻で裏取り
+    /// するのは、異なる放送が偶然同サイズ + 同更新時刻で衝突したときの誤スキップ(取りこぼし)を防ぐため。
+    /// パート序数は統合フォルダ順で変わりうる(まさにリネームで変わる値)ためキーに含めない。
+    /// </summary>
+    bool ContainsContent(FileFingerprint fingerprint, DateOnly broadcastDate, TimeOnly? broadcastTime);
+
     /// <summary>取り込み済みとして記録する(既存キーは無視)。</summary>
     void Record(LedgerEntry entry);
 

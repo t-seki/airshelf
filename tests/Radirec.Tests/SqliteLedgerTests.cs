@@ -197,6 +197,71 @@ public sealed class SqliteLedgerTests : IDisposable
         Assert.True(ledger.ContainsSource("/in/2.mp3"));
     }
 
+    // ---- content ゲート(フィンガープリント + 放送日時。#79 / ADR-0014)----
+
+    private static readonly FileFingerprint Fp = new(5000, 638_000_000_000_000_000L);
+
+    [Fact]
+    public void ContainsContent_TrueForSameFingerprintAndSlot_PathIndependent()
+    {
+        using var ledger = new SqliteLedger(DbPath);
+        // 別 identity(番組フォルダ違い)・別ソースパスでも、内容 + 放送日時が一致すれば取込済み。
+        ledger.Record(Entry(Key("ふらっと(1)"), source: @"I:\a\x.m4a", time: new TimeOnly(8, 30)) with
+        {
+            Fingerprint = Fp,
+        });
+
+        Assert.True(ledger.ContainsContent(Fp, new DateOnly(2026, 6, 12), new TimeOnly(8, 30)));
+        Assert.False(ledger.Contains(Key("ふらっと(2)"), new TimeOnly(8, 30), 2)); // identity/part は別物
+    }
+
+    [Fact]
+    public void ContainsContent_FalseWhenContentOrSlotDiffers()
+    {
+        using var ledger = new SqliteLedger(DbPath);
+        ledger.Record(Entry(Key(), time: new TimeOnly(8, 30)) with { Fingerprint = Fp });
+
+        Assert.False(ledger.ContainsContent(Fp with { SizeBytes = 6000 }, new DateOnly(2026, 6, 12), new TimeOnly(8, 30)));
+        Assert.False(ledger.ContainsContent(Fp, new DateOnly(2026, 6, 12), new TimeOnly(10, 0))); // 別時刻
+        Assert.False(ledger.ContainsContent(Fp, new DateOnly(2026, 6, 13), new TimeOnly(8, 30))); // 別日
+    }
+
+    [Fact]
+    public void ContainsContent_RoundTripsThroughListAll()
+    {
+        using var ledger = new SqliteLedger(DbPath);
+        ledger.Record(Entry(Key(), time: new TimeOnly(8, 30)) with { Fingerprint = Fp });
+
+        Assert.Equal(Fp, ledger.ListAll().Single().Fingerprint);
+    }
+
+    [Fact]
+    public void Migrates_BroadcastTimeSchema_AddsContentColumns_AndContentGateWorks()
+    {
+        // 本番の現行スキーマ(broadcast_time あり・part_index / content 列なし)を開くと content 列が
+        // 後付けされ、新規記録は content ゲートで判定できる。移送された旧行(内容不明 = 0,0)は実ファイル
+        // (サイズ > 0)の照会に一致しない(誤スキップしない)。
+        CreateBroadcastTimeSchemaDb(Key(), source: "/in/prod.m4a", time: "083000");
+
+        using var ledger = new SqliteLedger(DbPath);
+
+        ledger.Record(Entry(Key("別番組"), time: new TimeOnly(1, 0)) with { Fingerprint = Fp });
+        Assert.True(ledger.ContainsContent(Fp, new DateOnly(2026, 6, 12), new TimeOnly(1, 0)));
+        // 旧行(0,0)は実ファイルのフィンガープリントに一致しない。
+        Assert.False(ledger.ContainsContent(new FileFingerprint(4096, 123), new DateOnly(2026, 6, 12), new TimeOnly(8, 30, 0)));
+    }
+
+    [Fact]
+    public void ReadOnly_WithoutContentColumns_ContainsContent_IsFalse_NoThrow()
+    {
+        // content 列を持たない現行スキーマを dry-run(読み取り専用)で開いても例外にならず未取込扱い。
+        CreateBroadcastTimeSchemaDb(Key(), source: "/in/prod.m4a", time: "083000");
+
+        using var ledger = new SqliteLedger(DbPath, readOnly: true);
+
+        Assert.False(ledger.ContainsContent(new FileFingerprint(4096, 123), new DateOnly(2026, 6, 12), new TimeOnly(8, 30, 0)));
+    }
+
     // 最古スキーマ(broadcast_time / part_index 列なし)の台帳に 1 行入れて作る
     private void CreateOldestSchemaDb(IdentityKey key, string source)
     {

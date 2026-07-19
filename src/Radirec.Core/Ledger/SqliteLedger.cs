@@ -38,10 +38,17 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
             rule_version   TEXT NOT NULL,
             used_fallback  INTEGER NOT NULL,
             imported_at    TEXT NOT NULL,
+            size_bytes     INTEGER NOT NULL DEFAULT 0,
+            last_write     INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (identity_key, broadcast_time, part_index)
         );
         CREATE INDEX IF NOT EXISTS ix_imports_source ON imports(source_path);
         """;
+
+    // content ゲート(#79 / ADR-0014)の索引。size_bytes 列の存在に依存するため CreateTableSql とは
+    // 分け、列を保証した後(EnsureContentColumns)に張る。
+    private const string CreateContentIndexSql =
+        "CREATE INDEX IF NOT EXISTS ix_imports_content ON imports(size_bytes, last_write);";
 
     private readonly SqliteConnection _connection;
 
@@ -52,6 +59,10 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
 
     // failures テーブルが使えるか(readOnly の旧 DB でテーブル欠如時に throw させないためのガード)。
     private readonly bool _failuresUsable;
+
+    // content ゲート(size_bytes/last_write 列)が使えるか。readOnly で列を持たない旧/現行スキーマを
+    // 開いたときに ContainsContent が例外を出さず未取込扱いにするためのガード(#79 / ADR-0014)。
+    private readonly bool _contentUsable;
 
     /// <param name="databasePath">台帳 DB のパス(ローカルディスク)。</param>
     /// <param name="readOnly">
@@ -90,11 +101,13 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
                 Exec(CreateFailuresTableSql); // 冪等。失敗 de-dup テーブルを保証する。
                 _usable = true;
                 _failuresUsable = true;
+                _contentUsable = true; // MigrateOrCreate が content 列を保証する。
             }
             else
             {
                 _usable = TableExists("imports") && ColumnExists("imports", "part_index");
                 _failuresUsable = TableExists("failures");
+                _contentUsable = _usable && ColumnExists("imports", "size_bytes");
             }
         }
         catch
@@ -114,10 +127,8 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         if (!TableExists("imports"))
         {
             Exec(CreateTableSql);
-            return;
         }
-
-        if (!ColumnExists("imports", "broadcast_time"))
+        else if (!ColumnExists("imports", "broadcast_time"))
         {
             // 最古スキーマ(identity_key 単独 PK)。broadcast_time='' / part_index=0 で移送。
             MigrateVia("''");
@@ -132,6 +143,24 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
             // 最新スキーマ。テーブルはそのまま、インデックスのみ保証する。
             Exec(CreateTableSql);
         }
+
+        // content フィンガープリント列 + 索引(#79 / ADR-0014)を全経路で保証する。追加列は PK に
+        // 関与しないため ALTER ADD COLUMN で足せる(rename→copy は不要)。既に列を持つ経路
+        // (新規作成 / MigrateVia)では ALTER をスキップし索引だけ保証する。
+        EnsureContentColumns();
+    }
+
+    // 既存の最新スキーマ(part_index あり・content 列なし = M4 時点の本番台帳)に content 列を後付けする。
+    // 追加列は既定 (0,0) = 「内容不明」で埋まり、実ファイル(サイズ > 0)の照会には一致しない(誤スキップ無し)。
+    private void EnsureContentColumns()
+    {
+        if (!ColumnExists("imports", "size_bytes"))
+        {
+            Exec("ALTER TABLE imports ADD COLUMN size_bytes INTEGER NOT NULL DEFAULT 0;");
+            Exec("ALTER TABLE imports ADD COLUMN last_write INTEGER NOT NULL DEFAULT 0;");
+        }
+
+        Exec(CreateContentIndexSql);
     }
 
     // 旧 imports を退避し、新スキーマへ移送する。<paramref name="timeExpr"/> は移送元の
@@ -211,6 +240,29 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         return cmd.ExecuteScalar() is not null;
     }
 
+    public bool ContainsContent(FileFingerprint fingerprint, DateOnly broadcastDate, TimeOnly? broadcastTime)
+    {
+        if (!_contentUsable)
+            return false;
+
+        using var cmd = _connection.CreateCommand();
+        // 取込元パス/番組フォルダに非依存な content ゲート(#79 / ADR-0014)。内容(サイズ + 最終更新)を
+        // 放送日 + 放送時刻で裏取りし、別放送の偶発衝突による誤スキップを避ける。part はフォルダ順で
+        // 変わりうるのでキーに含めない。
+        cmd.CommandText =
+            """
+            SELECT 1 FROM imports
+            WHERE size_bytes = $s AND last_write = $lw
+              AND broadcast_date = $d AND broadcast_time = $t
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("$s", fingerprint.SizeBytes);
+        cmd.Parameters.AddWithValue("$lw", fingerprint.LastWriteUtcTicks);
+        cmd.Parameters.AddWithValue("$d", broadcastDate.ToString(DateFormat, CultureInfo.InvariantCulture));
+        cmd.Parameters.AddWithValue("$t", TimeKey(broadcastTime));
+        return cmd.ExecuteScalar() is not null;
+    }
+
     public void Record(LedgerEntry entry)
     {
         using var cmd = _connection.CreateCommand();
@@ -218,9 +270,10 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
             """
             INSERT OR IGNORE INTO imports
                 (identity_key, broadcast_time, part_index, station, program, broadcast_date, source_path,
-                 output_path, rule_version, used_fallback, imported_at)
+                 output_path, rule_version, used_fallback, imported_at, size_bytes, last_write)
             VALUES
-                ($id, $time, $part, $station, $program, $date, $source, $output, $rule, $fallback, $imported);
+                ($id, $time, $part, $station, $program, $date, $source, $output, $rule, $fallback, $imported,
+                 $size, $lw);
             """;
         cmd.Parameters.AddWithValue("$id", entry.IdentityKey);
         cmd.Parameters.AddWithValue("$time", TimeKey(entry.BroadcastTime));
@@ -233,6 +286,8 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         cmd.Parameters.AddWithValue("$rule", entry.RuleVersion);
         cmd.Parameters.AddWithValue("$fallback", entry.UsedFallback ? 1 : 0);
         cmd.Parameters.AddWithValue("$imported", entry.ImportedAtUtc.ToString("O", CultureInfo.InvariantCulture));
+        cmd.Parameters.AddWithValue("$size", entry.Fingerprint.SizeBytes);
+        cmd.Parameters.AddWithValue("$lw", entry.Fingerprint.LastWriteUtcTicks);
         cmd.ExecuteNonQuery();
     }
 
@@ -246,7 +301,8 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         cmd.CommandText =
             """
             SELECT identity_key, broadcast_time, part_index, station, program, broadcast_date,
-                   source_path, output_path, rule_version, used_fallback, imported_at
+                   source_path, output_path, rule_version, used_fallback, imported_at,
+                   size_bytes, last_write
             FROM imports
             ORDER BY imported_at DESC;
             """;
@@ -272,6 +328,7 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
                 UsedFallback = reader.GetInt32(9) != 0,
                 ImportedAtUtc = DateTimeOffset.Parse(
                     reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                Fingerprint = new FileFingerprint(reader.GetInt64(11), reader.GetInt64(12)),
             });
         }
         return results;

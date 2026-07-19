@@ -196,10 +196,13 @@ public sealed class IngestService(
         // タグを読まずにスキップする(常駐キャッチアップスキャン/dry-run の高速化。ADR-0003)。
         var episode = assembler.Assemble(parsed);
 
-        // import-once: 同一性キー(+放送時刻+パート序数)または 同一ソースパスが既にあればスキップ。
-        // 同日でも時刻 or part が異なる別放送は取り込む(ADR-0002 / 0004、厳密一致)。
+        // import-once: 同一性キー(+放送時刻+パート序数)/ 同一ソースパス / 同一内容(フィンガープリント
+        // + 放送日時)のいずれかが既にあればスキップ。最後の content ゲートは、ソースフォルダのリネームや
+        // 台帳喪失で前2つが外れても内容同一を捕捉する(#79 / ADR-0014)。同日でも時刻 or part が異なる
+        // 別放送は取り込む(ADR-0002 / 0004、厳密一致)。
         if (ledger.Contains(episode.Identity, episode.BroadcastTime, episode.PartIndex ?? 0)
-            || ledger.ContainsSource(file.FilePath))
+            || ledger.ContainsSource(file.FilePath)
+            || ledger.ContainsContent(FileFingerprint.Of(file), episode.BroadcastDate, episode.BroadcastTime))
             return Result(IngestOutcome.SkippedAlreadyImported, file, episode);
 
         // 未取込のときだけ出演者タグを読む。radikool は識別時に取得済み(episode.Artist)なので再読しない。
@@ -230,6 +233,7 @@ public sealed class IngestService(
                 RuleVersion = NormalizationRuleVersion.Current,
                 UsedFallback = episode.UsedFallback,
                 ImportedAtUtc = clock.GetUtcNow(),
+                Fingerprint = FileFingerprint.Of(file),
             });
 
             return Result(IngestOutcome.Imported, file, episode, outputPath, episode.UsedFallback);
