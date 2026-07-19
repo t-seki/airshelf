@@ -35,10 +35,10 @@ dotnet test  Radirec.slnx --filter "FullyQualifiedName~RajirekoImporter"  # 絞�
 git tag v1.2.0 && git push origin v1.2.0   # → workflow が発火
 ```
 
-ワークフローは `dotnet test` → `dotnet publish`(win-x64 自己完結・単一 exe)→ zip 化
-(`radirec.exe` + `deploy/*.ps1` + `config/*.sample.json`。実 config・pdb は含めない)→
-GitHub Release へ添付、まで自動化する。以後の配布は Release から取得する(利用手順は
-[usage.md §6](usage.md)、更新は `update.ps1`)。
+ワークフローは `dotnet test` → `dotnet publish`(win-x64 自己完結・両 exe を 1 フォルダ)→
+**`vpk`(Velopack)で pack + GitHub Release へ upload**(Setup.exe / full+delta nupkg / portable /
+更新フィード)、まで自動化する(ADR-0013)。以後の配布・更新は Velopack の Setup.exe とアプリ内更新で
+行う(利用手順は [usage.md §6](usage.md)、移行は [migration-to-velopack.md](migration-to-velopack.md))。
 
 **ランナー**: `runs-on: [self-hosted, windows, x64, homelab]`(母艦 Windows PC の self-hosted runner)。
 トリガはタグ push のみ(PR ビルドは self-hosted で走らせない)。ランナーの導入手順は **別リポジトリ
@@ -110,6 +110,14 @@ CLI と常駐サービスは単一 exe `radirec.exe` に統合済み(`ingest`/`r
 1. `{root}/{局}/{番組}/[{局}]{番組}(TimeFree)_{YYYYMMDDHHMMSS}.m4a` にフィクスチャをコピー。
 2. `radirec.json` の `RadioRoot`/`OutputRoot`/`LedgerPath` を一時ディレクトリに向ける。
 3. `ingest --dry-run`(副作用ゼロ)→ `ingest`(生成)→ 再実行(全て「済」= 冪等)を確認。
+
+**トレイ常駐(現行)の E2E**: 合成無音 M4A を隔離設定で流してトースト経路を検証する
+`deploy/e2e-tray-toast.ps1`(本番資産に触れない)。旧環境からの移行検証は
+[migration-to-velopack.md](migration-to-velopack.md)。
+
+> **⚠ 以下の「不在中サマリ / 取込失敗の EventLog 検証」は退役機構の手順**
+> ([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。EventLog シグナル(1001/1002)・
+> `Write-EventLog` 注入・bookmark・不在中サマリ集約はいずれも in-process 化で撤去済み。歴史的記録として残す。
 
 ### 不在中サマリの実機検証(軸A / A2 / #54)
 

@@ -2,16 +2,18 @@
 
 らじれこで録音した M4A を、Jellyfin 音楽ライブラリ向けに整理・取り込みする CLI の使い方。
 
-> 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M3**(常駐サービス)/
-> **M4-A**(radikool MP3 の一括移行)/ **M6**(取込通知・制御チャネル)。配布・編集 GUI(M5)、
-> ソース跨ぎのアルバム統合(M4-C)は未実装です。
+> 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M4-A**(radikool MP3 の
+> 一括移行)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
+> ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装です。
+>
+> この §1–§5 は主に **dev/batch の CLI(`radirec.exe`)** の使い方。常駐運用は §6 を参照。
 
 ## 1. 前提
 
 - **.NET 10 SDK**(実行のみなら .NET 10 ランタイム、または後述の自己完結 exe)。
 - 実行ホストは **Windows** を想定(らじれこ出力ドライブと配信先 NAS の両方がネイティブに見えるため)。
 - 配信先が NAS の場合は **UNC パス**(`\\host\share\...`)で指定します。Windows のドライブレター
-  (`Z:` 等)は将来のサービス実行で不可視になるため使いません。
+  (`Z:` 等)は別プロセス/セッションから不可視になりうるため使いません(UNC が確実)。
 
 ## 2. セットアップ
 
@@ -28,7 +30,7 @@ config/programs.sample.json  → config/programs.json (番組 alias)
 | キー | 意味 | 例 |
 |------|------|----|
 | `RadioRoot` | らじれこ出力ルート | `I:\\radio\\tmp` |
-| `OutputRoot` | 配信先(ローカル or UNC) | `\\\\192.168.11.121\\share\\media\\radio` |
+| `OutputRoot` | 配信先(ローカル or UNC) | `\\\\NAS\\share\\media\\radio` |
 | `LedgerPath` | 取り込み台帳 DB(ローカルディスク) | `ledger.db`(相対) |
 | `StabilitySeconds` | 書き込み中判定の待機秒数 | `15` |
 | `SkipPatterns` | 除外するファイル名部分一致(ジャンク録音) | `["この時間はＮＨＫネットラジオでは"]` |
@@ -36,15 +38,17 @@ config/programs.sample.json  → config/programs.json (番組 alias)
 | `Genre` | 既定ジャンル | `ラジオ` |
 | `JellyfinUrl` | Jellyfin ルート URL(未設定なら更新しない) | `https://jellyfin.example.net` |
 | `JellyfinApiKey` | Jellyfin API キー(ダッシュボード → API キー) | `xxxxxxxx…` |
-| `ScanIntervalSeconds` | 常駐サービスの定期(安全網)スキャン間隔・秒 | `120` |
+| `ScanIntervalSeconds` | 常駐トレイの定期(安全網)スキャン間隔・秒 | `120` |
 | `WatchDebounceSeconds` | 検知後スキャンまでのデバウンス秒 | `10` |
-| `NotificationsEnabled` | 新規取込時に取込要約シグナル(EventLog EventID 1001)を発行(受け手 GUI が通知表示。ADR-0008) | `true` |
+| `NotificationsEnabled` | 新規取込時にトレイが in-process でトースト表示(ADR-0012) | `true` |
+| `UpdatePrerelease` | アプリ内更新で prerelease(RC)も対象にするか(§6・ADR-0013) | `false` |
+| `UpdateToken` | 更新フィード(GitHub Releases)読取用トークン。**private repo では必須** | `""` |
 
 > 設定ファイルは JSON ですが、`//` コメントと末尾カンマを許容します。
 >
 > **パスの解決基準(ADR-0006)**: `LedgerPath` / `StationsFile` / `ProgramsFile`(および `RadioRoot` /
-> `OutputRoot`)の**相対パスは `radirec.json` のあるディレクトリ基準**で解決されます。デプロイ時は
-> これらが `%ProgramData%\radirec\` に同居するため、裸のファイル名(`ledger.db` 等)で足ります。
+> `OutputRoot`)の**相対パスは `radirec.json` のあるディレクトリ基準**で解決されます。常駐トレイのデータルートは
+> `%LocalAppData%\RadirecData\` で、これらが同居するため裸のファイル名(`ledger.db` 等)で足ります(ADR-0013)。
 > 絶対パス(`C:\...`、UNC `\\host\share\...`)はそのまま使われます。
 
 ## 3. 実行
@@ -59,7 +63,7 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json --dry-run
 dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 ```
 
-`--config` を省略すると **`%ProgramData%\radirec\radirec.json`**(デプロイ時のデータルート)を使います
+`--config` を省略すると **`%LocalAppData%\RadirecData\radirec.json`**(常駐トレイのデータルート)を使います
 (ADR-0006)。開発時に別の場所の設定を使うなら `--config <path>` で明示します。
 
 > ⚠️ 以前はカレントディレクトリの `radirec.json` が既定でした。**`radirec ingest` を `--config` 無しで
@@ -208,78 +212,55 @@ radikool 固有の扱い:
 > なお統合先が**既存フォルダ名と一致する**場合は `programs.json` を変更しないのが安全です。後から
 > `programs.json` を足すと Canonical 変更で `identity_key` が変わり、アーカイブの再スキャン時に**重複取込**を招くことがあります。
 
-## 6. 常駐サービス(自動取り込み・M3)
+## 6. 常駐トレイ(自動取り込み)
 
-`radirec.exe service`(Windows サービス)を常駐させると、録音を検知して自動で取り込み + Jellyfin 更新まで
-行います。らじれこは録音後 ~30 秒で強制スリープするため、**取りこぼしゼロはスリープ復帰時のキャッチアップ
-+ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-race.md))。トリガは①録音検知
-(FileSystemWatcher)②スリープ復帰 ③サービス起動時 ④定期(安全網)⑤手動(制御チャネル・下記)。
+`Radirec.Gui`(トレイ常駐)を起動すると、録音を検知して自動で取り込み + Jellyfin 更新まで行います。
+**取り込みワーカーをトレイプロセスが内包**し、ユーザーセッションで動きます
+([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)。旧 Windows サービスは退役)。
+らじれこは録音後 ~30 秒で強制スリープするため、**取りこぼしゼロはスリープ復帰時のキャッチアップ +
+import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-race.md))。トリガは①録音検知
+(FileSystemWatcher)②スリープ復帰 ③起動時 ④定期(安全網)⑤手動(トレイメニュー)。新規取込時は
+トレイが **in-process でトースト表示**します。
 
-### 制御チャネル(手動再スキャン・状態取得)
+### 制御・履歴・更新(トレイメニュー)
 
-常駐サービスへローカルから指示を出せます([ADR-0010](adr/0010-gui-service-control-via-named-pipe.md)。
-named pipe 経由・**同一ユーザーのみ**・リモート制御は非対応)。
+トレイアイコンの右クリックから(かつての `radirec status/rescan/reload`〔named pipe〕は in-process 化で
+**メニューに統合**。ADR-0012 で pipe は退役):
 
-```powershell
-radirec status     # サービスのライブ状態(監視ルート・最終スキャン時刻とトリガ・直近の取込/失敗件数)
-radirec rescan     # 自動トリガを待たず今すぐ 1 回スキャンさせる(受理まで。完了は待たない)
-radirec reload     # radirec.json を再読込させる(config 由来ランタイムを丸ごと再構築)
-```
+- **今すぐ再スキャン**: 自動トリガを待たず今すぐ 1 回スキャン(受理まで)。
+- **設定リロード…**: `radirec.json` を再読込(config 由来ランタイムを丸ごと再構築。部分反映しない)。
+  不正な設定は弾かれ、再構築に失敗しても**旧構成のまま稼働継続**。
+- **状態 / 最終スキャン**: 稼働状態・監視ルート・最終スキャン時刻/件数。
+- **取込履歴…**: 台帳の全取込を一覧表示(読み取り専用。番組/局/放送日/取込日時/出力先)。
+- **今すぐ更新を確認 / 更新を適用して再起動**: アプリ内更新(下記)。
 
-`reload` はサービスを止めずに設定変更を反映します。**受理 = 構文検証通過 + 再構築キュー投入まで**で、
-実際の反映は在中スキャンの完了後です(部分反映はせず、グラフ + 監視 + タイマーを一括で作り直します)。
-不正な `radirec.json`(構文エラー・未知キー等)は受理時に弾かれ、再構築に失敗しても**旧構成のまま稼働継続**します。
+### 導入(Velopack Setup.exe・非 admin)
 
-サービスが未起動/未応答なら、いずれもエラーメッセージを表示して終了コード 1 を返します(破綻しません)。
-GUI からの操作は今後追加予定です(#5)。
+[Releases](https://github.com/t-seki/radirec-tool/releases) の **`Radirec-win-Setup.exe`** を実行するだけ
+(**管理者不要**。[ADR-0013](adr/0013-velopack-per-user-updates.md)):
 
-### 導入(Release + スクリプト)
+- 実行体: `%LocalAppData%\Radirec\`(Velopack 管理・更新で差し替わる)
+- データ: `%LocalAppData%\RadirecData\`(`radirec.json` / `ledger.db` / `stations.json` / `programs.json` / `gui.log`)
 
-配布は **GitHub Release** から取得します。CLI もサービスも **単一 exe `radirec.exe`**(自己完結・ランタイム
-不要)に統合されており([ADR-0005](adr/0005-single-exe-cli-service-merge.md))、実行体とデータは分離配置します
-([ADR-0006](adr/0006-binary-data-separation-and-path-resolution.md)):
+初回起動時に設定を sample から生成します。`%LocalAppData%\RadirecData\radirec.json` を編集
+(`RadioRoot` / `OutputRoot` / Jellyfin / 更新用 `UpdateToken`)。トレイはログオン自動起動に自己登録されます。
+動作ログは `%LocalAppData%\RadirecData\gui.log`。
 
-- 実行体: `C:\Program Files\radirec\radirec.exe`
-- データ: `%ProgramData%\radirec\`(`radirec.json` / `ledger.db` / `stations.json` / `programs.json`)
+### 更新(アプリ内・Velopack)
 
-1. [Releases](https://github.com/t-seki/radirec-tool/releases) から `radirec-<version>-win-x64.zip` を落として展開。
-2. **管理者 PowerShell** で `deploy\install.ps1` を実行:
-
-```powershell
-cd <展開先>\deploy
-# 実行アカウントは既定で .\<現在のユーザー>。NAS(UNC)へ書くため自分のアカウントで登録する
-.\install.ps1
-```
-
-`install.ps1` は EventLog ソース登録 → 設定を sample から初回生成(既存は温存)→ サービス登録
-(`-Credential` で自分のアカウント、パスワード対話)まで行います。**再実行しても壊れません**
-(既存サービスがあればスキップ。再登録は `-Force`)。
-
-3. 生成された `%ProgramData%\radirec\radirec.json` を編集(`RadioRoot` / `OutputRoot` / Jellyfin)。
-4. サービス開始:
-
-```powershell
-Start-Service Radirec
-Get-Service Radirec
-Get-EventLog -LogName Application -Source Radirec -Newest 20   # 動作ログ
-```
-
-### 更新(バイナリ差し替え)
-
-新しい Release を展開し、管理者 PowerShell で `update.ps1` を実行します。データ(設定・台帳)は触りません
-(台帳スキーマは起動時に自動移行)。**認証情報は不要**(登録済みアカウントを継承):
-
-```powershell
-cd <新しい展開先>\deploy
-.\update.ps1   # 停止 → radirec.exe 差し替え → 再開
-```
+トレイメニュー「**今すぐ更新を確認**」→ 新版があれば「**更新を適用して再起動**」。起動時・24h ごとに自動チェック
+もします。適用は DL → ワーカーを graceful 停止 → 差し替え → 自動再起動。
+**private repo のため**、更新フィード読取用の fine-grained PAT(contents:read)を `radirec.json` の `UpdateToken`
+に設定します。RC(prerelease)を試すときは `"UpdatePrerelease": true`。
 
 ### アンインストール
 
-```powershell
-.\uninstall.ps1              # サービス削除・EventLog 解除・実行体削除。データは残す
-.\uninstall.ps1 -PurgeData   # データ(台帳・設定含む)も削除
-```
+設定 → アプリ →「Radirec」→ アンインストール、または `%LocalAppData%\Radirec\Update.exe --uninstall`。
+ログオン自動起動も解除されます。データ(`%LocalAppData%\RadirecData`)は残ります(消すと import-once 履歴が
+失われる)。不要なら手動削除。
+
+> 旧 admin 配置(`%ProgramData%\radirec` + Windows サービス)からの移行は
+> [移行 runbook](migration-to-velopack.md) を参照。
 
 ## 7. 開発時の実行
 
@@ -289,78 +270,12 @@ SDK から直接動かす場合(`radirec.exe` を publish せずに):
 dotnet run --project src/Radirec.Cli -- ingest --config <path>\radirec.json --dry-run
 ```
 
-単一 exe を手元で作るには `dotnet publish src/Radirec.Cli -c Release`(win-x64 自己完結・単一ファイルが
-既定で出力)。CI がタグ push で同じ成果物を Release へ添付します。非技術者向けの GUI インストーラ
-(Inno Setup)は M5(#5)で本 publish/Release を土台に被せる予定です([ADR-0007](adr/0007-distribution-via-powershell-scripts.md))。
+単一 exe を手元で作るには `dotnet publish src/Radirec.Cli -c Release`(win-x64 自己完結)。配布(常駐トレイの
+Setup.exe・更新フィード)は CI がタグ push で **`vpk`(Velopack)** により Release へ発行します(§6・ADR-0013)。
 
-## 8. 旧レイアウトからの一度きり移行(`C:\radirec\` → 分離配置)
+## 8. 旧環境からの移行
 
-M4-A まで運用していた「実行体・台帳・設定を `C:\radirec\` に同居」から、新レイアウト(実行体 =
-`C:\Program Files\radirec\`、データ = `%ProgramData%\radirec\`)へ移す**一度きりの手順**です
-([ADR-0006](adr/0006-binary-data-separation-and-path-resolution.md))。
-
-> ⚠️ **台帳が生命線**: `ledger.db` は取り込み冪等(import-once)の唯一の記録です。新データルートへ
-> **無傷で運ばない**と、次回スキャンで全放送回が「未取込」判定になり、NAS へ**再コピーが爆発**します。
-> 稼働中の DB を WAL ごとコピーすると破損しうるため、**必ずサービスを停止してから**扱います。
-> 以下は **`Copy-Item`(移動ではなくコピー)** を使い、旧 `C:\radirec\` を検証完了まで**無傷のバックアップ
-> として残します**。ロールバックが必要になっても台帳を失いません。
-
-**このスクリプトは新 Release を展開して `install.ps1` を実行する「前」に、管理者 PowerShell で実行**します
-(空のデータルートへコピーするため衝突しません)。台帳コピーは失敗を握り潰さず、成否を検証します。
-
-```powershell
-$old = 'C:\radirec'
-$data = "$env:ProgramData\radirec"
-
-# 1. 旧サービスを停止・削除(WAL 生存中のコピーを避ける)
-Stop-Service Radirec -ErrorAction SilentlyContinue
-sc.exe delete Radirec
-Start-Sleep -Seconds 2   # ファイルハンドル解放を待つ
-
-# 2. データルートを作成
-New-Item -ItemType Directory -Path $data -Force | Out-Null
-
-# 3. 台帳をコピー(必須成功)。sidecar(-wal/-shm)は無いこともあるので任意。
-Copy-Item "$old\ledger.db" $data          # 失敗すれば例外で停止(握り潰さない)
-Copy-Item "$old\ledger.db-wal","$old\ledger.db-shm" $data -ErrorAction SilentlyContinue
-
-# 4. マスタ・設定をコピー
-Copy-Item "$old\stations.json","$old\programs.json","$old\radirec.json" $data
-
-# 5. 移した radirec.json のパスを裸のファイル名へ決定的に書き換える(config ディレクトリ基準で解決。
-#    RadioRoot/OutputRoot の絶対パスはそのまま)。手編集ミスを避けるため置換で行う。
-$cfg = Join-Path $data 'radirec.json'
-(Get-Content $cfg -Raw) `
-  -replace '"C:\\\\radirec\\\\ledger\.db"', '"ledger.db"' `
-  -replace '"C:\\\\radirec\\\\stations\.json"', '"stations.json"' `
-  -replace '"C:\\\\radirec\\\\programs\.json"', '"programs.json"' |
-  Set-Content $cfg -Encoding UTF8
-
-# 6. 検証(install.ps1 を実行する前の門番):
-#    (a) 台帳が新ルートに非空で存在する
-$ledger = Join-Path $data 'ledger.db'
-if (-not (Test-Path $ledger) -or (Get-Item $ledger).Length -eq 0) {
-    throw "台帳の移行に失敗しています($ledger)。install.ps1 を実行せず原因を調べてください。"
-}
-#    (b) パス書換が効いたこと。Copy(移動でなく)なので旧 C:\radirec\ledger.db は残存し、書換が
-#        漏れても LedgerPath が旧絶対パスを指したまま起動が通ってしまう(旧 C:\radirec を後で消した
-#        瞬間に空 DB → 再コピー爆発)。正規の値は I:\... / UNC \\... / 裸名のみなので、C:\radirec 参照が
-#        残っていれば書換ミス。
-if ((Get-Content $cfg -Raw) -match 'C:\\+radirec') {
-    throw "radirec.json に旧 C:\radirec のパスが残っています(書換が未反映)。install.ps1 を実行しないでください。"
-}
-Write-Host "台帳を移行しました: $ledger ($((Get-Item $ledger).Length) bytes)"
-```
-
-その後、新 Release を展開して `deploy\install.ps1` を実行します。設定は既存を**温存**する(生成しない)ため、
-コピーした `radirec.json` がそのまま使われます。
-
-```powershell
-cd <展開先>\deploy
-.\install.ps1        # 実行体を Program Files へ、サービスを run-as 自分のアカウントで再登録
-Start-Service Radirec
-Get-EventLog -LogName Application -Source Radirec -Newest 20   # 取り込みが再開し、再コピーが起きていないことを確認
-```
-
-移行が正しく効いていれば、既存の全放送回は台帳にあるため**再取り込みは起きません**(新規録音のみ処理)。
-**再コピーが起きていないことを EventLog で確認してから**、旧 `C:\radirec\`(および `ledger.db.bak`)を削除します。
+旧 admin 配置(`%ProgramData%\radirec` + Windows サービス)や、さらに古い `C:\radirec\` 同居レイアウトからの
+移行は、いずれも **台帳(`ledger.db`)を無傷で新データルート `%LocalAppData%\RadirecData\` へ運ぶ**のが要点です
+(運び損ねると全放送回が「未取込」判定になり NAS へ再コピーが爆発)。現行の手順は
+[移行 runbook](migration-to-velopack.md) にまとめています。
