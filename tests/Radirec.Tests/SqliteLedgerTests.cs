@@ -252,6 +252,25 @@ public sealed class SqliteLedgerTests : IDisposable
     }
 
     [Fact]
+    public void Migrates_PartIndexSchema_AddsContentColumns_ViaAlter_PreservesRows()
+    {
+        // 本番で実際に通る経路: M4 スキーマ(part_index あり・content 列なし)を書き込みで開くと、
+        // EnsureContentColumns が ALTER ADD COLUMN で列を後付けする(rename→copy はしない)。既存行は保持され、
+        // 新規記録は content ゲートで判定できる。移送された旧行(0,0)は実ファイルに一致しない。
+        var key = Key();
+        CreatePartIndexSchemaDb(key, source: "/in/m4.m4a", time: "083000");
+
+        using var ledger = new SqliteLedger(DbPath);
+
+        Assert.True(ledger.Contains(key, new TimeOnly(8, 30, 0), 0)); // 既存行は保持
+        Assert.True(ledger.ContainsSource("/in/m4.m4a"));
+
+        ledger.Record(Entry(Key("別番組"), time: new TimeOnly(1, 0)) with { Fingerprint = Fp });
+        Assert.True(ledger.ContainsContent(Fp, new DateOnly(2026, 6, 12), new TimeOnly(1, 0)));
+        Assert.False(ledger.ContainsContent(new FileFingerprint(4096, 123), new DateOnly(2026, 6, 12), new TimeOnly(8, 30, 0)));
+    }
+
+    [Fact]
     public void ReadOnly_WithoutContentColumns_ContainsContent_IsFalse_NoThrow()
     {
         // content 列を持たない現行スキーマを dry-run(読み取り専用)で開いても例外にならず未取込扱い。
@@ -260,6 +279,21 @@ public sealed class SqliteLedgerTests : IDisposable
         using var ledger = new SqliteLedger(DbPath, readOnly: true);
 
         Assert.False(ledger.ContainsContent(new FileFingerprint(4096, 123), new DateOnly(2026, 6, 12), new TimeOnly(8, 30, 0)));
+    }
+
+    [Fact]
+    public void ReadOnly_PartIndexSchemaWithoutContentColumns_ListAll_ReturnsRows_NoThrow()
+    {
+        // M4 スキーマ(broadcast_time + part_index あり・content 列なし)を取込履歴ビューが読み取り専用で
+        // 開くと _usable=true(part_index あり)。content 列を無条件 SELECT すると「no such column: size_bytes」で
+        // 履歴ビューが落ちる回帰の固定。read-only は移行しないので列は無いまま。
+        CreatePartIndexSchemaDb(Key(), source: "/in/prod.m4a", time: "083000");
+
+        using var ledger = new SqliteLedger(DbPath, readOnly: true);
+
+        var row = Assert.Single(ledger.ListAll());
+        Assert.Equal("/in/prod.m4a", row.SourcePath);
+        Assert.Equal(default, row.Fingerprint); // content 列が無いので既定 (0,0)
     }
 
     // 最古スキーマ(broadcast_time / part_index 列なし)の台帳に 1 行入れて作る
@@ -274,6 +308,25 @@ public sealed class SqliteLedgerTests : IDisposable
             "used_fallback INTEGER, imported_at TEXT);" +
             "INSERT INTO imports VALUES ($id,'局','番組','2026-06-12',$src,'/out/a.m4a','m1-1',0,'2026-06-12T00:00:00Z');";
         cmd.Parameters.AddWithValue("$id", key.Value);
+        cmd.Parameters.AddWithValue("$src", source);
+        cmd.ExecuteNonQuery();
+    }
+
+    // M4 スキーマ(broadcast_time + part_index あり・content 列なし)に 1 行入れて作る。
+    // content フィンガープリント列を後付けする移行(#79 / ADR-0014)前の本番台帳を模す。
+    private void CreatePartIndexSchemaDb(IdentityKey key, string source, string time)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "CREATE TABLE imports (identity_key TEXT NOT NULL, broadcast_time TEXT NOT NULL DEFAULT '', " +
+            "part_index INTEGER NOT NULL DEFAULT 0, station TEXT, program TEXT, broadcast_date TEXT, " +
+            "source_path TEXT, output_path TEXT, rule_version TEXT, used_fallback INTEGER, imported_at TEXT, " +
+            "PRIMARY KEY (identity_key, broadcast_time, part_index));" +
+            "INSERT INTO imports VALUES ($id,$t,0,'局','番組','2026-06-12',$src,'/out/a.m4a','m4-1',0,'2026-06-12T00:00:00Z');";
+        cmd.Parameters.AddWithValue("$id", key.Value);
+        cmd.Parameters.AddWithValue("$t", time);
         cmd.Parameters.AddWithValue("$src", source);
         cmd.ExecuteNonQuery();
     }

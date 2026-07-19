@@ -298,14 +298,23 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
             return [];
 
         using var cmd = _connection.CreateCommand();
-        cmd.CommandText =
-            """
-            SELECT identity_key, broadcast_time, part_index, station, program, broadcast_date,
-                   source_path, output_path, rule_version, used_fallback, imported_at,
-                   size_bytes, last_write
-            FROM imports
-            ORDER BY imported_at DESC;
-            """;
+        // content 列は後付け(#79 / ADR-0014)。read-only で未移行スキーマ(part_index はあるが content 列なし)を
+        // 開くと _usable=true でここに来るため、列を無条件 SELECT すると「no such column」で履歴ビューが落ちる。
+        // _contentUsable のときだけ列を採り、無ければフィンガープリントは既定 (0,0) にする。
+        cmd.CommandText = _contentUsable
+            ? """
+              SELECT identity_key, broadcast_time, part_index, station, program, broadcast_date,
+                     source_path, output_path, rule_version, used_fallback, imported_at,
+                     size_bytes, last_write
+              FROM imports
+              ORDER BY imported_at DESC;
+              """
+            : """
+              SELECT identity_key, broadcast_time, part_index, station, program, broadcast_date,
+                     source_path, output_path, rule_version, used_fallback, imported_at
+              FROM imports
+              ORDER BY imported_at DESC;
+              """;
 
         using var reader = cmd.ExecuteReader();
         var results = new List<LedgerEntry>();
@@ -328,7 +337,9 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
                 UsedFallback = reader.GetInt32(9) != 0,
                 ImportedAtUtc = DateTimeOffset.Parse(
                     reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-                Fingerprint = new FileFingerprint(reader.GetInt64(11), reader.GetInt64(12)),
+                Fingerprint = _contentUsable
+                    ? new FileFingerprint(reader.GetInt64(11), reader.GetInt64(12))
+                    : default,
             });
         }
         return results;
