@@ -21,6 +21,9 @@ public enum OrganizeOutcome
     /// <summary>スキップパターン一致(ジャンク)→ アーカイブに入れない。</summary>
     SkippedJunk,
 
+    /// <summary>未安定(書き込み中/サイズ 0)→ 動かさない(移動で欠けた録音を運ばないため)。</summary>
+    SkippedUnstable,
+
     /// <summary>どの importer も扱えない(拡張子/命名が想定外)。</summary>
     Unsupported,
 

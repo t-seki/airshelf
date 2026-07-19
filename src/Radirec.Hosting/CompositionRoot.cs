@@ -138,6 +138,7 @@ public static class CompositionRoot
             new FileSystemRecordingSource(fileSystem, from),
             importer,
             new StationResolver(stations),
+            new StabilityChecker(TimeProvider.System, TimeSpan.FromSeconds(config.StabilitySeconds)),
             new RecordingSkipPolicy(config.SkipPatterns),
             to);
     }

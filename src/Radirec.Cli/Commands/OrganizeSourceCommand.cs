@@ -78,18 +78,26 @@ public sealed class OrganizeSourceCommand : Command<OrganizeSourceCommand.Settin
 
         AnsiConsole.Write(table);
 
+        // 集計は 1 パスで数える(件数分の LINQ 再走査を避ける)。
+        var tally = new Dictionary<OrganizeOutcome, int>();
+        foreach (var item in report.Items)
+            tally[item.Outcome] = tally.GetValueOrDefault(item.Outcome) + 1;
+        int N(OrganizeOutcome o) => tally.GetValueOrDefault(o);
+
         var verb = report.Copy ? "コピー" : "移動";
         var mode = report.DryRun ? "[cyan](dry-run)[/]" : string.Empty;
         AnsiConsole.MarkupLine(
-            $"{verb} {report.Count(OrganizeOutcome.Moved) + report.Count(OrganizeOutcome.Copied)} / " +
-            $"重複 {report.Count(OrganizeOutcome.DuplicateSkipped)} / 衝突 {report.Count(OrganizeOutcome.Conflict)} / " +
-            $"既定位置 {report.Count(OrganizeOutcome.AlreadyInPlace)} / ジャンク {report.Count(OrganizeOutcome.SkippedJunk)} / " +
-            $"対象外 {report.Count(OrganizeOutcome.Unsupported)} / 失敗 {report.Count(OrganizeOutcome.Failed)} {mode}");
+            $"{verb} {N(OrganizeOutcome.Moved) + N(OrganizeOutcome.Copied)} / " +
+            $"重複 {N(OrganizeOutcome.DuplicateSkipped)} / 衝突 {N(OrganizeOutcome.Conflict)} / " +
+            $"既定位置 {N(OrganizeOutcome.AlreadyInPlace)} / ジャンク {N(OrganizeOutcome.SkippedJunk)} / " +
+            $"未安定 {N(OrganizeOutcome.SkippedUnstable)} / 対象外 {N(OrganizeOutcome.Unsupported)} / " +
+            $"失敗 {N(OrganizeOutcome.Failed)} {mode}");
 
         // 移動されず移動元に残り、人手確認が要る件(別内容衝突 + 失敗)を明示する。
-        if (report.NeedsAttention > 0)
+        var needsAttention = N(OrganizeOutcome.Conflict) + N(OrganizeOutcome.Failed);
+        if (needsAttention > 0)
             AnsiConsole.MarkupLine(
-                $"[yellow]要確認: {report.NeedsAttention} 件が移動元に残っています(衝突/失敗)。[/]");
+                $"[yellow]要確認: {needsAttention} 件が移動元に残っています(衝突/失敗)。[/]");
     }
 
     private static string Detail(OrganizeItemResult item) => item.Outcome switch
@@ -106,6 +114,7 @@ public sealed class OrganizeSourceCommand : Command<OrganizeSourceCommand.Settin
         OrganizeOutcome.Conflict => ("衝突", "red"),
         OrganizeOutcome.AlreadyInPlace => ("既定位置", "grey"),
         OrganizeOutcome.SkippedJunk => ("ジャンク", "grey"),
+        OrganizeOutcome.SkippedUnstable => ("未安定", "yellow"),
         OrganizeOutcome.Unsupported => ("対象外", "grey"),
         OrganizeOutcome.Failed => ("失敗", "red"),
         _ => (outcome.ToString(), "white"),

@@ -24,12 +24,14 @@ public sealed class SourceOrganizerTests
     };
 
     private static SourceOrganizer Build(
-        MockFileSystem fs, ISourceImporter importer, IEnumerable<string>? skip = null)
+        MockFileSystem fs, ISourceImporter importer,
+        IEnumerable<string>? skip = null, IStabilityChecker? stability = null)
         => new(
             fs,
             new FileSystemRecordingSource(fs, From),
             importer,
             new StationResolver(Stations()),
+            stability ?? new AlwaysStable(),
             new RecordingSkipPolicy(skip ?? []),
             To);
 
@@ -41,6 +43,16 @@ public sealed class SourceOrganizerTests
 
         public bool CanHandle(RecordingFile file) => CanHandleFn(file);
         public ParsedSource Parse(RecordingFile file) => ParseFn(file);
+    }
+
+    private sealed class AlwaysStable : IStabilityChecker
+    {
+        public bool IsStable(RecordingFile file) => true;
+    }
+
+    private sealed class NeverStable : IStabilityChecker
+    {
+        public bool IsStable(RecordingFile file) => false;
     }
 
     [Fact]
@@ -206,6 +218,80 @@ public sealed class SourceOrganizerTests
         var item = Assert.Single(Build(fs, importer).Run(false, false).Items);
 
         Assert.Equal(OrganizeOutcome.Unsupported, item.Outcome);
+    }
+
+    [Fact]
+    public void Unstable_NotMoved_SourceRetained()
+    {
+        // 書込中/0 バイトの録音は動かさない(move は移動元を消すため欠けた録音を運んでしまう)。
+        var fs = new MockFileSystem();
+        var src = "/src/ニッポン放送/番組/[ニッポン放送]番組(TimeFree)_20240101010000.m4a";
+        fs.AddFile(src, new MockFileData("a"));
+
+        var item = Assert.Single(
+            Build(fs, new RajirekoImporter(), stability: new NeverStable()).Run(false, false).Items);
+
+        Assert.Equal(OrganizeOutcome.SkippedUnstable, item.Outcome);
+        Assert.True(fs.File.Exists(src));
+    }
+
+    [Fact]
+    public void StationCodeFolder_NotReused_FilesUnderCanonical()
+    {
+        // 移動先に radikool の局コードフォルダ LFR が既にあっても、canonical フォルダへ振る
+        // (コードは canonical の表記変種でないので reuse しない)。
+        var fs = new MockFileSystem();
+        fs.AddDirectory("/dst/LFR");
+        var src = "/src/x/ニッポン放送/番組/[ニッポン放送]番組(TimeFree)_20240101010000.m4a";
+        fs.AddFile(src, new MockFileData("a"));
+
+        var item = Assert.Single(Build(fs, new RajirekoImporter()).Run(false, false).Items);
+
+        Assert.Equal(
+            "/dst/ニッポン放送/番組/[ニッポン放送]番組(TimeFree)_20240101010000.m4a", item.TargetPath);
+    }
+
+    [Fact]
+    public void SameContent_DifferentMtime_IsDuplicate_NotConflict()
+    {
+        // 内容が同一なら、最終更新時刻がずれていても衝突でなく重複(スキップ)として扱う。
+        var fs = new MockFileSystem();
+        var name = "[ニッポン放送]番組(TimeFree)_20240101010000.m4a";
+        var src = $"/src/ニッポン放送/番組/{name}";
+        var tgt = $"/dst/ニッポン放送/番組/{name}";
+        fs.AddFile(src, new MockFileData("identical") { LastWriteTime = new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero) });
+        fs.AddFile(tgt, new MockFileData("identical") { LastWriteTime = new DateTimeOffset(2023, 5, 5, 0, 0, 0, TimeSpan.Zero) });
+
+        var item = Assert.Single(Build(fs, new RajirekoImporter()).Run(false, false).Items);
+
+        Assert.Equal(OrganizeOutcome.DuplicateSkipped, item.Outcome);
+    }
+
+    [Fact]
+    public void ParseThrowsNonSourceParse_ReportedAsFailed_BatchContinues()
+    {
+        // radikool の part 序数 int.Parse Overflow 等、SourceParseException 以外でもバッチを止めない。
+        var fs = new MockFileSystem();
+        fs.AddFile("/src/a/番組/x.m4a", new MockFileData("a"));
+        fs.AddFile("/src/b/番組/y.m4a", new MockFileData("b"));
+        var importer = new FakeImporter
+        {
+            CanHandleFn = _ => true,
+            ParseFn = f => f.FileName.StartsWith("x")
+                ? throw new OverflowException("part overflow")
+                : new ParsedSource
+                {
+                    RawStation = "ニッポン放送",
+                    RawProgram = "番組",
+                    BroadcastDate = new DateOnly(2024, 1, 1),
+                },
+        };
+
+        var report = Build(fs, importer).Run(false, false);
+
+        Assert.Equal(2, report.Items.Count);                   // バッチは止まらない
+        Assert.Equal(1, report.Count(OrganizeOutcome.Failed)); // x は Failed
+        Assert.Equal(1, report.Count(OrganizeOutcome.Moved));  // y は移動
     }
 
     [Fact]
