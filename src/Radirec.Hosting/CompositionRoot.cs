@@ -4,6 +4,7 @@ using Radirec.Core.Ingestion;
 using Radirec.Core.Jellyfin;
 using Radirec.Core.Ledger;
 using Radirec.Core.Normalization;
+using Radirec.Core.Organization;
 using Radirec.Core.Output;
 using Radirec.Core.Sources;
 
@@ -113,6 +114,33 @@ public static class CompositionRoot
             return (new NullIngestSummaryPublisher(), new NullIngestFailurePublisher(), false);
 
         return (injectedSummary, injectedFailure!, true);
+    }
+
+    /// <summary>
+    /// config からソース仕分け器(<c>organize-source</c> コマンド。#81)を組み立てる。取込 importer
+    /// (らじれこ/radikool 振り分け)と放送局 resolver・スキップポリシーを ingest と同じ流儀で再利用する。
+    /// 台帳・出力先・Jellyfin は使わない(ソースの物理再配置だけを行うため)。
+    /// </summary>
+    public static SourceOrganizer BuildOrganizer(RadirecConfig config, string from, string to)
+    {
+        var fileSystem = new FileSystem();
+        var stations = ConfigLoader.LoadOptional<StationMasterConfig>(config.StationsFile);
+        var tagReader = new TagLibTagReader();
+
+        var importer = new SourceRouter(
+        [
+            new RajirekoImporter(config.KnownRecordingKinds),
+            new RadikoolImporter(tagReader),
+        ]);
+
+        return new SourceOrganizer(
+            fileSystem,
+            new FileSystemRecordingSource(fileSystem, from),
+            importer,
+            new StationResolver(stations),
+            new StabilityChecker(TimeProvider.System, TimeSpan.FromSeconds(config.StabilitySeconds)),
+            new RecordingSkipPolicy(config.SkipPatterns),
+            to);
     }
 
     /// <summary>

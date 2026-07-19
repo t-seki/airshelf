@@ -12,7 +12,6 @@ namespace Radirec.Core.Output;
 public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWriter, string outputRoot)
     : IOutputTarget
 {
-    private static readonly char[] InvalidChars = Path.GetInvalidFileNameChars();
 
     public string PlanPath(RecordingFile source, Episode episode, NormalizedTags tags)
     {
@@ -75,7 +74,8 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
     }
 
     private string DirectoryFor(NormalizedTags tags)
-        => fileSystem.Path.Combine(outputRoot, Sanitize(tags.AlbumArtist), Sanitize(tags.Album));
+        => fileSystem.Path.Combine(
+            outputRoot, FileNameSanitizer.Sanitize(tags.AlbumArtist), FileNameSanitizer.Sanitize(tags.Album));
 
     private string PartialPathFor(string finalPath)
     {
@@ -87,7 +87,7 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
 
     private string ResolveFinalPath(string dir, Episode episode, NormalizedTags tags, string extension)
     {
-        var baseName = $"{Sanitize(tags.Album)} {tags.Date:yyyy-MM-dd}";
+        var baseName = $"{FileNameSanitizer.Sanitize(tags.Album)} {tags.Date:yyyy-MM-dd}";
 
         // 複数フォルダ統合番組の同日パートは、由来フォルダ順のパート番号で区別する(-1, -2, …)。
         if (episode.PartIndex is int part)
@@ -100,11 +100,5 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
         // 想定外の同日衝突(パート番号の無い同日別放送等)の保険: 時刻(あれば)で区別。
         var suffix = episode.BroadcastTime is { } t ? t.ToString("HHmm") : "2";
         return fileSystem.Path.Combine(dir, $"{baseName} {suffix}{extension}");
-    }
-
-    private static string Sanitize(string segment)
-    {
-        var cleaned = string.Join('_', segment.Split(InvalidChars)).Trim();
-        return cleaned.Length == 0 ? "_" : cleaned;
     }
 }
