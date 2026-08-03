@@ -61,6 +61,12 @@ Radirec.Cli ──> Radirec.Hosting / Radirec.Core
 - `Radirec.Hosting` は **CLI(`radirec.exe`)と常駐トレイの 2 フロントエンドが共有する合成層**。
   だから Hosting は Cli に畳まず独立を保つ。
 - 両ツリーを繋いでいた EventLog の JSON 契約(EventID 1001/1002)と named pipe は**どちらも撤去済み**。
+  `IngestSummaryPayload` / `IngestFailurePayload` という**型は `Gui.Core` に残っているが、跨プロセスの
+  バージョン付き JSON 契約としてではなく、ワーカーから文面整形へ渡す in-process の受け渡し型**として
+  生き残っている(シリアライズは無い)。
+- **制御(rescan/reload/status)は `Radirec.Hosting/Control/` に残り**(`IServiceControl` /
+  `ServiceStatusSnapshot` 等)、トレイが in-process で叩く。跨プロセスの窓口が消えただけで、
+  制御の実装は Hosting 側にある — ここでも Hosting が 2 フロントエンドの共有合成層として効いている。
 
 **`Radirec.Gui.Core` は分離を維持しているが、役割が変わった**: EventLog subscriber 契約の置き場ではなく、
 **CI で走らせられない WinRT/WPF/WinForms シェルから隔離した「テスト可能な提示ロジック」**
@@ -120,6 +126,6 @@ issue #5 の本体。**「CLI 運用で不足が判明したら着手」と明�
 - 決定(採用/不採用・設計方針)が出たら、この地図ではなく該当 ADR / requirements を一次資料として更新し、
   この地図は「オプションの俯瞰」に保つ。
 - **構造や実行モデルを変える ADR を切ったら、この地図の整合も同じ PR か直後の docs PR で確認する**。
-  v1 が 2 週間古びたのは、[PR #78](https://github.com/t-seki/radirec-tool/pull/78) の docs 整合が
+  v1 が 2 週間古びたのは、#78 の docs 整合が
   README/usage/development/requirements を拾いながら地図だけ飛ばしたためで(#88)、地図は仕様でも運用手順でも
   ないぶん整合対象として思い出されにくい。
