@@ -18,8 +18,20 @@ public sealed record IngestHistoryRow
     /// <summary>取込日時(ローカル時刻)。例 <c>2026-07-10 12:00</c>。</summary>
     public required string ImportedAt { get; init; }
 
-    /// <summary>出力先パス。</summary>
-    public required string Output { get; init; }
+    /// <summary>出力先のフルパス。グリッドには出さず、ToolTip / 詳細ペイン / エクスプローラー起動で使う。</summary>
+    public required string OutputPath { get; init; }
+
+    /// <summary>
+    /// 取込元のフルパス。グリッドには出さず、詳細ペイン / エクスプローラー起動で使う(#87)。
+    /// 取込後に消えている/移動していることがあるため、存在は保証しない。
+    /// </summary>
+    public required string SourcePath { get; init; }
+
+    /// <summary>
+    /// グリッドに出す出力先の表示値 = ファイル名のみ(#87)。放送局・番組・放送日は既に別列にあるため、
+    /// フルパスを列に入れても情報は増えず横幅だけを食う。全文は ToolTip と詳細ペインで見せる。
+    /// </summary>
+    public string FileName => PathReveal.FileName(OutputPath);
 
     public static IngestHistoryRow From(LedgerEntry entry) => new()
     {
@@ -27,7 +39,8 @@ public sealed record IngestHistoryRow
         Station = entry.Station,
         Broadcast = FormatBroadcast(entry.BroadcastDate, entry.BroadcastTime, entry.PartIndex),
         ImportedAt = entry.ImportedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
-        Output = entry.OutputPath,
+        OutputPath = entry.OutputPath,
+        SourcePath = entry.SourcePath,
     };
 
     /// <summary>
