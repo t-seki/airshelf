@@ -1,8 +1,9 @@
 namespace Radirec.Gui.Core;
 
 /// <summary>
-/// 台帳が持つ Windows パス(ローカル / UNC)を分解する純関数(#87)。エクスプローラーで開く導線と、
-/// 取込履歴のファイル名表示が共有する。
+/// 台帳が持つ Windows パス(ローカル / UNC)を扱う純関数(#87)。エクスプローラーで開く導線と、
+/// 取込履歴のファイル名表示が共有する。**シェル起動そのものは Windows 依存なので
+/// <c>Radirec.Gui</c> 側**にあり、ここにはテスト可能な文字列処理だけを置く。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -49,8 +50,10 @@ public static class PathReveal
             return null;
 
         var parent = trimmed[..i];
-        if (parent.Length == 0)
-            return null; // "\a" の親はルート。遡らない
+        // 区切りだけが残る場合(`"\a"` の親、`@"\\nas"` の親 = `@"\"`)はルートなので遡らない。
+        // `@"\"` は「カレントドライブのルート」という別物を指してしまうため、返してはならない。
+        if (parent.TrimEnd(Separators).Length == 0)
+            return null;
         if (IsUncServerRoot(parent))
             return null; // "\\nas" は共有名が無くディレクトリとして開けない
         if (parent.Length == 2 && parent[1] == ':')
@@ -74,6 +77,18 @@ public static class PathReveal
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// パスをコマンドライン引数として引用する。<b>末尾のバックスラッシュを 2 倍にする</b>のが要点。
+    /// Windows の引数解析は引用符の直前のバックスラッシュをエスケープ文字として扱うため、素朴に
+    /// <c>"I:\"</c> と囲むと閉じ引用符が食われて引数が壊れる。ドライブルート(<c>I:\</c>)は
+    /// <see cref="Parent"/> が返しうるので、祖先フォルダへの縮退で実際に踏む経路がある。
+    /// </summary>
+    public static string QuoteForCommandLine(string path)
+    {
+        var trailing = path.Length - path.TrimEnd('\\').Length;
+        return $"\"{path}{new string('\\', trailing)}\"";
     }
 
     // 先頭 2 文字が区切りで、その後に区切りが無い = "\\nas" 形式(共有名を伴わない UNC サーバ)。

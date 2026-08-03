@@ -32,38 +32,51 @@ internal static class ExplorerLauncher
         if (string.IsNullOrWhiteSpace(path))
             return new RevealResult(false, "パスが記録されていません");
 
-        // null(判定不能 = タイムアウト/例外)は「ある」側に倒す。explorer に投げて判断を委ねる。
-        // ※ T を bool? で明示するのは、判定不能を false(= 見つからない)と潰さないため。
-        if (await ProbeAsync<bool?>(() => File.Exists(path) || Directory.Exists(path)) != false)
-            return Start($"/select,\"{path}\"", $"エクスプローラーで開きました: {PathReveal.FileName(path)}");
+        var exists = await ProbeAsync(() => File.Exists(path) || Directory.Exists(path));
+        // 判定不能(タイムアウト / 例外)は「ある」側に倒し、explorer に判断を委ねる。
+        if (!exists.Determined || exists.Value)
+            return Start($"/select,{Quote(path)}", $"エクスプローラーで開きました: {PathReveal.FileName(path)}");
 
         var ancestor = await ProbeAsync(() => PathReveal.NearestExistingDirectory(path, Directory.Exists));
-        if (ancestor is null)
+
+        // 祖先探索も判定不能でありうる(遅い共有への Directory.Exists を何度も呼ぶため、
+        // 単発の File.Exists より時間切れしやすい)。ここで「見つかりません」と断じると、
+        // 遅いだけの共有を存在しないと決めつけることになるので、存在確認と同じく explorer へ委ねる。
+        if (!ancestor.Determined)
+            return Start($"/select,{Quote(path)}", "確認に時間がかかったため、そのまま開きます");
+
+        if (ancestor.Value is null)
             return new RevealResult(false, $"見つかりません: {path}");
 
-        return Start($"\"{ancestor}\"", $"ファイルが見つからないため親フォルダを開きました: {ancestor}");
+        return Start(Quote(ancestor.Value), $"ファイルが見つからないため親フォルダを開きました: {ancestor.Value}");
     }
 
     /// <summary>
     /// ファイルシステムへの問い合わせを、UI スレッドを塞がずタイムアウト付きで行う。
-    /// タイムアウト / 例外は「判定不能」として default(参照型は null、bool? は null)を返す。
+    /// タイムアウト / 例外は <c>Determined = false</c>(判定不能)として返す。**結果の null / false と
+    /// 判定不能を同じ値に潰さない**のが要点で、呼び出し側はこの 2 つを別々に扱う必要がある
+    /// (「祖先が無い」と「遅くて確かめられなかった」では取るべき縮退が違う)。
     /// タイムアウトしてもワーカースレッドは SMB の応答を待ち続けるが、UI からは切り離されている。
     /// </summary>
-    private static async Task<T?> ProbeAsync<T>(Func<T> probe)
+    private static async Task<(bool Determined, T? Value)> ProbeAsync<T>(Func<T> probe)
     {
         try
         {
             var work = Task.Run(probe);
             // ConfigureAwait は付けない(WPF の Dispatcher に戻ってから呼び出し元が UI を触るため)。
             var finished = await Task.WhenAny(work, Task.Delay(ProbeTimeout));
-            return finished == work ? await work : default;
+            return finished == work ? (true, await work) : (false, default);
         }
         catch (Exception ex)
         {
             TrayLog.Warn($"パスの存在確認に失敗しました: {ex}");
-            return default;
+            return (false, default);
         }
     }
+
+    // 引用は末尾バックスラッシュの扱いを誤りやすく、Windows でしか再現しないので、テスト可能な
+    // Gui.Core 側(PathReveal)に置いてある。
+    private static string Quote(string path) => PathReveal.QuoteForCommandLine(path);
 
     private static RevealResult Start(string arguments, string okMessage)
     {

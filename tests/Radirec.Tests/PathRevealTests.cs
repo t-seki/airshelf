@@ -36,10 +36,14 @@ public sealed class PathRevealTests
     [Theory]
     [InlineData(@"I:\")] // ドライブルート
     [InlineData(@"\\nas\share")] // UNC の共有ルート(親 \\nas は共有名を欠き開けない)
+    [InlineData(@"\\nas")] // UNC のサーバルート。親は区切りだけになるので遡らない
+    [InlineData(@"\radio")] // 親がルートのみ
     [InlineData("a.m4a")] // 区切り無し
     [InlineData("")]
     [InlineData(null)]
     public void Parent_stops_at_roots(string? path) =>
+        // 「カレントドライブのルート」を意味する `\` を返してしまわないこと。祖先探索が
+        // 無関係な場所に着地するのを防ぐ。
         Assert.Null(PathReveal.Parent(path));
 
     [Fact]
@@ -69,6 +73,16 @@ public sealed class PathRevealTests
 
         Assert.Equal(@"I:\radio", found);
     }
+
+    [Theory]
+    // 通常のファイルパス(末尾がバックスラッシュでない)はそのまま囲むだけ。
+    [InlineData(@"I:\radio\ANN0\2026-06-12.m4a", "\"I:\\radio\\ANN0\\2026-06-12.m4a\"")]
+    [InlineData(@"\\nas\share\radio\a.m4a", "\"\\\\nas\\share\\radio\\a.m4a\"")]
+    // ドライブルートは末尾がバックスラッシュ。2 倍にしないと閉じ引用符がエスケープされて引数が壊れる。
+    [InlineData(@"I:\", "\"I:\\\\\"")]
+    [InlineData(@"\\nas\share\", "\"\\\\nas\\share\\\\\"")]
+    public void QuoteForCommandLine_doubles_trailing_backslashes(string path, string expected) =>
+        Assert.Equal(expected, PathReveal.QuoteForCommandLine(path));
 
     [Fact]
     public void NearestExistingDirectory_returns_null_when_nothing_exists() =>

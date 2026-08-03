@@ -208,7 +208,9 @@ public sealed class IngestHistoryWindow : Window
         _sourcePathBox.Text = row?.SourcePath ?? string.Empty;
     }
 
-    // 旧スキーマからの移送行などでパスが空のことがある。空のまま explorer を叩かず、項目を伏せる。
+    // 台帳の source_path / output_path は NOT NULL で、取込パイプラインが必ず実パスを入れるため、
+    // 通常この空チェックには掛からない(旧スキーマからの移送も両列を verbatim にコピーする)。
+    // それでも空のまま explorer を叩けば黙って無関係な場所が開くので、防御として項目を伏せる。
     private void RefreshMenuState()
     {
         var row = Selected;
