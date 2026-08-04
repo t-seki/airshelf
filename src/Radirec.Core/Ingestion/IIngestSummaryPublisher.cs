@@ -1,7 +1,7 @@
 namespace Radirec.Core.Ingestion;
 
 /// <summary>
-/// 取込要約シグナルを発行する(EventLog 等の transport は実装側に隠す。ADR-0008)。
+/// 取込要約シグナルを発行する(提示の手段は実装側に隠す。現行の実装はトレイの in-process トースト)。
 /// 発行失敗は呼び出し側で握られ、取り込み成功を巻き戻さない(<c>ILibraryRefresher</c> と同方針)。
 /// </summary>
 public interface IIngestSummaryPublisher

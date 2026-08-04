@@ -6,7 +6,7 @@ namespace Radirec.Tests;
 /// <summary>
 /// 取込失敗 de-dup ストア(<see cref="SqliteLedger"/> の <see cref="IIngestFailureStore"/> 面。ADR-0011)。
 /// SQLite は WSL でも動くので、要の「新規のみ / 内容変化で再通知 / 成功で解除 / **再起動を跨いで抑制継続**」を
-/// ここで固定する(EventLog のフェーズだけが Windows 実機限定)。
+/// ここで固定する(トースト提示のフェーズだけが Windows 実機限定)。
 /// </summary>
 public sealed class SqliteFailureStoreTests : IDisposable
 {
@@ -64,7 +64,7 @@ public sealed class SqliteFailureStoreTests : IDisposable
         using (var store = new SqliteLedger(DbPath))
             store.Record("/in/a.m4a", Fp);
 
-        // 別インスタンス = サービス再起動相当。抑制が継続し、再起動で全再通知しないこと。
+        // 別インスタンス = 常駐の再起動相当。抑制が継続し、再起動で全再通知しないこと。
         using var reopened = new SqliteLedger(DbPath);
         Assert.True(reopened.IsKnown("/in/a.m4a", Fp));
     }

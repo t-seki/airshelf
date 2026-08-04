@@ -1,7 +1,7 @@
 namespace Radirec.Core.Ingestion;
 
 /// <summary>
-/// 取込失敗シグナル(EventID 1002)を発行する(EventLog 等の transport は実装側に隠す。ADR-0011)。
+/// 取込失敗シグナルを発行する(成功要約とは別種の独立シグナル。ADR-0011)。提示の手段は実装側に隠す。
 /// 発行失敗は呼び出し側で握られ、de-dup 記録を進めない(次走査で再試行 = at-least-once)。
 /// </summary>
 public interface IIngestFailurePublisher

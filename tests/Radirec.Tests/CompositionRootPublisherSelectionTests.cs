@@ -41,7 +41,7 @@ public class CompositionRootPublisherSelectionTests
     [Fact]
     public void No_injection_does_not_publish_even_when_enabled()
     {
-        // 移行後は既定の EventLog 経路が無い。注入が無ければ通知有効でも発行しない。
+        // 移行後は既定の発行経路が無い。注入が無ければ通知有効でも発行しない。
         var (summary, failure, useStore) = CompositionRoot.SelectPublishers(
             notify: true, dryRun: false, notificationsEnabled: true,
             injectedSummary: null, injectedFailure: null);

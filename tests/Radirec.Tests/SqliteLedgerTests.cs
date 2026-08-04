@@ -130,7 +130,7 @@ public sealed class SqliteLedgerTests : IDisposable
     [Fact]
     public void Creates_MissingParentDirectory()
     {
-        // 親ディレクトリが存在しないパスでも初回作成できる(サンプル設定の C:\ProgramData\radirec\... 相当)。
+        // 親ディレクトリが存在しないパスでも初回作成できる(初回起動時のデータルート生成に相当)。
         var nested = Path.Combine(_dir, "sub", "dir", "ledger.db");
 
         using var ledger = new SqliteLedger(nested);

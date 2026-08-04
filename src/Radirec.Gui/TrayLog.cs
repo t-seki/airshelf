@@ -4,7 +4,7 @@ using System.Runtime.Versioning;
 namespace Radirec.Gui;
 
 /// <summary>
-/// トレイ受け手の簡易ログ。WinExe はコンソールを持たないため、診断を
+/// 常駐トレイの簡易ログ。WinExe はコンソールを持たないため、診断を
 /// <c>%LocalAppData%\Radirec\gui.log</c> へ追記する(契約ドリフト・parse 失敗の観測点。ADR-0009)。
 /// </summary>
 [SupportedOSPlatform("windows")]

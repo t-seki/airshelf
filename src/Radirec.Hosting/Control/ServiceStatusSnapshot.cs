@@ -1,15 +1,15 @@
 namespace Radirec.Hosting.Control;
 
 /// <summary>
-/// 常駐サービスのライブ状態(状態取得コマンドの結果)。worker がスレッドセーフに publish し、
-/// listener が直列チャネルを介さず直接読む(ADR-0010)。immutable record を volatile 参照で差し替える。
+/// 常駐のライブ状態(状態取得コマンドの結果)。worker がスレッドセーフに publish し、
+/// 読み手が直列チャネルを介さず直接読む(ADR-0010)。immutable record を volatile 参照で差し替える。
 /// </summary>
 public sealed record ServiceStatusSnapshot
 {
-    /// <summary>サービスの版。</summary>
+    /// <summary>常駐の版。</summary>
     public required string Version { get; init; }
 
-    /// <summary>サービス(worker)起動時刻(UTC)。</summary>
+    /// <summary>常駐(worker)の起動時刻(UTC)。</summary>
     public required DateTimeOffset StartedUtc { get; init; }
 
     /// <summary>現在の監視ルート。</summary>

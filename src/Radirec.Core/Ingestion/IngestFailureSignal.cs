@@ -18,8 +18,8 @@ public sealed record NewIngestFailure
 }
 
 /// <summary>
-/// 取込失敗シグナル(EventID 1002)のペイロード。1 走査で**新しく現れた失敗**を有界化して運ぶ domain 表現。
-/// 成功要約(1001 / <see cref="IngestSummary"/>)とは別種の独立シグナル(ADR-0011)。transport 非依存。
+/// 取込失敗シグナルのペイロード。1 走査で**新しく現れた失敗**を有界化して運ぶ domain 表現。
+/// 成功要約(<see cref="IngestSummary"/>)とは別種の独立シグナル(ADR-0011)。提示の手段に依存しない。
 /// </summary>
 public sealed record IngestFailureSignal
 {
@@ -27,8 +27,13 @@ public sealed record IngestFailureSignal
     public const int MaxFiles = 20;
 
     /// <summary>
-    /// 1 件の理由の文字数上限。例外メッセージは青天井になりうるため切り詰める。これで payload 全体を有界化し、
-    /// EventLog の ~32KB 上限で WriteEntry が投げて「毎走査再失敗」に陥るのを防ぐ(受け手のトーストも短くて済む)。
+    /// 1 件の理由の文字数上限。例外メッセージは青天井になりうるため切り詰め、payload 全体を有界化する。
+    /// <para>
+    /// **この値の元の根拠は失効している**: 元は EventLog の ~32KB 上限で <c>WriteEntry</c> が投げて
+    /// 「毎走査再失敗」に陥るのを防ぐためだった(ADR-0011)。EventLog は ADR-0012 で撤去済み。
+    /// 現在の提示側は <c>IngestToastFormatter</c> が独自に本文 2 行まで絞るため、この上限は
+    /// 事実上「青天井を避ける安全弁」としてのみ効いている。値と役割の見直しは #100。
+    /// </para>
     /// </summary>
     public const int MaxReasonLength = 200;
 

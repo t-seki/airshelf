@@ -14,6 +14,6 @@ public interface IOutputTarget
     Task<string> WriteAsync(
         RecordingFile source, Episode episode, NormalizedTags tags, CancellationToken cancellationToken = default);
 
-    /// <summary>中断で残った孤児テンポラリを掃除し、削除数を返す(サービス起動時。ADR-0003)。</summary>
+    /// <summary>中断で残った孤児テンポラリを掃除し、削除数を返す(常駐の起動時。ADR-0003)。</summary>
     int CleanupOrphans();
 }

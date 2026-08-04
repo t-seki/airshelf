@@ -4,8 +4,9 @@ using Radirec.Hosting;
 namespace Radirec.Tests;
 
 /// <summary>
-/// install.ps1 が %ProgramData%\radirec\ へ配置する sample 設定が ConfigLoader で解析できることを保証する。
-/// sample は配布物の一部で「初回生成の種」になるため、壊れると新規インストールが起動時に失敗する。
+/// 初回起動時に <c>ConfigSeeder</c> が %LOCALAPPDATA%\RadirecData\ へ生成する sample 設定が
+/// ConfigLoader で解析できることを保証する。sample は埋め込みリソースで「初回生成の種」になるため、
+/// 壊れると新規インストールが起動時に失敗する。
 /// </summary>
 public class SampleConfigTests
 {

@@ -14,8 +14,8 @@ public readonly record struct FileFingerprint(long SizeBytes, long LastWriteUtcT
 }
 
 /// <summary>
-/// 取込失敗の de-dup ストア(ADR-0011)。**通知済み**の失敗(1002 発行に成功したもの)を永続記録し、
-/// 同じ失敗の再通知を抑える。鍵はソースパス + フィンガープリント(内容変化で再通知)。サービス再起動を
+/// 取込失敗の de-dup ストア(ADR-0011)。**通知済み**の失敗(失敗シグナルの発行に成功したもの)を永続記録し、
+/// 同じ失敗の再通知を抑える。鍵はソースパス + フィンガープリント(内容変化で再通知)。常駐の再起動を
 /// 跨いで永続する(さもないと再起動ごとに standing な失敗を全部再通知する)。永続実装は <see cref="SqliteLedger"/>。
 /// </summary>
 public interface IIngestFailureStore

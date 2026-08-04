@@ -27,7 +27,7 @@ public sealed class IngestService(
     IIngestFailureStore failureStore,
     IIngestFailurePublisher failurePublisher)
 {
-    /// <summary>中断で残った孤児テンポラリを掃除する(サービス起動時に呼ぶ。ADR-0003)。</summary>
+    /// <summary>中断で残った孤児テンポラリを掃除する(常駐の起動時に呼ぶ。ADR-0003)。</summary>
     public int CleanupOrphans() => target.CleanupOrphans();
 
     public async Task<IngestReport> RunOnceAsync(bool dryRun, CancellationToken cancellationToken = default)
@@ -88,7 +88,7 @@ public sealed class IngestService(
 
             await failurePublisher.PublishAsync(IngestFailureSignal.From(newFailures), cancellationToken);
         }
-        // 通知側(ストアの読取/クリア・EventLog 書込)のどの失敗でも取り込み成功は巻き戻さない。握って報告する
+        // 通知側(ストアの読取/クリア・publisher の発行)のどの失敗でも取り込み成功は巻き戻さない。握って報告する
         // (通知欠落で成功走査を「失敗」に化けさせない)。発行が投げた場合は記録が進まない = 次走査で再試行
         // (at-least-once。発行前に記録すると書込失敗した失敗を「通知済み」と誤認して永久に見逃す)。
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
@@ -112,7 +112,7 @@ public sealed class IngestService(
         return (true, null);
     }
 
-    // 失敗理由(例外メッセージ)を受け手向けに整える。例外メッセージにフルパスが埋まっている場合があり
+    // 失敗理由(例外メッセージ)を提示向けに整える。例外メッセージにフルパスが埋まっている場合があり
     // (IO 例外等)、フルパスをトーストに晒さない契約(ADR-0011)を守るためファイル名へ畳む。
     private static string SanitizeReason(string? message, string sourcePath)
     {
@@ -141,7 +141,7 @@ public sealed class IngestService(
             await summaryPublisher.PublishAsync(IngestSummary.From(imported), cancellationToken);
             return (true, null);
         }
-        // 真のキャンセルは伝播、それ以外(EventLog 書込失敗等)は握って報告する。
+        // 真のキャンセルは伝播、それ以外(publisher の発行失敗等)は握って報告する。
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             return (false, ex.Message);

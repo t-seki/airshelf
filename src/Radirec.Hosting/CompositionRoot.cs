@@ -21,13 +21,12 @@ public static class CompositionRoot
     /// null なら <see cref="RadirecConfig.RadioRoot"/> を使う。
     /// </param>
     /// <param name="notify">
-    /// 取込通知を発行するか。**常駐経路のみ true**(ADR-0008)。手動 <c>ingest</c> は
-    /// 対話コマンドで受け手へ通知する意味が無く、既定経路(EventLog)では未登録ソースへの書込失敗も
-    /// 招くため false。
+    /// 取込通知を発行するか。**常駐経路のみ true**。手動 <c>ingest</c> は対話コマンドで、
+    /// 結果は標準出力に出るためトーストを重ねる意味が無い(ADR-0012)。
     /// </param>
     /// <param name="summaryPublisher">
-    /// 取込要約通知の publisher を注入する(トレイ常駐の in-process トースト。ADR-0012)。null なら
-    /// 既定のサービス経路 = EventLog(Windows のみ)へフォールバックする。
+    /// 取込要約通知の publisher を注入する(トレイ常駐の in-process トースト。ADR-0012)。
+    /// null なら通知しない(<see cref="SelectPublishers"/> が Null publisher を返す)。
     /// </param>
     /// <param name="failurePublisher">取込失敗通知の publisher。<paramref name="summaryPublisher"/> と同様。</param>
     /// <returns>サービスと、破棄すべきリソース(台帳。NullLedger 時は null)。</returns>
@@ -54,7 +53,7 @@ public static class CompositionRoot
 
         // 発行するか・どの publisher を使うかを純粋関数で決める(テスト可能)。取込失敗の de-dup ストアも
         // 発行経路でだけ実体を使う(非発行走査が失敗を記録して初回通知を潰さないため。ADR-0011)。
-        // 成功要約(1001)と失敗(1002)は同じゲートで揃える。
+        // 成功要約と失敗は同じゲートで揃える。
         var (summaryPub, failurePub, useFailureStore) = SelectPublishers(
             notify, dryRun, config.NotificationsEnabled, summaryPublisher, failurePublisher);
         IIngestFailureStore failureStore = useFailureStore ? failureStoreFacet : new NullIngestFailureStore();
