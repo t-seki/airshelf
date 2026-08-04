@@ -9,8 +9,9 @@
 
 ## 前提
 
-- **.NET 10 SDK**。`Core` / `Cli` / `Tests` はクロスプラットフォームなので、開発・ビルド・テストは
-  **WSL/Linux でも可能**です(Windows 固有 API を使わない)。実行時のパス(`I:`, UNC)だけが Windows 前提。
+- **.NET 10 SDK**。`Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0` でクロスプラットフォームなので、
+  開発・ビルド・テストは **WSL/Linux でも可能**です(Windows 固有 API を使わない)。`Cli`(`net10.0-windows`)と
+  `Gui`(`net10.0-windows10.0.x`)は Windows 専用。実行時のパス(`I:`, UNC)も Windows 前提。
 - テストフィクスチャ(`tests/Radirec.Tests/Fixtures/silent.m4a`)は著作権フリーの無音 M4A で、
   リポジトリに含まれています(再生成には ffmpeg が必要ですが通常は不要)。
 
@@ -67,7 +68,7 @@ tests/Radirec.Tests/  xUnit
 Radirec.Gui ──> Radirec.Gui.Core ──> Radirec.Core
      └────────> Radirec.Hosting  ──> Radirec.Core
 Radirec.Cli ──> Radirec.Hosting / Radirec.Core
-Radirec.Tests ──> Radirec.Core / Radirec.Hosting
+Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core
 ```
 
 - `Radirec.Gui` 自体に `Radirec.Core` への直接 ProjectReference は**無い**が、Core の型は推移参照で

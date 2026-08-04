@@ -80,12 +80,14 @@
 - **WSL からは NAS のマップ済みドライブが見えない**ため実行ホストは Windows。開発/ビルドも
   Windows(.NET SDK)で行う(§11)。
 
-### 3.1 実行形態(単一 exe:常駐サービス + 単発 CLI)【確定】
+### 3.1 実行形態(旧:単一 exe = 常駐サービス + 単発 CLI)
 
-> **⚠ [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で改訂中**: 本番の常駐を
-> **Windows サービス → トレイ常駐(ユーザーセッション自動起動・非 admin per-user)** へ移行する。
-> 取り込みワーカーは `Radirec.Gui` に畳み、`radirec.exe` は dev/batch 単発 CLI 専用に縮小。以下の
-> 「常駐サービス」記述はこの移行後の姿に読み替える(UNC 資格情報・EventLog・named pipe の前提は退役)。
+> **⚠ [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で置き換わった**(移行完了・
+> エピック #62、2026-07-19)。本番の常駐は **Windows サービス → トレイ常駐**(ユーザーセッション
+> 自動起動・非 admin per-user)になり、取り込みワーカーは `Radirec.Gui` に畳まれ、`radirec.exe` は
+> dev/batch 単発 CLI 専用に縮小した。UNC 資格情報・EventLog・named pipe・`%ProgramData%` 配置の前提は
+> すべて退役(データは `%LOCALAPPDATA%\RadirecData`。[ADR-0013](adr/0013-velopack-per-user-updates.md))。
+> **以下は移行前の設計**で、当時の記録として残す。現行の構成は §10 / §11 を参照。
 
 本番形態は **単一 exe `radirec.exe`**。同一の取り込みエンジン(`Radirec.Core`)を、常駐サービスと
 単発 CLI の 2 通りで動かす。両者は 1 つの実行体に **verb** で統合し、配布物を 1 本化して Core
@@ -327,7 +329,7 @@ Windows 実機での検証手順は [control-channel-verification.md](control-ch
 利用者向けのコマンド一覧は [usage.md](usage.md) を参照。
 
 **現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、3 コマンドとも in-process 呼び出し。
-CLI の制御 verb(`status`/`rescan`/`reload`)は廃止され、`rescan` は `radirec ingest --once` に吸収された
+CLI の制御 verb(`status`/`rescan`/`reload`)は廃止され、手動の単発走査は `radirec ingest` に吸収された
 ([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。状態はメニューを開いた時点の
 スナップショットとして表示する。トレイからの操作は [usage.md](usage.md) §6 を参照。
 
@@ -444,9 +446,11 @@ radirec-tool/
 [roadmap.md](roadmap.md) を参照。
 
 > **注**: [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) の常駐移行が
-> `Radirec.Gui → Radirec.Core` 直接参照(C2 の 2 ツリー統合)を**先に確立**する。よって編集本体着手時は
-> 構造前提が既に整っており、残るは編集機能そのもの。ただし**「CLI 運用で不足が判明したら着手」の
-> ゲート自体は維持**(移行は常駐単純化が動機で、編集本体の greenlight ではない)。
+> **2 ツリー統合(C2 の構造前提)を先に確立済み**。`Gui → Core` の直接参照が入ったわけではなく、
+> Core の型が推移参照(`Gui → Hosting → Core` / `Gui → Gui.Core → Core`)で `Radirec.Gui` の
+> コンパイル面に乗っている状態(§11 の参照グラフ)。よって編集本体着手時は構造前提が既に整っており、
+> 残るは編集機能そのもの。ただし**「CLI 運用で不足が判明したら着手」のゲート自体は維持**
+> (移行は常駐単純化が動機で、編集本体の greenlight ではない)。
 
 - **一覧編集 UI**: アルバム/回のグリッドで title/artist/album/albumartist/disc/track 等を直接編集。
 - 編集後は Jellyfin API リフレッシュを起動。台帳・alias とは競合しない(編集側が Z: の権威、§8)。
