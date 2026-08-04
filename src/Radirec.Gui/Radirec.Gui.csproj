@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- 取込通知の受け手(トレイ常駐)。非パッケージ WPF + 従来 WinRT トースト(ADR-0009)。
+  <!-- 本番の常駐本体(取り込みワーカー + トレイ)。非パッケージ WPF + 従来 WinRT トースト(ADR-0009 / 0012)。
        WinRT トースト API のため Windows SDK バージョン付き TFM が必要。NotifyIcon(トレイ)のため
        WinForms も併用。ビルド/実行は Windows のみ(WSL では検証不可)。 -->
   <PropertyGroup>

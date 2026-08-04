@@ -13,7 +13,7 @@ public static class IngestToastFormatter
     /// <summary>本文行の上限(表題 1 要素を除いた残り)。<see cref="MaxToastTextElements"/> から導出する。</summary>
     public const int MaxLines = MaxToastTextElements - 1;
 
-    // ---- 取込要約(1001)----
+    // ---- 取込要約(成功。ADR-0008)----
 
     /// <summary>取込通知(「新規取込 N件」)の text 要素列。起動時 catch-up の集約もこれで表示する(ADR-0012)。</summary>
     public static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload) =>

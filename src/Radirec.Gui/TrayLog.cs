@@ -4,8 +4,9 @@ using System.Runtime.Versioning;
 namespace Radirec.Gui;
 
 /// <summary>
-/// トレイ受け手の簡易ログ。WinExe はコンソールを持たないため、診断を
-/// <c>%LocalAppData%\Radirec\gui.log</c> へ追記する(契約ドリフト・parse 失敗の観測点。ADR-0009)。
+/// 常駐トレイの簡易ログ。WinExe はコンソールを持たないため、診断を
+/// <c>%LocalAppData%\RadirecData\gui.log</c> へ追記する(<see cref="AppData"/> 経由。ADR-0009 / 0013)。
+/// **Velopack のインストール先 <c>%LocalAppData%\Radirec</c> ではない** — そちらは更新/アンインストールで消える。
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class TrayLog

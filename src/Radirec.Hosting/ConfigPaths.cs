@@ -2,8 +2,9 @@ namespace Radirec.Hosting;
 
 /// <summary>
 /// 設定ファイルの発見と、設定内相対パスの解決基準を一元化する(ADR-0006 / 0012 / 0013)。
-/// トレイ常駐 per-user 移行(ADR-0012/0013)で、データは per-user の <c>%LOCALAPPDATA%\radirec\</c> に置く
+/// トレイ常駐 per-user 移行(ADR-0012/0013)で、データは per-user の <c>%LOCALAPPDATA%\RadirecData\</c> に置く
 /// (Velopack の versioned app ディレクトリの外・非 admin・非 roaming。SQLite 台帳は roaming 不可)。
+/// フォルダ名を <c>Radirec</c> にしてはならない理由は <see cref="DataRoot"/> を参照。
 /// 設定は DataRoot 側を既定発見し、設定内の相対パスは**設定ファイル自身のディレクトリ基準**で解決する。
 /// </summary>
 public static class ConfigPaths
@@ -20,7 +21,7 @@ public static class ConfigPaths
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "RadirecData");
 
-    /// <summary>引数省略時に探す既定の設定ファイル(<c>%LOCALAPPDATA%\radirec\radirec.json</c>)。</summary>
+    /// <summary>引数省略時に探す既定の設定ファイル(<c>%LOCALAPPDATA%\RadirecData\radirec.json</c>)。</summary>
     public static string DefaultConfigPath => Path.Combine(DataRoot, "radirec.json");
 
     /// <summary>明示パスがあればそれを、無ければ <see cref="DefaultConfigPath"/> を返す。</summary>
@@ -41,7 +42,8 @@ public static class ConfigPaths
 
     /// <summary>
     /// 設定内の相対パス(監視ルート・出力先・台帳・放送局マスタ・番組 alias)を、
-    /// 設定ファイルのあるディレクトリ基準へ寄せる。CWD(サービスでは System32)基準の解決を排する。
+    /// 設定ファイルのあるディレクトリ基準へ寄せる。**プロセスの CWD 基準の解決を排する**
+    /// (CWD は起動のされ方に依存し、設定の解決先が呼び出し元次第で変わってしまうため)。
     /// 本番はいずれも絶対パス(UNC 含む)のため実質 no-op = 後方互換。
     /// </summary>
     public static void RebaseAgainst(RadirecConfig config, string configFilePath)

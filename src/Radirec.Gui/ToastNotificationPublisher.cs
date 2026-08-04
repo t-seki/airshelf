@@ -7,9 +7,9 @@ namespace Radirec.Gui;
 
 /// <summary>
 /// 取込通知を in-process でトースト表示する publisher(ADR-0012)。取り込みワーカーが同一プロセスで
-/// 走るため、EventLog シグナルを経ず Core の <see cref="IngestSummary"/> / <see cref="IngestFailureSignal"/> を
-/// 直接受け、受け手側の presentation view model(<see cref="IngestSummaryPayload"/> 等)へ写して
-/// <see cref="ToastPresenter"/> に渡す。成功要約(1001 相当)と失敗(1002 相当)の両インタフェースを
+/// 走るため、跨プロセスの契約を経ず Core の <see cref="IngestSummary"/> / <see cref="IngestFailureSignal"/> を
+/// 直接受け、提示側の view model(<see cref="IngestSummaryPayload"/> 等)へ写して
+/// <see cref="ToastPresenter"/> に渡す。成功要約と失敗の両インタフェースを
 /// 1 インスタンスで実装し、ワーカーには同じインスタンスを両方に注入する。
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -28,7 +28,7 @@ public sealed class ToastNotificationPublisher(ToastPresenter presenter)
         return Task.CompletedTask;
     }
 
-    // Core の domain 要約 → 受け手 view model。放送日は yyyy-MM-dd、放送時刻は HH:mm(取得不能なら null)。
+    // Core の domain 要約 → 提示側 view model。放送日は yyyy-MM-dd、放送時刻は HH:mm(取得不能なら null)。
     // formatter が期待する既存の文字列形式に合わせる(InvariantCulture: ':' が time separator に化けない)。
     private static IngestSummaryPayload ToPayload(IngestSummary summary) => new()
     {

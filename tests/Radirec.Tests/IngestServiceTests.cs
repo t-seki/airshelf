@@ -318,7 +318,7 @@ public sealed class IngestServiceTests
         Assert.Equal(1, report.Count(IngestOutcome.Failed));
     }
 
-    // ---- 取込失敗シグナル 1002(ADR-0011)----
+    // ---- 取込失敗シグナル(ADR-0011)----
 
     private static RecordingFile BadFile() => Rec("[X局]番組(TimeFree)_20250229123000.m4a"); // 非閏年 2/29 → Failed
 
@@ -352,7 +352,7 @@ public sealed class IngestServiceTests
     public async Task FailurePublishが投げたら記録せず次走査で再試行する()
     {
         var bad = BadFile();
-        _failurePublisher.Throws = new InvalidOperationException("EventLog 書込失敗");
+        _failurePublisher.Throws = new InvalidOperationException("発行失敗");
 
         var first = await Build([bad]).RunOnceAsync(dryRun: false);
 
@@ -565,7 +565,7 @@ public sealed class IngestServiceTests
         Assert.Equal(2, summary.TotalImported);
         var album = Assert.Single(summary.Albums);
         Assert.Equal(2, album.Episodes.Count);
-        // 同日・単一フォルダ(part=0)でも放送時刻で区別できること(ADR-0002。受け手が重複表示しない)。
+        // 同日・単一フォルダ(part=0)でも放送時刻で区別できること(ADR-0002。通知が重複表示しない)。
         Assert.Equal(new TimeOnly(8, 30, 0), album.Episodes[0].BroadcastTime);
         Assert.Equal(new TimeOnly(10, 0, 0), album.Episodes[1].BroadcastTime);
     }

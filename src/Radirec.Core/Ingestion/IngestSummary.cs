@@ -4,7 +4,8 @@ namespace Radirec.Core.Ingestion;
 
 /// <summary>
 /// 取込要約シグナルのペイロード。1 走査の新規取込を番組(アルバム)単位にまとめた domain 表現。
-/// transport(EventLog 等)非依存で、番組数・放送回数の上限によりサイズを有界化する(ADR-0008)。
+/// 提示の手段に依存せず、番組数・放送回数の上限によりサイズを有界化する(ADR-0008)。
+/// 上限値の根拠は #100 で見直す(元は EventLog のペイロード制約に合わせた値)。
 /// </summary>
 public sealed record IngestSummary
 {
