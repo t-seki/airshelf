@@ -5,7 +5,7 @@ namespace Radirec.Gui;
 
 /// <summary>
 /// 取り込みワーカーの <see cref="ILogger"/> 出力を <see cref="TrayLog"/>
-/// (<c>%LocalAppData%\Radirec\gui.log</c>)へ橋渡しする最小プロバイダ(ADR-0012)。
+/// (<c>%LocalAppData%\RadirecData\gui.log</c>)へ橋渡しする最小プロバイダ(ADR-0012)。
 /// ユーザーセッション常駐はコンソールも EventLog も持たないため、動作ログをファイルに残す。
 /// Information 未満は捨てる(既定 Warning より詳しく、かつ冗長にしすぎない)。
 /// </summary>

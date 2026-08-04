@@ -55,7 +55,7 @@ public sealed class IngestService(
         };
     }
 
-    // 取込失敗シグナル(1002)の発行(ADR-0011)。成功要約とは独立に、その走査で**新しく現れた**失敗
+    // 取込失敗シグナルの発行(ADR-0011)。成功要約とは独立に、その走査で**新しく現れた**失敗
     // (de-dup 通過)だけを発行する。dry-run は発行しない。
     private async Task<(bool Published, string? Error)> MaybePublishFailuresAsync(
         IReadOnlyList<IngestItemResult> items, bool dryRun, CancellationToken cancellationToken)
@@ -97,7 +97,7 @@ public sealed class IngestService(
         }
 
         // 発行成功後にだけ de-dup 記録を進める。記録は表示上限に関わらず**新規全件**(溢れた分も記録しないと
-        // 毎走査で再通知される)。ここでの記録失敗は publish 成功を覆さない — 最悪、次走査で重複 1002 が出るが、
+        // 毎走査で再通知される)。ここでの記録失敗は publish 成功を覆さない — 最悪、次走査で重複した失敗シグナルが出るが、
         // 通知自体は届いている(取りこぼしより重複を選ぶ)。
         try
         {

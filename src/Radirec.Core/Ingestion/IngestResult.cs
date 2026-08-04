@@ -61,7 +61,7 @@ public sealed record IngestReport
     /// <summary>シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>
     public string? NotificationError { get; init; }
 
-    /// <summary>取込失敗シグナル(1002)を発行できたか(新規失敗0件・dry-run・通知無効時は false。ADR-0011)。</summary>
+    /// <summary>取込失敗シグナルを発行できたか(新規失敗0件・dry-run・通知無効時は false。ADR-0011)。</summary>
     public bool FailureNotificationPublished { get; init; }
 
     /// <summary>失敗シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>

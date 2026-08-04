@@ -2,7 +2,7 @@ using Radirec.Core.Ledger;
 
 namespace Radirec.Core.Ingestion;
 
-/// <summary>de-dup を通過した「新しく現れた失敗」1 件(1002 発行対象。ADR-0011)。</summary>
+/// <summary>de-dup を通過した「新しく現れた失敗」1 件(失敗シグナルの発行対象。ADR-0011)。</summary>
 public sealed record NewIngestFailure
 {
     public required string SourcePath { get; init; }

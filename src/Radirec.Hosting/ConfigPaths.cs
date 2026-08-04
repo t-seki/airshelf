@@ -42,8 +42,8 @@ public static class ConfigPaths
 
     /// <summary>
     /// 設定内の相対パス(監視ルート・出力先・台帳・放送局マスタ・番組 alias)を、
-    /// 設定ファイルのあるディレクトリ基準へ寄せる。プロセスの CWD 基準の解決を排する
-    /// (CWD は起動のされ方で変わり、常駐トレイでは Velopack の versioned ディレクトリになる)。
+    /// 設定ファイルのあるディレクトリ基準へ寄せる。**プロセスの CWD 基準の解決を排する**
+    /// (CWD は起動のされ方に依存し、設定の解決先が呼び出し元次第で変わってしまうため)。
     /// 本番はいずれも絶対パス(UNC 含む)のため実質 no-op = 後方互換。
     /// </summary>
     public static void RebaseAgainst(RadirecConfig config, string configFilePath)

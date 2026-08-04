@@ -298,7 +298,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             {
                 var refresh = report.LibraryRefreshed ? "起動" : report.RefreshError ?? "-";
                 var notify = report.NotificationPublished ? "発行" : report.NotificationError ?? "-";
-                // 失敗通知(1002)の発行結果も残す。新規失敗が無ければ "-"、発行失敗なら理由を残して
+                // 失敗通知の発行結果も残す。新規失敗が無ければ "-"、発行失敗なら理由を残して
                 // 「失敗トーストが出ない理由」を診断可能にする(さもないと無痕跡)。
                 var failNotify = report.FailureNotificationPublished ? "発行" : report.FailureNotificationError ?? "-";
                 _log.LogInformation(

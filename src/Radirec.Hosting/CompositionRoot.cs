@@ -25,10 +25,10 @@ public static class CompositionRoot
     /// 結果は標準出力に出るためトーストを重ねる意味が無い(ADR-0012)。
     /// </param>
     /// <param name="summaryPublisher">
-    /// 取込要約通知の publisher を注入する(トレイ常駐の in-process トースト。ADR-0012)。
-    /// null なら通知しない(<see cref="SelectPublishers"/> が Null publisher を返す)。
+    /// 取込要約**シグナル**の publisher を注入する(現行の実装はトレイ常駐の in-process トースト。ADR-0012)。
+    /// null なら発行しない(<see cref="SelectPublishers"/> が Null publisher を返す)。
     /// </param>
-    /// <param name="failurePublisher">取込失敗通知の publisher。<paramref name="summaryPublisher"/> と同様。</param>
+    /// <param name="failurePublisher">取込失敗**シグナル**の publisher。<paramref name="summaryPublisher"/> と同様。</param>
     /// <returns>サービスと、破棄すべきリソース(台帳。NullLedger 時は null)。</returns>
     public static (IngestService Service, IDisposable? Disposable) Build(
         RadirecConfig config, bool dryRun, string? rootOverride = null, bool notify = false,
@@ -95,9 +95,9 @@ public static class CompositionRoot
     }
 
     /// <summary>
-    /// 取込通知の publisher と、失敗 de-dup ストアを使うかを決める純粋関数(テスト可能)。
-    /// トレイ常駐移行(ADR-0012)後、取込通知の唯一の経路は呼び出し側が注入する in-process publisher
-    /// (トレイのトースト)。両 publisher が注入され、通知が有効で dry-run でないときだけ発行し、
+    /// シグナルの publisher と、失敗 de-dup ストアを使うかを決める純粋関数(テスト可能)。
+    /// トレイ常駐移行(ADR-0012)後、シグナルが取込通知として提示される唯一の経路は呼び出し側が注入する
+    /// in-process publisher(トレイのトースト)。両 publisher が注入され、通知が有効で dry-run でないときだけ発行し、
     /// それ以外(未注入・notify=false・dry-run・通知無効)は発行しない。
     /// 片側だけの注入は、失敗を「記録するのに通知しない」ADR-0011 のサイレント抑制を招くため禁止する。
     /// </summary>

@@ -318,7 +318,7 @@ public sealed class IngestServiceTests
         Assert.Equal(1, report.Count(IngestOutcome.Failed));
     }
 
-    // ---- 取込失敗シグナル 1002(ADR-0011)----
+    // ---- 取込失敗シグナル(ADR-0011)----
 
     private static RecordingFile BadFile() => Rec("[X局]番組(TimeFree)_20250229123000.m4a"); // 非閏年 2/29 → Failed
 
