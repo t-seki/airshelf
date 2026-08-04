@@ -1,6 +1,10 @@
 # らじれこ運用支援ツール 要件定義
 
-> Status: Draft v2 / 最終更新: 2026-07-16
+> Status: Draft v3 / 最終更新: 2026-08-04
+>
+> 本番の実行形態は **トレイ常駐 per-user**([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) /
+> [ADR-0013](adr/0013-velopack-per-user-updates.md))。Windows サービス・EventLog シグナル・named pipe を
+> 前提にした記述は §3.1 / §7.1 / §7.2 のバナー下に**歴史として**残してある。
 
 ## 1. 背景・目的
 
@@ -28,9 +32,9 @@
 | 正規名 | 表記ゆれを吸収した番組の正式表示名(alias 設定で管理) |
 | 案A | 「1 番組 = 1 アルバム(全回集約)」の Jellyfin マッピング方針 |
 | import-once | パイプラインは各ソースを 1 回だけ取り込み、取込後の Z: は触らない原則(§8) |
-| 取込要約シグナル | 新規取込が発生したとき常駐サービスが発行する機械可読な要約イベント(サービス発・一方向、§7.1) |
-| 取込通知 | 取込要約シグナルを受けてデスクトップに出すトースト通知(受け手 = 常駐 GUI、§7.1) |
-| 制御チャネル | 利用者(GUI/CLI)→ 常駐サービスの要求/応答経路。ローカル同一ユーザー限定(§7.2) |
+| 取込要約シグナル | 新規取込が発生したとき常駐が出す機械可読な要約(1 走査 = 最大 1 件に集約、§7.1) |
+| 取込通知 | 取込要約シグナル/取込失敗シグナルを受けてデスクトップに出すトースト通知(§7.1) |
+| 制御チャネル | 利用者 → 常駐へ指示を出す経路。ローカル同一ユーザー限定(§7.2) |
 
 > 通知・制御レイヤの語彙(取込要約シグナル / 取込通知 / 制御チャネル / 制御コマンド)の**権威定義は
 > リポジトリ root の [`CONTEXT.md`](../CONTEXT.md)** に置く。本表は §7.1/§7.2 が使う最小限のみ再掲する。
@@ -67,20 +71,23 @@
 - **録音元はローカル、Jellyfin は別 NAS** → 配信には**転送が必須**。処理は「原本読取専用 +
   NAS 上のコピーにタグ付与(非破壊)」。
 - **★ NAS へは UNC(`\\192.168.11.121\share`)でアクセスする。ドライブレター `Z:` は使わない。**
-  理由: **マップ済みネットワークドライブはユーザー単位で、Windows サービスのサービスアカウント
-  からは見えない**(WSL から見えないのと同種の問題)。サービス実行時は UNC 必須。加えて
-  **NAS 共有にアクセスできるサービスアカウント/資格情報**が要る(§3.1)。ローカル I: は
-  LocalSystem でも読める。対話的 CLI/GUI では Z: でも UNC でも可だが、**config は UNC を正**とする。
+  当初の理由は「マップ済みネットワークドライブはユーザー単位で、**Windows サービスのサービスアカウント
+  からは見えない**」ことだった。[ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) の
+  トレイ常駐 per-user 移行で常駐がユーザーとして動くようになり、**この制約自体は消滅**した
+  (資格情報のダンスも不要)。それでも **config は UNC を正**とする — ドライブレターの割り当ては
+  環境依存で、設定を機械間で持ち回れなくなるため。
 - **状態ストア(台帳・SQLite 等)はローカルディスクに置く**。SMB(NAS)上の SQLite は破損する。
 - **WSL からは NAS のマップ済みドライブが見えない**ため実行ホストは Windows。開発/ビルドも
   Windows(.NET SDK)で行う(§11)。
 
-### 3.1 実行形態(単一 exe:常駐サービス + 単発 CLI)【確定】
+### 3.1 実行形態(旧:単一 exe = 常駐サービス + 単発 CLI)
 
-> **⚠ [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で改訂中**: 本番の常駐を
-> **Windows サービス → トレイ常駐(ユーザーセッション自動起動・非 admin per-user)** へ移行する。
-> 取り込みワーカーは `Radirec.Gui` に畳み、`radirec.exe` は dev/batch 単発 CLI 専用に縮小。以下の
-> 「常駐サービス」記述はこの移行後の姿に読み替える(UNC 資格情報・EventLog・named pipe の前提は退役)。
+> **⚠ [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で置き換わった**(移行完了・
+> エピック #62、2026-07-19)。本番の常駐は **Windows サービス → トレイ常駐**(ユーザーセッション
+> 自動起動・非 admin per-user)になり、取り込みワーカーは `Radirec.Gui` に畳まれ、`radirec.exe` は
+> dev/batch 単発 CLI 専用に縮小した。UNC 資格情報・EventLog・named pipe・`%ProgramData%` 配置の前提は
+> すべて退役(データは `%LOCALAPPDATA%\RadirecData`。[ADR-0013](adr/0013-velopack-per-user-updates.md))。
+> **以下は移行前の設計**で、当時の記録として残す。現行の構成は §10 / §11 を参照。
 
 本番形態は **単一 exe `radirec.exe`**。同一の取り込みエンジン(`Radirec.Core`)を、常駐サービスと
 単発 CLI の 2 通りで動かす。両者は 1 つの実行体に **verb** で統合し、配布物を 1 本化して Core
@@ -103,20 +110,20 @@
 ### 3.2 らじれこ自動スリープとの連携(★重要な運用前提)
 
 らじれこは**録音終了後に自動スリープ**する設定があり、録音後 ~30 秒で Windows がスリープしうる。
-サービス監視で「スリープ前に処理を挟む」狙いは妥当だが、**30 秒に賭けるのは脆い**(長尺番組は
+常駐監視で「スリープ前に処理を挟む」狙いは妥当だが、**30 秒に賭けるのは脆い**(長尺番組は
 NAS 転送が 30 秒を超えうる/コピー中に割り込まれる)。**らじれこは強制スリープ(能動的にスリープさせる)
 であることをユーザーに確認済み** → `SetThreadExecutionState` は効かないので**採用しない**。
 「30 秒以内に処理」を必須要件にはせず、**キャッチアップ + 冪等 + 中断耐性で"取りこぼさない"を保証**する
 ([ADR-0003](adr/0003-catchup-over-sleep-race.md)):
 
 1. **復帰/起動時/定期フルスキャン(キャッチアップ)= 主機構**: 強制スリープ中は監視も止まり
-   FileSystemWatcher はイベントを取りこぼす。**サービス起動時・スリープ復帰時(電源イベント購読)・
+   FileSystemWatcher はイベントを取りこぼす。**常駐の起動時・スリープ復帰時(電源イベント購読)・
    定期(安全網)に未処理をフルスキャン**して取り込む。import-once(§8)で冪等なので二重取り込みなし。
    → 30 秒に間に合わなくても次回復帰で確実に処理。
 2. **リアルタイム検知(best-effort)**: 起きている間は `FileSystemWatcher` で検知即取り込み(デバウンス+
    安定判定)。強制スリープに邪魔されても①が回収する。
 3. **中断耐性**: コピーはテンポラリ(`.partial`)→完了後リネーム、台帳は完了後記録。スリープでコピーが
-   切れても半端ファイルを残さず、未記録として次回再取り込みされる。**サービス起動時に孤児 `.partial` を掃除**。
+   切れても半端ファイルを残さず、未記録として次回再取り込みされる。**常駐の起動時に孤児 `.partial` を掃除**。
 
 → ①+②+③ で、30 秒の成否・イベント取りこぼしに依存せず取りこぼしゼロを保証する。
 `SetThreadExecutionState` は将来らじれこがアイドルスリープ運用に変われば最適化として再検討。
@@ -244,7 +251,7 @@ alias 設計が必要(§9)。
 
 ## 7. 自動パイプライン(取り込み)
 
-走査は①録音検知(FileSystemWatcher)②スリープ復帰 ③サービス起動時 ④定期(安全網)⑤**手動**
+走査は①録音検知(FileSystemWatcher)②スリープ復帰 ③常駐トレイの起動時 ④定期(安全網)⑤**手動**
 (制御チャネルの rescan、§7.2)のいずれかで起動する。以下は 1 走査分の処理:
 
 1. **検知**: ソースルート配下の音声を FileSystemWatcher で検知、または起動時に全走査。ポーリング代替可。
@@ -319,8 +326,12 @@ alias 設計が必要(§9)。
 サービス未起動/未応答時は各コマンドともエラー表示 + 終了コード 1 で破綻しない。実装(named pipe・
 同一ユーザー限定の認可・再構築のセマンティクス)は [ADR-0010](adr/0010-gui-service-control-via-named-pipe.md)、
 Windows 実機での検証手順は [control-channel-verification.md](control-channel-verification.md) に委ねる。
-利用者向けのコマンド一覧は [usage.md](usage.md) を参照。現状の窓口は CLI(`radirec status`/`rescan`/`reload`)で、
-GUI からの操作は今後追加予定(#5)。
+利用者向けのコマンド一覧は [usage.md](usage.md) を参照。
+
+**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、3 コマンドとも in-process 呼び出し。
+CLI の制御 verb(`status`/`rescan`/`reload`)は廃止され、手動の単発走査は `radirec ingest` に吸収された
+([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。状態はメニューを開いた時点の
+スナップショットとして表示する。トレイからの操作は [usage.md](usage.md) §6 を参照。
 
 ## 8. import-once と冪等性(★中核設計)
 
@@ -411,11 +422,15 @@ stations:
 radirec-tool/
   core/   # ドメインロジック: パース(importer) / 正規化ルール / 放送局・番組解決 /
           #   タグ書込(TagLib#) / import-once 台帳 / Jellyfin リフレッシュ。GUI 非依存・テスト可能
-  cli/    # 薄い入口。radirec ingest / migrate / normalize / apply-alias + 制御チャネル(status/rescan/reload)
-  gui/    # 常駐デスクトップ・フロントエンド。現状は取込通知の受け手(トレイ、§7.1)。
+  cli/    # 薄い入口(dev/batch の単発)。radirec ingest / refresh / organize-source
+  gui/    # 本番の常駐本体。取り込みワーカー + トレイ + 取込通知 + 取込履歴 UI + 制御 + 自己更新。
           #   取込後編集グリッド(§10.1)は同プロジェクトに後載せ・保留
   docs/  tests/
 ```
+
+> **常駐は gui 側**([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。当初は
+> cli に `service` verb を持たせて Windows サービスとして常駐させたが、トレイ常駐 per-user へ移行し、
+> ワーカーは gui に畳まれた。制御チャネルの窓口も cli からトレイメニューへ移っている。
 
 - **原則**: ドメインロジックは全て `core/` に置き、CLI/GUI は薄いアダプタ。
 - **CLI で提供する編集操作**(GUI 前でも運用可能):
@@ -431,9 +446,11 @@ radirec-tool/
 [roadmap.md](roadmap.md) を参照。
 
 > **注**: [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) の常駐移行が
-> `Radirec.Gui → Radirec.Core` 直接参照(C2 の 2 ツリー統合)を**先に確立**する。よって編集本体着手時は
-> 構造前提が既に整っており、残るは編集機能そのもの。ただし**「CLI 運用で不足が判明したら着手」の
-> ゲート自体は維持**(移行は常駐単純化が動機で、編集本体の greenlight ではない)。
+> **2 ツリー統合(C2 の構造前提)を先に確立済み**。`Gui → Core` の直接参照が入ったわけではなく、
+> Core の型が推移参照(`Gui → Hosting → Core` / `Gui → Gui.Core → Core`)で `Radirec.Gui` の
+> コンパイル面に乗っている状態(§11 の参照グラフ)。よって編集本体着手時は構造前提が既に整っており、
+> 残るは編集機能そのもの。ただし**「CLI 運用で不足が判明したら着手」のゲート自体は維持**
+> (移行は常駐単純化が動機で、編集本体の greenlight ではない)。
 
 - **一覧編集 UI**: アルバム/回のグリッドで title/artist/album/albumartist/disc/track 等を直接編集。
 - 編集後は Jellyfin API リフレッシュを起動。台帳・alias とは競合しない(編集側が Z: の権威、§8)。
@@ -465,47 +482,68 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - **ソリューション構成**(レイヤ分離を .NET プロジェクトに対応、§10):
   - `Radirec.Core` — クラスライブラリ。ドメインロジック(importer / 正規化 / タグ書込 /
     import-once 台帳 / 出力ターゲット抽象 / Jellyfin 連携)。**クロスプラットフォームでテスト可能**。
-  - `Radirec.Hosting` — 合成ルート + 環境設定・パス解決(Core と入口の橋渡し)。
-  - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。単発 CLI(`ingest`/`refresh`)と
-    常駐サービス(`service` verb)、制御チャネル窓口(`status`/`rescan`/`reload`、§7.2)を 1 実行体に
-    統合([ADR-0005])。TFM は `net10.0-windows`。
-  - `Radirec.Gui` — **独立 exe**(WPF、`net10.0-windows10.0.x`)。現状は取込通知の受け手トレイ
-    (§7.1・ADR-0009)。将来の配布フロントエンド兼編集 UI(M5)は同プロジェクトへ後載せ。
-    `radirec.exe` とは実行モデルが別(ユーザーセッション GUI)なので別 exe。
-  - `Radirec.Gui.Core` — `Radirec.Gui` のテスト可能ロジック(取込要約シグナルの JSON DTO・
-    購読処理等)。WinRT/WPF 依存を持たず単体テスト可能([ADR-0009] の跨プロセス JSON 契約)。
+  - `Radirec.Hosting` — 合成ルート + 環境設定・パス解決 + 制御(`Control/`)。**`Radirec.Cli` と
+    `Radirec.Gui` の 2 フロントエンドが共有する合成層**なので Cli に畳まず独立を保つ([ADR-0012])。
+  - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。**dev/batch の単発 CLI**
+    (`ingest`/`refresh`/`organize-source`)。TFM は `net10.0-windows`。
+    ※ かつては常駐サービス(`service` verb)と制御チャネル窓口(`status`/`rescan`/`reload`)も
+    1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
+  - `Radirec.Gui` — **本番の常駐本体**(独立 exe、WPF + WinForms、`net10.0-windows10.0.x`)。
+    取り込みワーカー・取込通知・取込履歴 UI・制御メニュー・自己更新を 1 プロセスで持つ([ADR-0012])。
+    将来の配布フロントエンド兼編集 UI(M5)は同プロジェクトへ後載せ。`radirec.exe` とは実行モデルが
+    別(ユーザーセッション GUI)なので別 exe。
+  - `Radirec.Gui.Core` — `Radirec.Gui` のテスト可能ロジック(トースト文面整形・取込履歴行の整形・
+    版表示)。**CI で走らせられない WinRT/WPF/WinForms シェルから隔離**する置き場([ADR-0012])。
   - `Radirec.Tests` — 単体テスト(xUnit 等)。
+  - **参照グラフ**: `Gui → {Gui.Core, Hosting}` / `Gui.Core → Core` / `Cli → {Hosting, Core}` /
+    `Hosting → Core`。`Gui → Core` の直接参照は無く、Core の型は推移参照で乗る([ADR-0012])。
+    詳細は [development.md](development.md) §プロジェクト構成 と [roadmap.md](roadmap.md) §前提。
 - タグ操作: **TagLib#(TagLibSharp)**(MP4/M4A の track/disc/標準フィールド + MP3 ID3 の読み書き)。
   §6 は標準フィールドのみ使用(freeform 不要)。
 - ファイル監視: **`FileSystemWatcher`**(Windows ネイティブ)。ポーリングは代替として併用可。
 - 台帳: **SQLite(`Microsoft.Data.Sqlite`)**、ローカルディスク。Z:/SMB には置かない。
 - Jellyfin 連携: REST API(`HttpClient`)。
 - 設定: JSON/YAML(`appsettings.json` + 個別 config)。
-- 配布: **単体 exe**(`dotnet publish` self-contained / AOT)。GUI 枠組みは着手時に選定(§12)。
+- 配布: **Velopack の per-user インストーラ(Setup.exe)+ アプリ内自己更新**([ADR-0013](adr/0013-velopack-per-user-updates.md))。
+  非 admin で入り、GitHub Releases をフィードにトレイから更新する。GUI 枠組みは **WPF に確定**(ADR-0009)。
 - **開発/実行環境**:
   - **開発・ビルド・実行は Windows**(.NET SDK / Visual Studio or `dotnet` CLI)。リポジトリは
     Windows 側(例 `C:\dev\radirec-tool`)に置く。WSL からは `/mnt/c/...` で編集可能。
-  - `Radirec.Core`/`Cli`/`Tests` はクロスプラットフォーム .NET で書き、WSL の linux `dotnet`
-    でもビルド/テスト可能にする(パス依存は設定注入)。`Service`/`Gui` は Windows 専用。
+  - `Radirec.Core`/`Hosting`/`Gui.Core`/`Tests` はクロスプラットフォーム(`net10.0`)で書き、
+    WSL の linux `dotnet` でもビルド/テスト可能にする(パス依存は設定注入)。`Cli` / `Gui` は
+    Windows 専用。取り込みワーカーが `SystemEvents.PowerModeChanged` に依存するため、
+    ワーカーは Hosting ではなく `Gui` に置く(Hosting を Windows 専用にしないため。[ADR-0012])。
 
 ## 12. 未決事項・リスク
 
 - [x] NAS 到達方式: Windows ネイティブ実行に確定。**アクセスは UNC `\\192.168.11.121\share`**
-      (ドライブレター Z: はサービスから不可視のため使わない、§3)。
+      (当初の理由は「Z: がサービスから不可視」。トレイ常駐移行で制約は消えたが、環境依存を避けるため
+      config は UNC を正とする方針を維持、§3)。
 - [x] 実装技術: **C#/.NET に確定**(§11)。
 - [x] **実行形態: Windows サービス(常時監視)を本番に確定**(§3.1)。CLI `--once` は開発/単発用に併存。
+      → **[ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で覆った**。現行は
+      **トレイ常駐 per-user**(ログオン自動起動のユーザーセッションプロセス)。「ログオフ中でも動く」という
+      サービスの利点が、この用途(録音元がユーザーセッションのアプリ)では実質的に空だったため。
 - [x] NAS への二重書き込み権限: import-once + 編集側が権威、に確定(§8)。
 - [x] **サービスアカウント/資格情報**: run-as-user(サービスを自分のアカウントで実行)で NAS(UNC)
       アクセスを継承する方針に確定([ADR-0003](adr/0003-catchup-over-sleep-race.md)、usage §6)。
+      → **[ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で問い自体が消滅**。
+      トレイはユーザーとして動くので資格情報の登録(`New-Service -Credential` / `SeServiceLogonRight`)は不要。
 - [x] **らじれこ自動スリープの種別**: **強制スリープ**とユーザー確認済み → `SetThreadExecutionState` 不採用、
       復帰キャッチアップ主体(§3.2 / ADR-0003)。
-- [x] サービスの**電源イベント購読(スリープ復帰検知)+ 復帰キャッチアップ・フルスキャン**の実装
+- [x] 常駐の**電源イベント購読(スリープ復帰検知)+ 復帰キャッチアップ・フルスキャン**の実装
       (`RadioMonitorWorker`)。※Windows 実機での結合確認は残(#3)。
-- [x] **取込通知(サービス→デスクトップ)**: 要約シグナル発行(EventLog)+ 受け手トレイ GUI で確定
+      → 機構は不変のまま [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で
+      ユーザーセッションのワーカーへ**移設**(撤去せず。ワーカーの居場所は `Radirec.Gui`)。
+- [x] **取込通知(常駐→デスクトップ)**: 要約シグナル発行(EventLog)+ 受け手トレイ GUI で確定
       ([ADR-0008](adr/0008-ingest-notification-via-eventlog-signal.md) / [ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md)、§7.1)。
-- [x] **制御チャネル(利用者→サービス)**: named pipe・同一ユーザー限定で `status`/`rescan`/`reload` を確定
-      ([ADR-0010](adr/0010-gui-service-control-via-named-pipe.md)、§7.2)。※Windows 実機検証は
-      [control-channel-verification.md](control-channel-verification.md) の手動②(別ユーザー拒否)が残。
+      → **機構は [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で変質**。EventLog 契約は退役し、
+      常駐ワーカーが in-process で直接トーストする。「1 走査 = 最大 1 要約」というドメイン概念は不変。
+- [x] **制御チャネル(利用者→常駐)**: named pipe・同一ユーザー限定で `status`/`rescan`/`reload` を確定
+      ([ADR-0010](adr/0010-gui-service-control-via-named-pipe.md)、§7.2)。
+      → **機構は [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で変質**。named pipe は退役し、
+      トレイメニューからの in-process 呼び出しへ。3 コマンドという概念は不変。跨プロセスでなくなったため
+      [control-channel-verification.md](control-channel-verification.md)(OBSOLETE)の実機検証項目は失効。
 - [x] radikool のフォーマット・命名・タグ: **MP3/ID3、`{局コード}/{番組名}_{YYYYMMDD}.mp3`、
       genre=局表示名** で確定(§5.2)。ルート=`I:\d\radikool\records`。
 - [x] radikool 局フォルダ: `FMT / JOAK-FM / LFR / QRR / fm_tokyo`。放送局マスタは genre から
@@ -515,7 +553,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - [ ] Jellyfin の API URL・トークン発行。
 - [ ] **ファイル名リネームの目的**(Jellyfin では見た目不変。実ファイル閲覧/別プレーヤ用か)。§10。
 - [x] デスクトップ GUI フレームワーク選定: **WPF に確定**([ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md)。
-      単一自己完結 exe(ADR-0005)と親和。受け手トレイ `Radirec.Gui` で採用済み、編集本体も同プロジェクトに後載せ)。
+      トレイは WinForms の NotifyIcon + WinRT トースト、ウィンドウは WPF)。取込履歴ウィンドウ(#66)で
+      WPF スタックは実体化済みで、編集本体も同プロジェクトに後載せ。
 - [x] TagLib# で §6 の全フィールド(MP4 track/disc/albumartist、date=フル ISO を `©day`)が
       書けることを実 M4A で確認済み(M1 スパイク)。**disc は `Tag.Disc`、date は `AppleTag.©day`
       直接**(`Tag.Year` は使わない)。
@@ -526,24 +565,31 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - [ ] コード/リポジトリの配置(`C:\dev\radirec-tool` 等)と .NET SDK バージョン。
 - [ ] TagLib# で MP3 ID3 側の §6 マッピングが書けることの実地確認(radikool / M4 スコープ)。
 
-## 13. マイルストーン(コア+CLI → 常駐化 → 統合 → 通知・制御 → 編集 GUI は保留)
+## 13. マイルストーン(コア+CLI → 常駐化 → 統合 → 通知・制御 → トレイ常駐移行 → 編集 GUI は保留)
 
-> 番号はマイルストーン識別子。着手順は M1→…→M4→**M6**→M5 で、M6(通知・制御)は M5(編集 GUI)
-> 本体の着手前に出荷済み(M6 の受け手トレイが M5 の最初の tracer slice を兼ねるため、番号は M6 だが先行)。
+> 番号はマイルストーン識別子。着手順は M1→…→M4→**M6→M7**→M5 で、M6(通知・制御)と M7(トレイ常駐移行)は
+> M5(編集 GUI)本体の着手前に出荷済み(M6 の受け手トレイが M5 の最初の tracer slice を兼ねるため、
+> 番号は M6 だが先行)。**M3 / M6 は達成後に M7 が機構を置き換えている** — 各項は当時の記録として残す。
 
 1. **M1 コア + CLI 取り込み(らじれこ → NAS)**: `Radirec.Core` にパース→正規化→import-once→
    タグ付与(TagLib#)、`Radirec.Cli` に `radirec ingest --once`。まず `--dry-run`、次に実コピー。
    台帳(SQLite)で冪等。UNC 書き込み。**中心価値**。
 2. **M2 Jellyfin リフレッシュ + 疎通**: `HttpClient` でスキャン起動、スマホ配信まで確認。
-3. **M3 常駐化(Windows サービス)**: `radirec.exe service`(常駐 verb)で I: を常時監視・
-   検知即取り込み。run-as(自分のアカウント)/UNC を整備。ログ整備。**本番の実行形態**。
+3. **M3 常駐化(Windows サービス)**(達成 → M7 で置換): `radirec.exe service`(常駐 verb)で I: を
+   常時監視・検知即取り込み。run-as(自分のアカウント)/UNC を整備。ログ整備。当時の**本番の実行形態**。
 4. **M4 radikool 移行 + 一括正規化 CLI**: radikool importer + `radirec migrate`。
    `apply-alias` / 一括タグ編集・リネームの CLI。
 5. **(保留)M5 デスクトップ編集アプリ**: CLI 運用で不足が出たら着手。要否は運用後に判断(§10.1)。
    受け手トレイ(M6)が同プロジェクト `Radirec.Gui` の最初のスライスで、編集グリッド本体はなお保留。
-6. **M6 通知・制御チャネル**(出荷済み・M5 本体着手前に完了): 取込結果のデスクトップ通知(§7.1)と、
-   利用者→サービスの制御チャネル(§7.2)。取込要約シグナル発行(EventLog)+ 受け手トレイ `Radirec.Gui`、
+6. **M6 通知・制御チャネル**(達成 → 機構は M7 で作り直し): 取込結果のデスクトップ通知(§7.1)と、
+   利用者→常駐の制御チャネル(§7.2)。取込要約シグナル発行(EventLog)+ 受け手トレイ `Radirec.Gui`、
    named pipe の `status`/`rescan`/`reload`([ADR-0008/0009/0010])。受け手トレイは M5 の tracer slice を兼ねる。
+7. **M7 トレイ常駐 per-user 移行**(出荷済み・エピック #62、2026-07-19 完了): 本番の常駐を
+   Windows サービスからトレイ常駐へ移す([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。
+   ワーカーを `Radirec.Gui` へ畳み、EventLog シグナル・named pipe・資格情報ダンスという **Session 0 橋を撤去**。
+   通知・制御・履歴はすべて in-process。非 admin の per-user install と Velopack 自己更新を解錠
+   ([ADR-0013](adr/0013-velopack-per-user-updates.md))。**M3 / M6 の機構はここで置き換わった**
+   (ユーザー体験と、通知・制御のドメイン概念は不変)。
 
 ## 14. 配布・ブランディング(将来の派生)
 
