@@ -62,4 +62,26 @@ public class ConfigPathsTests
         Assert.Equal(ConfigPaths.DefaultConfigPath, ConfigPaths.Resolve(null));
         Assert.Equal(ConfigPaths.DefaultConfigPath, ConfigPaths.Resolve("   "));
     }
+
+    /// <summary>
+    /// CLI の <c>--help</c> は属性(コンパイル時定数のみ)なので実行時プロパティを参照できず、
+    /// <see cref="ConfigPaths.DefaultConfigDisplay"/> という表示用 const を経由する。
+    /// **実体とドリフトすると help が嘘をつく**(#99 はまさにそれが起きた状態だった)ので、ここで固定する。
+    /// const 性はコンパイルが通ること自体で担保されるが、値のドリフトはコンパイルでは捕まらない。
+    /// </summary>
+    [Fact]
+    public void 既定設定パスの表示用文字列が実体とドリフトしていない()
+    {
+        // 属性で使えること(= 真の const であること)をコンパイル時に証明する。
+        // static readonly へ退化したらこの行がコンパイルエラーになる。
+        const string usableInAttribute = "省略時は " + ConfigPaths.DefaultConfigDisplay;
+        Assert.NotEmpty(usableInAttribute);
+
+        // 表示文字列の「%LOCALAPPDATA% を除いた末尾」が、実体の末尾と一致すること。
+        var tail = ConfigPaths.DefaultConfigDisplay
+            .Replace(@"%LOCALAPPDATA%\", string.Empty)
+            .Replace('\\', Path.DirectorySeparatorChar);
+
+        Assert.EndsWith(tail, ConfigPaths.DefaultConfigPath);
+    }
 }

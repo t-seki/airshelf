@@ -15,7 +15,7 @@ public sealed class OrganizeSourceCommand : Command<OrganizeSourceCommand.Settin
     public sealed class Settings : CommandSettings
     {
         [CommandOption("-c|--config <PATH>")]
-        [Description(@"設定ファイル(radirec.json)のパス。省略時は既定パス")]
+        [Description("設定ファイル(radirec.json)のパス。省略時は " + ConfigPaths.DefaultConfigDisplay)]
         public string? Config { get; init; }
 
         [CommandOption("--from <PATH>")]

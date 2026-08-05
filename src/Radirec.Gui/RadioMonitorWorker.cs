@@ -112,7 +112,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     {
         // 停止処理中は直列ループが要求を Take しない(誤って「受理」を返さない)。
         if (!_running)
-            return ReloadResult.Failed("サービスが停止処理中のため受理できません");
+            return ReloadResult.Failed("取り込みが停止中のため受理できません");
 
         // 制御は並行に捌かれる(#43)ので reload も同時に来うる。読込→Set を lock で直列化し、
         // 「最後に受理した reload の config が適用される」順序保証を保つ(読込と Set の間に別 reload が

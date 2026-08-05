@@ -21,8 +21,18 @@ public static class ConfigPaths
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "RadirecData");
 
-    /// <summary>引数省略時に探す既定の設定ファイル(<c>%LOCALAPPDATA%\RadirecData\radirec.json</c>)。</summary>
+    /// <summary>引数省略時に探す既定の設定ファイル(<see cref="DefaultConfigDisplay"/> の実体)。</summary>
     public static string DefaultConfigPath => Path.Combine(DataRoot, "radirec.json");
+
+    /// <summary>
+    /// <see cref="DefaultConfigPath"/> を人へ見せるための表示文字列。**CLI の <c>--help</c> がここを参照する**
+    /// (`[Description]` は属性なのでコンパイル時定数しか置けず、実行時プロパティを参照できない)。
+    /// <para>
+    /// 実体(<see cref="DataRoot"/>)を変えたらここも変える。**この 1 箇所に集約するのが目的**で、
+    /// 各コマンドにハードコードするとデータ配置の事実のコピーが増え、片方だけ古くなる。
+    /// </para>
+    /// </summary>
+    public const string DefaultConfigDisplay = @"%LOCALAPPDATA%\RadirecData\radirec.json";
 
     /// <summary>明示パスがあればそれを、無ければ <see cref="DefaultConfigPath"/> を返す。</summary>
     public static string Resolve(string? explicitPath) =>
