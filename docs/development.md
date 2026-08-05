@@ -10,9 +10,11 @@
 ## 前提
 
 - **.NET 10 SDK**。`Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0` でクロスプラットフォーム。
-  `Cli`(`net10.0-windows`)と `Gui`(`net10.0-windows10.0.x`)は Windows 専用ですが、両 csproj の
-  `EnableWindowsTargeting` により **WSL/Linux でもコンパイルできます**(実行はできません)。
-  つまり**ソリューション全体のビルドとテストは WSL で完結**します。実行時のパス(`I:`, UNC)は Windows 前提。
+  `Cli`(`net10.0-windows`)と `Gui`(`net10.0-windows10.0.x`)も、両 csproj の `EnableWindowsTargeting`
+  により **WSL/Linux でコンパイルできます**。つまり**ソリューション全体のビルドとテストは WSL で完結**します。
+  実行については両者で違います — **`Gui` は WPF/WinForms のランタイムが無いので Linux では起動しません**が、
+  **`Cli` は Linux でも起動します**(`dotnet radirec.dll --help` 等)。ただし本番の実行環境は Windows 前提で、
+  出荷物は win-x64 self-contained、config が指すパス(`I:`, UNC)も Windows のものです。
 - テストフィクスチャ(`tests/Radirec.Tests/Fixtures/silent.m4a`)は著作権フリーの無音 M4A で、
   リポジトリに含まれています(再生成には ffmpeg が必要ですが通常は不要)。
 

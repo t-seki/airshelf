@@ -4,8 +4,9 @@ name: ci
 #
 # **なぜ ubuntu-latest か**: release.yml は「PR ビルドは self-hosted で走らせない」と決めている
 # (母艦 Windows PC の runner を PR のコードに晒さない)。その判断は維持したまま PR を検証するため、
-# GitHub-hosted の Linux runner を使う。Windows 専用プロジェクト(Radirec.Cli / Radirec.Gui)も
-# 各 csproj の EnableWindowsTargeting により **Linux でコンパイルできる**(実行はできない)。
+# GitHub-hosted の Linux runner を使う。`-windows` TFM のプロジェクト(Radirec.Cli / Radirec.Gui)も
+# 各 csproj の EnableWindowsTargeting により **Linux でコンパイルできる**
+# (Gui は WPF/WinForms のランタイムが無いので実行不可。Cli は Linux でも起動する)。
 #
 # 出荷物のビルドは release.yml(タグ駆動・self-hosted Windows)が引き続き担う。ここは
 # 「マージ前に壊れていないこと」を見るだけで、Velopack の pack/upload は行わない。
