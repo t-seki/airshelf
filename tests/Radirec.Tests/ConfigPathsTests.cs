@@ -67,7 +67,7 @@ public class ConfigPathsTests
     /// CLI の <c>--help</c> は属性(コンパイル時定数のみ)なので実行時プロパティを参照できず、
     /// <see cref="ConfigPaths.DefaultConfigDisplay"/> という表示用 const を経由する。
     /// **実体とドリフトすると help が嘘をつく**(#99 はまさにそれが起きた状態だった)ので、ここで固定する。
-    /// `Radirec.Cli` は net10.0-windows で Linux CI からビルドできないため、この検証は Hosting 側で行う。
+    /// const 性はコンパイルが通ること自体で担保されるが、値のドリフトはコンパイルでは捕まらない。
     /// </summary>
     [Fact]
     public void 既定設定パスの表示用文字列が実体とドリフトしていない()
