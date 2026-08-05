@@ -7,6 +7,10 @@
     <RootNamespace>Radirec.Cli</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Windows ターゲットを非 Windows(WSL/Linux CI)でもビルド可能にする(Radirec.Gui と同じ理由)。
+         Windows 実機ビルドでは無害。実行は Windows のみ(I:/UNC のパス前提と Spectre のコンソール)。
+         これにより CI も開発者もフラグ無しの `dotnet build Radirec.slnx` で全プロジェクトを検証できる。 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <!-- 単一自己完結 exe(Release publish 時。ADR-0005)。TagLib#/Spectre のリフレクションを守るため
