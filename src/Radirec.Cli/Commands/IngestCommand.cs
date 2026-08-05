@@ -12,7 +12,7 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandOption("-c|--config <PATH>")]
-        [Description(@"設定ファイル(radirec.json)のパス。省略時は %ProgramData%\radirec\radirec.json")]
+        [Description("設定ファイル(radirec.json)のパス。省略時は " + ConfigPaths.DefaultConfigDisplay)]
         public string? Config { get; init; }
 
         [CommandOption("--dry-run")]
