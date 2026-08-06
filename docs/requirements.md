@@ -307,7 +307,7 @@ alias 設計が必要(§9)。
 
 > **⚠ [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で機構が変わった**: トレイ常駐移行で
 > **named pipe 制御チャネルは退役**し、rescan/reload/status は**トレイメニューからの in-process 呼び出し**に
-> なった(CLI 制御 verb は廃止、`rescan` は `radirec ingest --once` に吸収)。以下の named pipe 記述は
+> なった(CLI 制御 verb は廃止。移設先は**トレイメニュー**で、下の「現在地」を参照)。以下の named pipe 記述は
 > 移行前の設計。「利用者→常駐へ指示を出す」概念(3 コマンド)は不変。
 
 取込通知が**サービス発・一方向**なのに対し、常駐サービスへ**利用者側から指示を出す**逆方向の
@@ -328,10 +328,13 @@ alias 設計が必要(§9)。
 Windows 実機での検証手順は [control-channel-verification.md](control-channel-verification.md) に委ねる。
 利用者向けのコマンド一覧は [usage.md](usage.md) を参照。
 
-**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、3 コマンドとも in-process 呼び出し。
-CLI の制御 verb(`status`/`rescan`/`reload`)は廃止され、手動の単発走査は `radirec ingest` に吸収された
-([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。状態はメニューを開いた時点の
-スナップショットとして表示する。トレイからの操作は [usage.md](usage.md) §6 を参照。
+**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、3 コマンドとも in-process 呼び出し
+([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。CLI の制御 verb
+(`status`/`rescan`/`reload`)は廃止された。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
+(`ControlTrayMenu` → `IServiceControl.RequestRescan`)、常駐プロセス内の走査要求になる。
+`radirec ingest` は移行前から在る **dev/batch 用の単発 CLI** で、常駐とは別プロセス — 制御コマンドの
+移設先ではない(単発で走査したいときの手段としては使える)。状態はメニューを開いた時点のスナップショットとして
+表示する。トレイからの操作は [usage.md](usage.md) §6 を参照。
 
 ## 8. import-once と冪等性(★中核設計)
 
@@ -433,7 +436,8 @@ radirec-tool/
 > ワーカーは gui に畳まれた。制御チャネルの窓口も cli からトレイメニューへ移っている。
 
 - **原則**: ドメインロジックは全て `core/` に置き、CLI/GUI は薄いアダプタ。
-- **CLI で提供する編集操作**(GUI 前でも運用可能):
+- **CLI で提供する編集操作**(GUI 前でも運用可能。**いずれも M4 / #4 のスコープで未実装** —
+  現行のコマンドは `ingest` / `refresh` / `organize-source` の 3 つ):
   - **一括正規化**: alias/放送局マスタ更新 → 該当アルバム全回へ再適用(`radirec apply-alias`)。
   - **一括タグ編集 / 実リネーム**: 番組(アルバム)単位でタグ修正・Z: 上ファイル名の規約統一。
 - **個別のタグ微修正**は当面 **Jellyfin 標準メタデータエディタ**で代替可能。
