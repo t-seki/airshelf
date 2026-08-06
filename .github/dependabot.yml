@@ -27,6 +27,15 @@ updates:
   # 「更新時は SHA を張り替える」運用が手作業だと途切れる(実際 checkout v7.0.1 /
   # setup-dotnet v6.0.0 が出たのに v7.0.0 / v5.4.0 のままだった)。Dependabot は
   # SHA pin を維持したままバージョンコメントごと張り替えてくれる。
+  #
+  # ⚠ **release.yml に触れる更新 PR は、マージ前に SHA を手で確認すること**。
+  # Dependabot はワークフローファイル単位で対象を絞れないため、この設定は ci.yml と
+  # release.yml の pin を同じ PR で書き換える。ところが release.yml は**タグ push でしか
+  # 起動しない**ので、PR の CI がグリーンでも release.yml 側は何も検証されていない。
+  # release.yml は self-hosted runner + contents:write で動く(= 最高権限)。
+  # SHA pin はそもそも「更新時に人が新 SHA を確かめる」ことを前提にした防御なので、
+  # そこだけは自動化せず残す。確認は `gh api repos/<owner>/<action>/git/ref/tags/<tag>`
+  # で、コメントのタグが指す SHA と一致するかを見る。
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
