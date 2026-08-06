@@ -542,10 +542,10 @@ public sealed class IngestServiceTests
         Assert.Equal("J-WAVE", album.Station);
         // 番組名はフォルダ権威(ADR-0001)。Rec の既定 ProgramFolder = "LOGISTEEDRADIONOMICS"。
         Assert.Equal("LOGISTEEDRADIONOMICS", album.Program);
-        var episode = Assert.Single(album.Episodes);
-        Assert.Equal(new DateOnly(2026, 6, 12), episode.BroadcastDate);
-        Assert.Equal(new TimeOnly(22, 30, 0), episode.BroadcastTime);
-        Assert.Equal(0, episode.PartIndex);
+        Assert.Equal(1, album.EpisodeCount);
+        Assert.Equal(new DateOnly(2026, 6, 12), album.FirstEpisode.BroadcastDate);
+        Assert.Equal(new TimeOnly(22, 30, 0), album.FirstEpisode.BroadcastTime);
+        Assert.Equal(0, album.FirstEpisode.PartIndex);
     }
 
     [Fact]
@@ -564,10 +564,13 @@ public sealed class IngestServiceTests
         var summary = _publisher.Last!;
         Assert.Equal(2, summary.TotalImported);
         var album = Assert.Single(summary.Albums);
-        Assert.Equal(2, album.Episodes.Count);
-        // 同日・単一フォルダ(part=0)でも放送時刻で区別できること(ADR-0002。通知が重複表示しない)。
-        Assert.Equal(new TimeOnly(8, 30, 0), album.Episodes[0].BroadcastTime);
-        Assert.Equal(new TimeOnly(10, 0, 0), album.Episodes[1].BroadcastTime);
+        // 同日・単一フォルダ(part=0)の 2 放送が、1 アルバムの **2 件** として数えられること
+        // (ADR-0002。通知が「1件」に潰れない)。同日別時刻を別放送回と見なす同一性判定そのものは
+        // SqliteLedgerTests の「同日 tie-break(ADR-0002)」節で担保している。
+        Assert.Equal(2, album.EpisodeCount);
+        // 先頭 = **出現順の 1 件目**(この入力ではたまたま早い方)。時刻順である保証は無い —
+        // 本番の列挙は Directory.EnumerateFiles で、.NET は順序を保証しない。
+        Assert.Equal(new TimeOnly(8, 30, 0), album.FirstEpisode.BroadcastTime);
     }
 
     [Fact]

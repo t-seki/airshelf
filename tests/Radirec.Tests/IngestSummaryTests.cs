@@ -28,9 +28,9 @@ public sealed class IngestSummaryTests
         var a = summary.Albums[0];
         Assert.Equal("局A", a.Station);
         Assert.Equal("番組A", a.Program);
-        Assert.Equal(2, a.Episodes.Count);
-        Assert.Equal(0, a.Episodes[0].PartIndex);   // part 無しは 0 に正規化
-        Assert.Equal(2, a.Episodes[1].PartIndex);
+        Assert.Equal(2, a.EpisodeCount);
+        Assert.Equal(0, a.FirstEpisode.PartIndex);          // part 無しは 0 に正規化
+        Assert.Equal(new DateOnly(2026, 1, 1), a.FirstEpisode.BroadcastDate);  // 先頭 = 出現順の 1 件目
     }
 
     [Fact]
@@ -57,19 +57,19 @@ public sealed class IngestSummaryTests
     }
 
     [Fact]
-    public void 番組内の放送回が上限超過でTruncated()
+    public void 番組内の放送回は何件でも実数を保つ()
     {
-        // 同一番組で放送回だけが上限超過(日付をずらして別放送回にする)。
-        var episodes = Enumerable.Range(1, IngestSummary.MaxEpisodesPerAlbum + 3)
-            .Select(i => Ep("局A", "番組A", i))
-            .ToList();
+        // かつては 1 番組 20 回で打ち切り、表示が「20件」と嘘をついていた(#100)。
+        // 番組数の上限(MaxAlbums)と違い、**放送回の件数は打ち切らない**。
+        const int many = 25;
+        var episodes = Enumerable.Range(1, many).Select(i => Ep("局A", "番組A", i)).ToList();
 
         var summary = IngestSummary.From(episodes);
 
-        Assert.True(summary.Truncated);
         var album = Assert.Single(summary.Albums);
-        Assert.Equal(IngestSummary.MaxEpisodesPerAlbum, album.Episodes.Count);
-        Assert.Equal(IngestSummary.MaxEpisodesPerAlbum + 3, summary.TotalImported);
+        Assert.Equal(many, album.EpisodeCount);        // 表示に出る件数 = 実数
+        Assert.Equal(many, summary.TotalImported);
+        Assert.False(summary.Truncated);               // 番組は 1 つなので間引いていない
     }
 
     [Fact]

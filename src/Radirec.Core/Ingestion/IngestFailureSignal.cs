@@ -23,16 +23,22 @@ public sealed record NewIngestFailure
 /// </summary>
 public sealed record IngestFailureSignal
 {
-    /// <summary>表示するファイル行の上限。超過分は落とし <see cref="Truncated"/> を立てる(記録は全件、表示のみ有界)。</summary>
+    /// <summary>
+    /// 運ぶファイル行の上限。超過分は落とし <see cref="Truncated"/> を立てる(**記録は全件**、運ぶ分のみ有界)。
+    /// <para>
+    /// **表示のための値ではなく payload を有界にする安全弁**。提示側(<c>IngestToastFormatter</c>)は
+    /// 本文を 2 行までに絞るので、この値が 3 以上なら表示は変わらない。<see cref="FailedCount"/> は
+    /// 打ち切らない実数なので、表題の「取込失敗 N件」は常に正しい(#100)。
+    /// </para>
+    /// </summary>
     public const int MaxFiles = 20;
 
     /// <summary>
     /// 1 件の理由の文字数上限。例外メッセージは青天井になりうるため切り詰め、payload 全体を有界化する。
     /// <para>
-    /// **この値の元の根拠は失効している**: 元は EventLog の ~32KB 上限で <c>WriteEntry</c> が投げて
-    /// 「毎走査再失敗」に陥るのを防ぐためだった(ADR-0011)。EventLog は ADR-0012 で撤去済み。
-    /// 現在の提示側は <c>IngestToastFormatter</c> が独自に本文 2 行まで絞るため、この上限は
-    /// 事実上「青天井を避ける安全弁」としてのみ効いている。値と役割の見直しは #100。
+    /// **こちらは表示に出る値を切る**(理由はトーストの本文に載る)ため、上の <see cref="MaxFiles"/> とは
+    /// 性質が違う。元の根拠は EventLog の ~32KB 上限(ADR-0011)だったが EventLog は ADR-0012 で撤去済みで、
+    /// 現在は「1 行に収まらない長文でトーストを埋めない」ための表示上の制約(#100)。
     /// </para>
     /// </summary>
     public const int MaxReasonLength = 200;

@@ -17,7 +17,12 @@ public sealed record IngestSummaryAlbumPayload
 {
     public string Station { get; init; } = string.Empty;
     public string Program { get; init; } = string.Empty;
-    public IReadOnlyList<IngestSummaryEpisodePayload> Episodes { get; init; } = [];
+
+    /// <summary>取り込んだ放送回の数(打ち切らない実数。表示はこれを出す)。</summary>
+    public int EpisodeCount { get; init; }
+
+    /// <summary><see cref="EpisodeCount"/> が 1 のときに放送日時を出すために持つ。無ければ番組名のみ表示。</summary>
+    public IngestSummaryEpisodePayload? FirstEpisode { get; init; }
 }
 
 /// <summary>要約中の 1 放送回。放送日は <c>yyyy-MM-dd</c>、放送時刻は <c>HH:mm</c>(取得不能なら null)。</summary>
