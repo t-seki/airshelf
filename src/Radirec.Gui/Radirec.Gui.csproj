@@ -44,7 +44,7 @@
 
   <ItemGroup>
     <!-- 初回起動時の設定 seeding 用 sample(ADR-0013 / S5)。install.ps1 が配布していた sample を
-         アプリに埋め込み、初回に %LocalAppData%\radirec\ へ生成する(既存は温存)。 -->
+         アプリに埋め込み、初回にデータルート(%LOCALAPPDATA%\RadirecData\)へ生成する(既存は温存)。 -->
     <EmbeddedResource Include="..\..\config\radirec.sample.json" LogicalName="Radirec.Gui.Samples.radirec.sample.json" />
     <EmbeddedResource Include="..\..\config\stations.sample.json" LogicalName="Radirec.Gui.Samples.stations.sample.json" />
     <EmbeddedResource Include="..\..\config\programs.sample.json" LogicalName="Radirec.Gui.Samples.programs.sample.json" />

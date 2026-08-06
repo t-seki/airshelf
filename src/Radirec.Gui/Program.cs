@@ -59,7 +59,8 @@ internal static class Program
 
             // 設定を読み、取り込みワーカーをこのプロセスでホストする。設定が読めない/ワーカー起動に失敗
             // したときは取り込みを起動せず、トレイ(版表示・終了・再起動)だけを出す縮退にする。
-            // 初回起動時は %LocalAppData%\radirec\ に設定を sample から生成する(既存は温存。ADR-0013 / S5)。
+            // 初回起動時はデータルート(%LOCALAPPDATA%\RadirecData\)に設定を sample から生成する
+            // (既存は温存。ADR-0013 / S5)。Velopack のインストール先 %LOCALAPPDATA%\Radirec ではない。
             ConfigSeeder.SeedIfAbsent(ConfigPaths.DataRoot);
 
             var configPath = ConfigPaths.Resolve(null);
