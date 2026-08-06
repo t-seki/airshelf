@@ -528,6 +528,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
       → **[ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で覆った**。現行は
       **トレイ常駐 per-user**(ログオン自動起動のユーザーセッションプロセス)。「ログオフ中でも動く」という
       サービスの利点が、この用途(録音元がユーザーセッションのアプリ)では実質的に空だったため。
+      なお上の「CLI `--once`」は**一度も実装されていない**(#113)。単発実行は `radirec ingest` そのもの。
 - [x] NAS への二重書き込み権限: import-once + 編集側が権威、に確定(§8)。
 - [x] **サービスアカウント/資格情報**: run-as-user(サービスを自分のアカウントで実行)で NAS(UNC)
       アクセスを継承する方針に確定([ADR-0003](adr/0003-catchup-over-sleep-race.md)、usage §6)。
@@ -578,6 +579,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 1. **M1 コア + CLI 取り込み(らじれこ → NAS)**: `Radirec.Core` にパース→正規化→import-once→
    タグ付与(TagLib#)、`Radirec.Cli` に `radirec ingest --once`。まず `--dry-run`、次に実コピー。
    台帳(SQLite)で冪等。UNC 書き込み。**中心価値**。
+   → 計画時の `--once` は**実装されなかった**(#113)。M1 が出したのは `radirec ingest`(常に単発)。
 2. **M2 Jellyfin リフレッシュ + 疎通**: `HttpClient` でスキャン起動、スマホ配信まで確認。
 3. **M3 常駐化(Windows サービス)**(達成 → M7 で置換): `radirec.exe service`(常駐 verb)で I: を
    常時監視・検知即取り込み。run-as(自分のアカウント)/UNC を整備。ログ整備。当時の**本番の実行形態**。
