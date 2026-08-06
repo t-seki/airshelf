@@ -9,22 +9,38 @@
 
 ## 前提
 
-- **.NET 10 SDK**。`Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0` でクロスプラットフォームなので、
-  開発・ビルド・テストは **WSL/Linux でも可能**です(Windows 固有 API を使わない)。`Cli`(`net10.0-windows`)と
-  `Gui`(`net10.0-windows10.0.x`)は Windows 専用。実行時のパス(`I:`, UNC)も Windows 前提。
+- **.NET 10 SDK**。`Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0` でクロスプラットフォーム。
+  `Cli`(`net10.0-windows`)と `Gui`(`net10.0-windows10.0.x`)も、両 csproj の `EnableWindowsTargeting`
+  により **WSL/Linux でコンパイルできます**。つまり**ソリューション全体のビルドとテストは WSL で完結**します。
+  実行については両者で違います — **`Gui` は WPF/WinForms のランタイムが無いので Linux では起動しません**が、
+  **`Cli` は Linux でも起動します**(`dotnet radirec.dll --help` 等)。ただし本番の実行環境は Windows 前提で、
+  出荷物は win-x64 self-contained、config が指すパス(`I:`, UNC)も Windows のものです。
 - テストフィクスチャ(`tests/Radirec.Tests/Fixtures/silent.m4a`)は著作権フリーの無音 M4A で、
   リポジトリに含まれています(再生成には ffmpeg が必要ですが通常は不要)。
 
 ## ビルドとテスト
 
 ```bash
-dotnet build Radirec.slnx        # ソリューション全体
+dotnet build Radirec.slnx        # ソリューション全体(Windows 専用プロジェクト含む)
 dotnet test  Radirec.slnx        # 全テスト(xUnit)
 dotnet test  Radirec.slnx --filter "FullyQualifiedName~RajirekoImporter"  # 絞り込み
 ```
 
 > ソリューションは新形式 `Radirec.slnx`(.NET 10 既定)です。NuGet は Central Package Management
 > (`Directory.Packages.props`)で版を一元管理、共通ビルド設定は `Directory.Build.props`。
+
+**CI(`.github/workflows/ci.yml`)は PR と main への push で次を走らせます** — 手元で同じコマンドを
+打てば CI と同じ検証になります(フラグは不要):
+
+```bash
+dotnet build Radirec.slnx -c Release -warnaserror
+dotnet test  Radirec.slnx -c Release --no-build
+```
+
+CI は **GitHub-hosted の Linux runner** で動きます。`release.yml` が「PR ビルドは self-hosted で
+走らせない」(母艦 Windows PC を PR のコードに晒さない)と決めているためで、その判断を維持したまま
+PR を検証するための構成です。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
+警告で出荷が止まるのを避けるためです。
 
 ## リリース(タグ → GitHub Release)
 

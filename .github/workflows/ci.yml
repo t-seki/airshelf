@@ -1,0 +1,49 @@
+name: ci
+
+# PR と main への push でビルド + テストする(#104)。
+#
+# **なぜ ubuntu-latest か**: release.yml は「PR ビルドは self-hosted で走らせない」と決めている
+# (母艦 Windows PC の runner を PR のコードに晒さない)。その判断は維持したまま PR を検証するため、
+# GitHub-hosted の Linux runner を使う。`-windows` TFM のプロジェクト(Radirec.Cli / Radirec.Gui)も
+# 各 csproj の EnableWindowsTargeting により **Linux でコンパイルできる**
+# (Gui は WPF/WinForms のランタイムが無いので実行不可。Cli は Linux でも起動する)。
+#
+# 出荷物のビルドは release.yml(タグ駆動・self-hosted Windows)が引き続き担う。ここは
+# 「マージ前に壊れていないこと」を見るだけで、Velopack の pack/upload は行わない。
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# 読み取りのみ。ここから Release を作ったり書き込んだりはしない。
+permissions:
+  contents: read
+
+# 同一 PR/ブランチで新しい push が来たら古い実行は捨てる(release.yml と違い成果物を作らないため安全)。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # release.yml と同じく commit SHA で pin する(可変メジャータグの repoint 対策。更新時は SHA を張り替える)。
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # 全 6 プロジェクト(Windows 専用の Cli / Gui を含む)をビルドする。
+      # 警告は現状 0 なので -warnaserror で 0 を維持する。SDK 更新で新アナライザが増えて落ちた場合は
+      # その指摘を潰すか、必要なら個別に抑制する(release.yml には入れない — リリースを警告で止めないため)。
+      - name: Build
+        run: dotnet build Radirec.slnx -c Release -warnaserror --nologo
+
+      - name: Test
+        run: dotnet test Radirec.slnx -c Release --no-build --nologo
