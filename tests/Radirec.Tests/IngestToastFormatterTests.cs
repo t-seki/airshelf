@@ -12,9 +12,26 @@ public sealed class IngestToastFormatterTests
         Albums = albums,
     };
 
+    // 表示は「件数」と「1 件目の放送日時」だけを使う(#100)。テストもその形で組む。
     private static IngestSummaryAlbumPayload Album(
         string station, string program, params IngestSummaryEpisodePayload[] episodes) =>
-        new() { Station = station, Program = program, Episodes = episodes };
+        new()
+        {
+            Station = station,
+            Program = program,
+            EpisodeCount = episodes.Length,
+            FirstEpisode = episodes.FirstOrDefault(),
+        };
+
+    /// <summary>件数だけを指定する(実数が大きく、1 件目の日時は表示に出ないケース)。</summary>
+    private static IngestSummaryAlbumPayload AlbumOf(string station, string program, int count) =>
+        new()
+        {
+            Station = station,
+            Program = program,
+            EpisodeCount = count,
+            FirstEpisode = new IngestSummaryEpisodePayload { BroadcastDate = "2026-01-01" },
+        };
 
     private static IngestSummaryEpisodePayload Ep(string date, string? time = null, int part = 0) =>
         new() { BroadcastDate = date, BroadcastTime = time, PartIndex = part };
@@ -57,6 +74,17 @@ public sealed class IngestToastFormatterTests
         var texts = IngestToastFormatter.BuildTexts(Payload(0, false, Album("局", "番組")));
 
         Assert.Equal(["番組（局）"], Body(texts));
+    }
+
+    [Fact]
+    public void 件数は実数をそのまま出す_打ち切らない()
+    {
+        // 回帰(#100): かつては要約側が 1 番組 20 回で打ち切り、その**リストの長さ**を件数として
+        // 出していたため、「新規取込 25件」の下に「番組(局)20件」という嘘が並んだ。
+        var texts = IngestToastFormatter.BuildTexts(Payload(25, false, AlbumOf("局", "番組", 25)));
+
+        Assert.Equal("新規取込 25件", Title(texts));
+        Assert.Equal(["番組（局）25件"], Body(texts));
     }
 
     [Fact]

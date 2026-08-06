@@ -38,12 +38,13 @@ public sealed class ToastNotificationPublisher(ToastPresenter presenter)
         {
             Station = album.Station,
             Program = album.Program,
-            Episodes = album.Episodes.Select(episode => new IngestSummaryEpisodePayload
+            EpisodeCount = album.EpisodeCount,
+            FirstEpisode = new IngestSummaryEpisodePayload
             {
-                BroadcastDate = episode.BroadcastDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                BroadcastTime = episode.BroadcastTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
-                PartIndex = episode.PartIndex,
-            }).ToList(),
+                BroadcastDate = album.FirstEpisode.BroadcastDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                BroadcastTime = album.FirstEpisode.BroadcastTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
+                PartIndex = album.FirstEpisode.PartIndex,
+            },
         }).ToList(),
     };
 

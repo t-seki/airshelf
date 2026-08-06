@@ -58,18 +58,20 @@ public static class IngestToastFormatter
     private static string FormatAlbum(IngestSummaryAlbumPayload album)
     {
         // 発行側の不変条件では album は必ず 1 回以上を持つが、防御的に空も扱う(番組名のみ)。
-        if (album.Episodes.Count == 0)
+        if (album.EpisodeCount <= 0 || album.FirstEpisode is null)
             return $"{album.Program}（{album.Station}）";
 
-        if (album.Episodes.Count == 1)
+        if (album.EpisodeCount == 1)
         {
-            var e = album.Episodes[0];
+            var e = album.FirstEpisode;
             var when = string.IsNullOrEmpty(e.BroadcastTime)
                 ? e.BroadcastDate
                 : $"{e.BroadcastDate} {e.BroadcastTime}";
             return $"{album.Program}（{album.Station}）{when}";
         }
 
-        return $"{album.Program}（{album.Station}）{album.Episodes.Count}件";
+        // 実数をそのまま出す。以前は打ち切り済みリストの長さを出していたため、
+        // 1 番組で 20 回を超えると「新規取込 25件」の下に「番組(局)20件」が並ぶ嘘が出ていた(#100)。
+        return $"{album.Program}（{album.Station}）{album.EpisodeCount}件";
     }
 }
