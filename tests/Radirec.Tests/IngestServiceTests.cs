@@ -568,7 +568,9 @@ public sealed class IngestServiceTests
         // (ADR-0002。通知が「1件」に潰れない)。同日別時刻を別放送回と見なす同一性判定そのものは
         // SqliteLedgerTests の「同日 tie-break(ADR-0002)」節で担保している。
         Assert.Equal(2, album.EpisodeCount);
-        Assert.Equal(new TimeOnly(8, 30, 0), album.FirstEpisode.BroadcastTime);  // 先頭 = 早い方
+        // 先頭 = **出現順の 1 件目**(この入力ではたまたま早い方)。時刻順である保証は無い —
+        // 本番の列挙は Directory.EnumerateFiles で、.NET は順序を保証しない。
+        Assert.Equal(new TimeOnly(8, 30, 0), album.FirstEpisode.BroadcastTime);
     }
 
     [Fact]

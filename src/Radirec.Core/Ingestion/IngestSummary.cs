@@ -22,7 +22,10 @@ public sealed record IngestSummary
     /// <summary>この走査で新規取込した放送回の総数(キャップ前の実数)。</summary>
     public required int TotalImported { get; init; }
 
-    /// <summary>キャップにより albums / episodes を間引いたか。</summary>
+    /// <summary>
+    /// <see cref="MaxAlbums"/> により番組を間引いたか。**放送回の件数は間引かない**ので、
+    /// これが立つのは番組数が上限を超えたときだけ(#100)。
+    /// </summary>
     public required bool Truncated { get; init; }
 
     /// <summary>番組(アルバム)単位のまとまり(最大 <see cref="MaxAlbums"/> 件)。</summary>
