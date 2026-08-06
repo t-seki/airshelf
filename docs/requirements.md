@@ -307,7 +307,7 @@ alias 設計が必要(§9)。
 
 > **⚠ [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で機構が変わった**: トレイ常駐移行で
 > **named pipe 制御チャネルは退役**し、rescan/reload/status は**トレイメニューからの in-process 呼び出し**に
-> なった(CLI 制御 verb は廃止、`rescan` は単発の `radirec ingest` に吸収)。以下の named pipe 記述は
+> なった(CLI 制御 verb は廃止。移設先は**トレイメニュー**で、下の「現在地」を参照)。以下の named pipe 記述は
 > 移行前の設計。「利用者→常駐へ指示を出す」概念(3 コマンド)は不変。
 
 取込通知が**サービス発・一方向**なのに対し、常駐サービスへ**利用者側から指示を出す**逆方向の
@@ -328,10 +328,13 @@ alias 設計が必要(§9)。
 Windows 実機での検証手順は [control-channel-verification.md](control-channel-verification.md) に委ねる。
 利用者向けのコマンド一覧は [usage.md](usage.md) を参照。
 
-**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、3 コマンドとも in-process 呼び出し。
-CLI の制御 verb(`status`/`rescan`/`reload`)は廃止され、手動の単発走査は `radirec ingest` に吸収された
-([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。状態はメニューを開いた時点の
-スナップショットとして表示する。トレイからの操作は [usage.md](usage.md) §6 を参照。
+**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、3 コマンドとも in-process 呼び出し
+([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。CLI の制御 verb
+(`status`/`rescan`/`reload`)は廃止された。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
+(`ControlTrayMenu` → `IServiceControl.RequestRescan`)、常駐プロセス内の走査要求になる。
+`radirec ingest` は移行前から在る **dev/batch 用の単発 CLI** で、常駐とは別プロセス — 制御コマンドの
+移設先ではない(単発で走査したいときの手段としては使える)。状態はメニューを開いた時点のスナップショットとして
+表示する。トレイからの操作は [usage.md](usage.md) §6 を参照。
 
 ## 8. import-once と冪等性(★中核設計)
 
@@ -573,7 +576,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 > 番号は M6 だが先行)。**M3 / M6 は達成後に M7 が機構を置き換えている** — 各項は当時の記録として残す。
 
 1. **M1 コア + CLI 取り込み(らじれこ → NAS)**: `Radirec.Core` にパース→正規化→import-once→
-   タグ付与(TagLib#)、`Radirec.Cli` に単発の `radirec ingest`。まず `--dry-run`、次に実コピー。
+   タグ付与(TagLib#)、`Radirec.Cli` に `radirec ingest --once`。まず `--dry-run`、次に実コピー。
    台帳(SQLite)で冪等。UNC 書き込み。**中心価値**。
 2. **M2 Jellyfin リフレッシュ + 疎通**: `HttpClient` でスキャン起動、スマホ配信まで確認。
 3. **M3 常駐化(Windows サービス)**(達成 → M7 で置換): `radirec.exe service`(常駐 verb)で I: を
