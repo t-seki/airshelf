@@ -5,7 +5,7 @@
   "OutputRoot": "",  // 例: "\\\\NAS\\share\\media\\radio"(Jellyfin ライブラリ。UNC 推奨)
 
   // 相対パスは radirec.json のあるディレクトリ基準で解決される(ADR-0006)。
-  // 既定では ledger / stations / programs は %LocalAppData%\radirec\ に同居する(ADR-0013)。
+  // 既定では ledger / stations / programs は %LOCALAPPDATA%\RadirecData\ に同居する(ADR-0013)。
   "LedgerPath": "ledger.db",
   "StationsFile": "stations.json",
   "ProgramsFile": "programs.json",

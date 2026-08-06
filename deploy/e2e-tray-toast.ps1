@@ -12,11 +12,11 @@
   検証後は -Cleanup で本番 config を復元し、テスト作業ディレクトリを削除する。
 
   ※ これは検証用ハーネスであり、通常の配置(Velopack Setup.exe)とは別。データルートは
-     %LocalAppData%\RadirecData(ADR-0013 / S5。Velopack 導入先 %LocalAppData%\Radirec とは別)。
+     %LOCALAPPDATA%\RadirecData(ADR-0013 / S5。Velopack 導入先 %LOCALAPPDATA%\Radirec とは別)。
 
 .PARAMETER GuiExe
   トレイ実行体のパス。既定は deploy/ の 1 つ上の Radirec.Gui.exe。Velopack 導入版を試すなら
-  %LocalAppData%\Radirec\current\Radirec.Gui.exe を -GuiExe で指す。
+  %LOCALAPPDATA%\Radirec\current\Radirec.Gui.exe を -GuiExe で指す。
 
 .PARAMETER Cleanup
   テスト config を本番へ復元し、作業ディレクトリを削除する。
@@ -36,7 +36,7 @@ $SourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $GuiExe) { $GuiExe = Join-Path $SourceRoot $GuiExeName }
 
 $ServiceName = 'Radirec'
-$dataDir = Join-Path $env:LOCALAPPDATA 'RadirecData'  # ADR-0013 / S5: データは %LocalAppData%\RadirecData
+$dataDir = Join-Path $env:LOCALAPPDATA 'RadirecData'  # ADR-0013 / S5: データは %LOCALAPPDATA%\RadirecData
 $realCfg = Join-Path $dataDir 'radirec.json'
 $bakCfg  = Join-Path $dataDir 'radirec.json.e2e-bak'
 $base    = Join-Path $env:TEMP 'radirec-e2e'
@@ -55,7 +55,7 @@ if ($Cleanup) {
         Write-Warning "バックアップ($bakCfg)が無いため config は変更しません"
     }
     if (Test-Path $base) { Remove-Item -Recurse -Force $base; Write-Host '[OK] テスト作業ディレクトリを削除' }
-    Write-Host '本番運用に戻すには通常の Velopack 導入トレイを起動してください(%LocalAppData%\Radirec\current)' -ForegroundColor Yellow
+    Write-Host '本番運用に戻すには通常の Velopack 導入トレイを起動してください(%LOCALAPPDATA%\Radirec\current)' -ForegroundColor Yellow
     return
 }
 

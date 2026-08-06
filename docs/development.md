@@ -150,59 +150,28 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core
 `deploy/e2e-tray-toast.ps1`(本番資産に触れない)。旧環境からの移行検証は
 [migration-to-velopack.md](migration-to-velopack.md)。
 
-> **⚠ 以下の「不在中サマリ / 取込失敗の EventLog 検証」は退役機構の手順**
-> ([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。EventLog シグナル(1001/1002)・
-> `Write-EventLog` 注入・bookmark・不在中サマリ集約はいずれも in-process 化で撤去済み。歴史的記録として残す。
-
-### 不在中サマリの実機検証(軸A / A2 / #54)
-
-EventLog の bookmark/RecordId 挙動は Windows 実機依存で WSL では回せない。核となるフェーズ境界は
-必ず母艦で確認する(純粋ロジック=マージ/整形/単調ガードは WSL 単体テストで担保済み)。
-
-前提: サービス稼働中・トレイ配置済み(`install.ps1`)。ログは `%LocalAppData%\Radirec\gui.log`、
-チェックポイントは `%LocalAppData%\Radirec\subscription.json`。
-
-- [ ] **通常回収**: トレイを終了(タスクトレイから終了 or プロセス kill)→ 取込を **2 回**発生させる
-      (別番組/同一番組を混ぜる)→ トレイを再起動 → **不在中サマリのトーストが 1 件だけ**出て、
-      表題「不在中の取込 N件」の N が **2 回分の合計と一致**すること。個別トーストが 2 件出ないこと
-- [ ] **境界の非二重計上**: 上記直後にもう一度トレイを再起動 → **不在中サマリが出ない**
-      (提示済み分が RecordId ガードで再提示されない)こと
-- [ ] **ライブ継続**: 再起動後にトレイ常駐のまま取込を 1 回発生 → 通常の「新規取込 N件」トーストが出て、
-      `subscription.json` の `lastRecordId` が進むこと
-- [ ] **初回起動の縮退**: `subscription.json` を削除 → トレイ再起動 → 過去分の一括再生が**出ない**
-      (read-from-now で開始)こと
-- [ ] **破損 bookmark の縮退**: `subscription.json` を不正 JSON に書き換え → トレイ再起動 → クラッシュせず、
-      `gui.log` に縮退の warn が残り、read-from-now で開始すること
-- [ ] **ログクリア後もライブ通知が死なない**(回帰の要): **有効な** `subscription.json` がある状態で
-      Event Viewer から Application ログをクリア(RecordId が 1 に戻る)→ トレイ再起動 → 取込を 1 回発生
-      → **通常の「新規取込 N件」トーストが出る**こと(旧 RecordId baseline がライブ通知を潰さない)
-
-すべて満たしたら #54 の実機検証を完了とし #54 を close してよい。
-
-### 取込失敗通知の実機検証(軸A / A3 / #58・#59)
-
-EventLog の 1002 経路は Windows 実機依存(WSL 不可)。純粋ロジック(発行側 de-dup・受け手のマージ/整形/
-EventID 振り分け)は WSL 単体テスト済み。母艦で振る舞いを確認する。
-
-**合成注入**(実取込失敗を待たずに検証): 1001 と同様、`Write-EventLog` で **EventID 1002** の失敗シグナルを
-注入できる。JSON は発行側 `EventLogIngestFailurePublisher.BuildPayload` と同形:
-
-```powershell
-function Send-RadirecFailure {
-  param([int]$Count=1,[string]$Name='[X局]番組(TimeFree)_20250229123000.m4a',[string]$Reason='パースに失敗しました')
-  $json = '{{"schemaVersion":1,"failedCount":{0},"truncated":false,"files":[{{"name":"{1}","reason":"{2}"}}]}}' -f $Count,$Name,$Reason
-  Write-EventLog -LogName Application -Source Radirec -EntryType Warning -EventId 1002 -Message $json
-}
-```
-
-- [ ] **ライブ失敗**: トレイ稼働中に 1002 注入(or 壊れた録音で実失敗)→ **「取込失敗 N件」トースト**が出て、
-      ファイル名 + 理由の行が見えること(成功トーストとは別に出る)
-- [ ] **成功/失敗の分岐**: 1001 と 1002 を続けて注入 → 「新規取込」トーストと「取込失敗」トーストが**別々に**出る
-- [ ] **不在中の失敗**: トレイ停止 → 1002 を 2 件注入 → トレイ再起動 → **「不在中の失敗 N件」トースト 1 本**に集約
-- [ ] **成功と失敗の混在(不在中)**: 停止中に 1001 と 1002 を両方注入 → 再起動 → **成功 1 本 + 失敗 1 本の 2 トースト**
-      (別シグナル = 別通知)
-- [ ] **de-dup**(実失敗経由): 壊れた録音を置いたまま periodic スキャンを 2 回起こす → 失敗トーストは**初回のみ**
-      (同じ失敗が毎走査で鳴らない)。`gui.log` / サービスログで確認
-
-すべて満たしたら #58・#59 の実機検証を完了とし両 issue を close してよい。**リリースは #58 + #59 が
-両方マージされてから 1 本**(publisher 単体配布は 1002 を表示するトレイが無く失敗が無言で消えるため不可)。
+> **EventLog 依存の検証手順は削除しました**([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。
+> かつてここには EventLog bookmark / `subscription.json` / RecordId 単調ガードの確認と、
+> EventID 1002 を `Write-EventLog` で注入する手順がありましたが、**その機構はコードに存在しません**(#72 で撤去)。
+> 判断の記録は [ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) /
+> [ADR-0011](adr/0011-ingest-failure-as-separate-eventlog-signal.md) / ADR-0012 が持ちます。
+> **ただし検証したかった振る舞いのうち、下記は移行後も生きている**ので現行機構向けに書き直しました。
+`deploy/e2e-tray-toast.ps1` は「単発の取込 → トースト 1 件」の疎通だけを見ます。以下は
+**複数走査・複数ファイルにまたがる振る舞い**で、スクリプトの範囲外なので母艦で手動確認します
+(純粋ロジック = 要約の集約・文面整形・de-dup ストアは WSL の単体テストで担保済み)。
+前提: `e2e-tray-toast.ps1` の隔離設定(本番資産に触れない)。**EventLog への注入は不要** — 実ファイルを
+置いてスキャンを起こすだけで再現できます。壊れた録音は「非閏年 2/29」等のパース不能な名前で作れます
+(`tests/Radirec.Tests/IngestServiceTests.cs` の `BadFile()` 参照)。
+**不在中サマリ**(1 走査 = 最大 1 要約。[CONTEXT.md](../CONTEXT.md) が語彙の権威):
+- [ ] **起動時集約**: トレイを終了 → 有効な録音を **2 件**(別番組/同一番組を混ぜる)置く → トレイ起動 →
+      **トーストが 1 件だけ**出て、件数が 2 と一致すること。個別トーストが 2 件出ないこと
+- [ ] **二重計上しない**: 上記直後にもう一度トレイを再起動 → **トーストが出ない**こと(台帳が取込済みを記録)
+- [ ] **ライブ継続**: 常駐したまま録音を 1 件足す → 通常の「新規取込 1件」トーストが出ること
+**取込失敗の de-dup**([ADR-0011](adr/0011-ingest-failure-as-separate-eventlog-signal.md) が
+「要実機検証」と名指ししている振る舞い。ストアは `IngestFailureStore`(SQLite)で現行も生きている):
+- [ ] **初回のみ通知**: 壊れた録音を置いたまま定期スキャンを **2 回**起こす → 失敗トーストは**初回だけ**
+      (同じ失敗が毎走査で鳴らない)
+- [ ] **再起動を跨いで継続**: 上記の後にトレイを再起動 → 同じ失敗で**再通知されない**こと
+- [ ] **成功で解除**: 壊れた録音を正常な名前に直す → 取り込まれ、以後その失敗の抑制が解けること
+- [ ] **成功と失敗は別トースト**: 正常な録音と壊れた録音を同時に置いて 1 走査 →
+      「新規取込」と「取込失敗」が**別々に**出ること(別シグナル = 別通知)

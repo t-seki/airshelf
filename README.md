@@ -22,13 +22,13 @@
 ## インストール・更新(Windows・per-user・非 admin)
 
 [Releases](https://github.com/t-seki/radirec-tool/releases) の **`Radirec-win-Setup.exe`** をダウンロードして実行
-するだけ(**管理者不要**)。`%LocalAppData%\Radirec` へ導入し、ログオン自動起動を登録して起動します。
-データ(設定・台帳・マスタ・ログ)は `%LocalAppData%\RadirecData\` に置かれ、初回起動時に設定を sample から
+するだけ(**管理者不要**)。`%LOCALAPPDATA%\Radirec` へ導入し、ログオン自動起動を登録して起動します。
+データ(設定・台帳・マスタ・ログ)は `%LOCALAPPDATA%\RadirecData\` に置かれ、初回起動時に設定を sample から
 生成します(`RadioRoot` / `OutputRoot` / Jellyfin を編集)。
 
 - **更新**: トレイメニュー「今すぐ更新を確認」→「更新を適用して再起動」(起動時・定期にも自動チェック)。
   private repo のため、更新フィード読取用トークンを `radirec.json` の `UpdateToken` に設定する。
-- **アンインストール**: 設定 → アプリ →「Radirec」、または `%LocalAppData%\Radirec\Update.exe --uninstall`。
+- **アンインストール**: 設定 → アプリ →「Radirec」、または `%LOCALAPPDATA%\Radirec\Update.exe --uninstall`。
 - **取込通知**: 新規取込時にトレイが in-process でトースト表示(`NotificationsEnabled: false` で無効化)。
 
 新版は `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z` で CI(`vpk`)が Setup.exe/更新フィードを Release へ

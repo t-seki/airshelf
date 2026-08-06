@@ -48,7 +48,7 @@ config/programs.sample.json  → config/programs.json (番組 alias)
 >
 > **パスの解決基準(ADR-0006)**: `LedgerPath` / `StationsFile` / `ProgramsFile`(および `RadioRoot` /
 > `OutputRoot`)の**相対パスは `radirec.json` のあるディレクトリ基準**で解決されます。常駐トレイのデータルートは
-> `%LocalAppData%\RadirecData\` で、これらが同居するため裸のファイル名(`ledger.db` 等)で足ります(ADR-0013)。
+> `%LOCALAPPDATA%\RadirecData\` で、これらが同居するため裸のファイル名(`ledger.db` 等)で足ります(ADR-0013)。
 > 絶対パス(`C:\...`、UNC `\\host\share\...`)はそのまま使われます。
 
 ## 3. 実行
@@ -63,7 +63,7 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json --dry-run
 dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 ```
 
-`--config` を省略すると **`%LocalAppData%\RadirecData\radirec.json`**(常駐トレイのデータルート)を使います
+`--config` を省略すると **`%LOCALAPPDATA%\RadirecData\radirec.json`**(常駐トレイのデータルート)を使います
 (ADR-0006)。開発時に別の場所の設定を使うなら `--config <path>` で明示します。
 
 > ⚠️ 以前はカレントディレクトリの `radirec.json` が既定でした。**`radirec ingest` を `--config` 無しで
@@ -269,12 +269,12 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 [Releases](https://github.com/t-seki/radirec-tool/releases) の **`Radirec-win-Setup.exe`** を実行するだけ
 (**管理者不要**。[ADR-0013](adr/0013-velopack-per-user-updates.md)):
 
-- 実行体: `%LocalAppData%\Radirec\`(Velopack 管理・更新で差し替わる)
-- データ: `%LocalAppData%\RadirecData\`(`radirec.json` / `ledger.db` / `stations.json` / `programs.json` / `gui.log`)
+- 実行体: `%LOCALAPPDATA%\Radirec\`(Velopack 管理・更新で差し替わる)
+- データ: `%LOCALAPPDATA%\RadirecData\`(`radirec.json` / `ledger.db` / `stations.json` / `programs.json` / `gui.log`)
 
-初回起動時に設定を sample から生成します。`%LocalAppData%\RadirecData\radirec.json` を編集
+初回起動時に設定を sample から生成します。`%LOCALAPPDATA%\RadirecData\radirec.json` を編集
 (`RadioRoot` / `OutputRoot` / Jellyfin / 更新用 `UpdateToken`)。トレイはログオン自動起動に自己登録されます。
-動作ログは `%LocalAppData%\RadirecData\gui.log`。
+動作ログは `%LOCALAPPDATA%\RadirecData\gui.log`。
 
 ### 更新(アプリ内・Velopack)
 
@@ -285,8 +285,8 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 
 ### アンインストール
 
-設定 → アプリ →「Radirec」→ アンインストール、または `%LocalAppData%\Radirec\Update.exe --uninstall`。
-ログオン自動起動も解除されます。データ(`%LocalAppData%\RadirecData`)は残ります(消すと import-once 履歴が
+設定 → アプリ →「Radirec」→ アンインストール、または `%LOCALAPPDATA%\Radirec\Update.exe --uninstall`。
+ログオン自動起動も解除されます。データ(`%LOCALAPPDATA%\RadirecData`)は残ります(消すと import-once 履歴が
 失われる)。不要なら手動削除。
 
 > 旧 admin 配置(`%ProgramData%\radirec` + Windows サービス)からの移行は
@@ -306,6 +306,6 @@ Setup.exe・更新フィード)は CI がタグ push で **`vpk`(Velopack)** に
 ## 8. 旧環境からの移行
 
 旧 admin 配置(`%ProgramData%\radirec` + Windows サービス)や、さらに古い `C:\radirec\` 同居レイアウトからの
-移行は、いずれも **台帳(`ledger.db`)を無傷で新データルート `%LocalAppData%\RadirecData\` へ運ぶ**のが要点です
+移行は、いずれも **台帳(`ledger.db`)を無傷で新データルート `%LOCALAPPDATA%\RadirecData\` へ運ぶ**のが要点です
 (運び損ねると全放送回が「未取込」判定になり NAS へ再コピーが爆発)。現行の手順は
 [移行 runbook](migration-to-velopack.md) にまとめています。
