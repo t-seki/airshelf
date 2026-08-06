@@ -42,6 +42,26 @@ CI は **GitHub-hosted の Linux runner** で動きます。`release.yml` が「
 PR を検証するための構成です。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
 警告で出荷が止まるのを避けるためです。
 
+### 依存の更新・脆弱性(Dependabot)
+
+`.github/dependabot.yml` が **NuGet** と **GitHub Actions** を週次で見て、更新を PR として出します(#106)。
+上がってきた PR は上記 CI がそのままビルド + テストします。
+
+- **NuGet**: patch/minor は 1 PR にまとめ、major は個別(破壊的変更を見落とさないため)。
+- **GitHub Actions**: `release.yml` / `ci.yml` は action を **commit SHA で pin** していますが、
+  Dependabot は SHA とバージョンコメントをまとめて張り替えます(手作業だと更新が途切れるため)。
+- **なぜ CI で落とさないか**: `-warnaserror` は MSBuild の全警告を落とすので、NuGetAudit の
+  脆弱性警告(NU1901-1904)もエラーになります。それだと**こちらのコードを変えていない PR が、
+  依存に新規 CVE が登録された日に落ちる**(直せるのは依存の更新待ち)。そこで
+  `Directory.Build.props` の `WarningsNotAsErrors` で NU19xx を除外し、代わりに脆弱性は
+  Dependabot が PR として能動的に届けます。**ログに出して誰も読まない状態にしない**のが要点です。
+
+手元で今すぐ確認したいときは:
+
+```bash
+dotnet list Radirec.slnx package --vulnerable --include-transitive
+```
+
 ## リリース(タグ → GitHub Release)
 
 配布はタグ駆動の CI(`.github/workflows/release.yml`)で行う([ADR-0005](adr/0005-single-exe-cli-service-merge.md) /
