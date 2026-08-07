@@ -12,13 +12,13 @@
     <PackageVersion Include="Microsoft.Win32.SystemEvents" Version="10.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="Spectre.Console.Cli" Version="0.55.0" />
-    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageVersion Include="System.IO.Abstractions" Version="22.1.1" />
-    <PackageVersion Include="System.IO.Abstractions.TestingHelpers" Version="22.1.1" />
+    <PackageVersion Include="System.IO.Abstractions.TestingHelpers" Version="22.2.0" />
     <PackageVersion Include="TagLibSharp" Version="2.3.0" />
     <!-- per-user 自己更新(ADR-0013 / S5・S6)。Setup.exe/更新/フックを提供。 -->
     <PackageVersion Include="Velopack" Version="1.2.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
 </Project>
