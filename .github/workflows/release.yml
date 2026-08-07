@@ -24,12 +24,12 @@ jobs:
       # self-hosted + contents:write のため、third-party/first-party とも commit SHA で pin する
       # (可変メジャータグの repoint による供給網 RCE を防ぐ。更新時は SHA を張り替える)。
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: true
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         env:
           # runner は非管理者(runner-svc)で動くため setup-dotnet の既定 C:\Program Files\dotnet に
           # 書けない。runner が書けるジョブ一時領域へ入れる(setup-dotnet が PATH を後続へ前置する)。
