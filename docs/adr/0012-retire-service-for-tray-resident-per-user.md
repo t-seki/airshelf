@@ -2,6 +2,13 @@
 
 Status: accepted(常駐モデルの構造転換。ADR-0003/0005/0006/0007/0008/0009/0010/0011 を supersede/amend。C2〔2 ツリー統合〕をこの移行で先行実施(参照の実体は `Gui→Hosting→Core`。下記 Consequences の自己訂正を参照)。**実装済み — エピック #62、2026-07-19 完了**)
 
+> **⚠ 本文に、実装と食い違う記述が 1 箇所ある**(#113。本文は決定当時の記録なので直さない):
+> Consequences の ADR-0010 supersede 項が「`rescan` は `radirec ingest --once` に吸収」と書いているが、
+> **`--once` は一度も実装されておらず**、**手動再スキャンの移設先はトレイメニュー**
+> (`ControlTrayMenu` → `IServiceControl.RequestRescan` = 常駐プロセス内の走査要求)である。
+> `radirec ingest` は移行前から在る dev/batch の単発 CLI で、制御コマンドの移設先ではない。
+> 現行の姿は [requirements.md](../requirements.md) §7.2 の「現在地」を参照。
+
 本番の実行形態を **Windows サービス(Session 0 常駐)** から **トレイ常駐(ユーザーセッション自動起動・非 admin の per-user)** へ移行する。取り込みワーカーを `Radirec.Gui`(トレイ)プロセスに畳み込み、`Radirec.Gui → Radirec.Core` を直接参照する。EventLog シグナル・named pipe 制御チャネル・run-as-user 資格情報という **Session 0 を橋渡しするための機構一式を撤去**する。
 
 ## 背景
