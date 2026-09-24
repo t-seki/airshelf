@@ -361,11 +361,16 @@ Windows 実機での検証手順は [control-channel-verification.md](control-ch
     (無音の重複ファイル生成を防ぐ)。放送日時で裏取りするので、内容の違う同日別放送は取りこぼさない。
 - **取込後の Z: は編集アプリが唯一の書き手**。手修正したタグ/ファイル名はパイプライン再実行で
   上書きされない。
+  → 2026-09-24: 統合設定の再適用([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))も、
+  利用者が明示的に実行したときだけ Z: の出力ファイルを動かし、`album` / `title` / `track` を書き換える
+  (他のタグは残す)。自動パイプラインが取込後の Z: を書き換えないことは変わらない。
 - **台帳(ledger)**: ローカルディスク(C: 等)の SQLite。記録内容 = 同一性キー / ソースパス /
   取込日時 / 出力先パス / 正規化ルール版 / 内容フィンガープリント。**Z:(SMB)には置かない**(破損回避)。
 - ドライラン(`--dry-run`)で「何をどこへ取り込むか」を副作用なしに提示。
 - 例外的に「正規化ルールを一括再適用したい」場合は、編集アプリ側の明示操作として提供する
   (自動パイプラインは再正規化しない)。
+  → 2026-09-24: 再適用([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))は
+  CLI(`radirec reapply`)とトレイ(#126)の明示操作として提供し、Z: の出力ファイルも動かす。
 
 ## 9. 設定ファイル(放送局マスタ / 番組 alias / config)
 
@@ -427,7 +432,7 @@ stations:
 radirec-tool/
   core/   # ドメインロジック: パース(importer) / 正規化ルール / 放送局・番組解決 /
           #   タグ書込(TagLib#) / import-once 台帳 / Jellyfin リフレッシュ。GUI 非依存・テスト可能
-  cli/    # 薄い入口(dev/batch の単発)。radirec ingest / refresh / organize-source
+  cli/    # 薄い入口(dev/batch の単発)。radirec ingest / reapply / refresh / organize-source
   gui/    # 本番の常駐本体。取り込みワーカー + トレイ + 取込通知 + 取込履歴 UI + 制御 + 自己更新。
           #   取込後編集グリッド(§10.1)は同プロジェクトに後載せ・保留
   docs/  tests/

@@ -47,6 +47,9 @@ public sealed class IngestServiceTests
             _content.Add((entry.Fingerprint, entry.BroadcastDate, entry.BroadcastTime));
         }
 
+        // 取込は書き換えない(再適用だけが使う。ADR-0016)。
+        public bool Replace(LedgerEntry current, LedgerEntry updated) => throw new NotSupportedException();
+
         public IReadOnlyList<LedgerEntry> ListAll() => []; // 取込テストでは履歴列挙を使わない
     }
 

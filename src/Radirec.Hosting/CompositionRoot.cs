@@ -6,6 +6,7 @@ using Radirec.Core.Ledger;
 using Radirec.Core.Normalization;
 using Radirec.Core.Organization;
 using Radirec.Core.Output;
+using Radirec.Core.Reapply;
 using Radirec.Core.Sources;
 
 namespace Radirec.Hosting;
@@ -113,6 +114,40 @@ public static class CompositionRoot
             return (new NullIngestSummaryPublisher(), new NullIngestFailurePublisher(), false);
 
         return (injectedSummary, injectedFailure!, true);
+    }
+
+    /// <summary>
+    /// config から統合設定の再適用(ADR-0016)を組み立てる。取り込みと同じ放送局・番組の解決、出力先の規則
+    /// (<see cref="LocalFolderTarget"/>)、台帳を使う。dry-run は取り込みと同じく台帳を読み取り専用で開き
+    /// (無ければ空)、Jellyfin 接続を作らない。
+    /// </summary>
+    /// <returns>再適用と、破棄すべきリソース(台帳・Jellyfin 接続)。</returns>
+    public static (ReapplyService Service, IDisposable? Disposable) BuildReapply(RadirecConfig config, bool dryRun)
+    {
+        var fileSystem = new FileSystem();
+
+        var stations = ConfigLoader.LoadOptional<StationMasterConfig>(config.StationsFile);
+        var programs = ConfigLoader.LoadOptional<ProgramMasterConfig>(config.ProgramsFile);
+
+        var (ledger, _, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
+
+        ILibraryRefresher refresher = new NullLibraryRefresher();
+        IDisposable? refresherDisposable = null;
+        if (!dryRun)
+            (refresher, refresherDisposable) = BuildRefresher(config);
+
+        var comparer = new TagLibAudioContentComparer();
+        var service = new ReapplyService(
+            fileSystem,
+            ledger,
+            new RajirekoImporter(config.KnownRecordingKinds),
+            new StationResolver(stations),
+            new ProgramResolver(programs),
+            new LocalFolderTarget(fileSystem, new TagLibTagWriter(), comparer, config.OutputRoot),
+            comparer,
+            refresher);
+
+        return (service, Combine(ledgerDisposable, refresherDisposable));
     }
 
     /// <summary>

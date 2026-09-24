@@ -28,6 +28,14 @@ public interface ILedger
     void Record(LedgerEntry entry);
 
     /// <summary>
+    /// 記録 1 件を書き換える(統合設定の再適用。ADR-0016)。同一性キー・パート序数が変わると主キー
+    /// (<c>identity_key, broadcast_time, part_index</c>)が変わるため、旧行の削除と新行の追加を 1 トランザクションで行う。
+    /// <paramref name="current"/> の主キーの行が無いとき、または <paramref name="updated"/> の主キーが既に別の行で
+    /// 使われているときは何も変えずに false を返す。
+    /// </summary>
+    bool Replace(LedgerEntry current, LedgerEntry updated);
+
+    /// <summary>
     /// 取り込み済みの全記録を取込日時の降順(新しい順)で返す(取込履歴ビュー用。S4)。
     /// 読み取り専用の用途で、書き込み側とは独立の接続から呼ばれうる。使用不能な台帳(dry-run の
     /// NullLedger・互換スキーマでない read-only DB)は空を返す。

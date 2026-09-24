@@ -10,6 +10,7 @@ public sealed class LocalFolderTargetTests
     {
         public List<string> Written { get; } = [];
         public void Write(string filePath, NormalizedTags tags) => Written.Add(filePath);
+        public void WritePlacement(string filePath, NormalizedTags tags) => Written.Add(filePath);
     }
 
     // FakeTagWriter はバイトを変えないので、モック FS 上の全バイト比較で「音声部分の比較」を代用する。
