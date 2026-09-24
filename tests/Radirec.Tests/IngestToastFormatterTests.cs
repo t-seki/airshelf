@@ -133,4 +133,94 @@ public sealed class IngestToastFormatterTests
         Assert.True(IngestToastFormatter.MaxToastTextElements < 4,
             "権威となる上限自体が実機の失敗閾値(4)未満であること");
     }
+
+    // ---- 統合設定の無い兄弟フォルダ(#127)----
+
+    private static SiblingFolderNoticePayload Unintegrated(params string[] folders) =>
+        new() { Folder = folders[^1], Folders = folders };
+
+    private static SiblingFolderNoticePayload OutsideMerged(string album, string folder, params string[] folders) =>
+        new() { Folder = folder, MergedAlbum = album, Folders = folders };
+
+    [Fact]
+    public void 兄弟も統合されていなければ統合設定がありませんの1行を足す()
+    {
+        var texts = IngestToastFormatter.BuildTexts(
+            Payload(1, false, Album("TBSラジオ", "X(2)", Ep("2026-09-20", "15:00"))) with
+            {
+                SiblingFolderNotices = [Unintegrated("X(1)", "X(2)")],
+            });
+
+        Assert.Equal("新規取込 1件", Title(texts));
+        Assert.Equal(
+            ["X(2)（TBSラジオ）2026-09-20 15:00", "分割番組らしいフォルダ『X(1)』『X(2)』に統合設定がありません"],
+            Body(texts));
+    }
+
+    [Fact]
+    public void 兄弟が統合番組に入っていれば統合番組の文言にする()
+    {
+        var texts = IngestToastFormatter.BuildTexts(
+            Payload(1, false, Album("文化放送", "おとなりさん 11時12時", Ep("2026-09-23", "11:00"))) with
+            {
+                SiblingFolderNotices =
+                [
+                    OutsideMerged("おとなりさん", "おとなりさん 11時12時", "おとなりさん 10時11時", "おとなりさん 11時12時"),
+                ],
+            });
+
+        Assert.Equal("統合番組『おとなりさん』に入っていないフォルダ『おとなりさん 11時12時』があります", Body(texts)[^1]);
+    }
+
+    [Fact]
+    public void 知らせがあり番組が複数なら番組の行を1行に畳んで要素数の上限を守る()
+    {
+        var texts = IngestToastFormatter.BuildTexts(
+            Payload(3, false,
+                Album("局1", "番組1", Ep("2026-01-01", "10:00")),
+                Album("局2", "番組2", Ep("2026-01-02", "11:00"))) with
+            {
+                SiblingFolderNotices = [Unintegrated("X(1)", "X(2)"), Unintegrated("Y(1)", "Y(2)")],
+            });
+
+        Assert.Equal(IngestToastFormatter.MaxToastTextElements, texts.Count);
+        Assert.Equal(
+            [
+                "番組1（局1）2026-01-01 10:00 …ほか",
+                "分割番組らしいフォルダ『X(1)』『X(2)』に統合設定がありません（ほか1件）",
+            ],
+            Body(texts));
+    }
+
+    [Fact]
+    public void 知らせの件数は打ち切られた一覧ではなく総数から出す()
+    {
+        var texts = IngestToastFormatter.BuildTexts(
+            Payload(1, false, Album("局", "番組", Ep("2026-01-01", "10:00"))) with
+            {
+                SiblingFolderNotices = [Unintegrated("X(1)", "X(2)")],
+                SiblingFolderNoticeCount = 30,
+            });
+
+        Assert.Equal("分割番組らしいフォルダ『X(1)』『X(2)』に統合設定がありません（ほか29件）", Body(texts)[^1]);
+    }
+
+    [Fact]
+    public void 知らせがあり番組が無ければ知らせの行だけ()
+    {
+        var texts = IngestToastFormatter.BuildTexts(
+            Payload(0, true) with { SiblingFolderNotices = [Unintegrated("X(1)", "X(2)")] });
+
+        Assert.Equal(["分割番組らしいフォルダ『X(1)』『X(2)』に統合設定がありません"], Body(texts));
+    }
+
+    [Fact]
+    public void 知らせが無ければ本文は今までどおり()
+    {
+        var payload = Payload(2, false,
+            Album("局1", "番組1", Ep("2026-01-01", "10:00")),
+            Album("局2", "番組2", Ep("2026-01-02", "11:00")));
+
+        Assert.Equal(["番組1（局1）2026-01-01 10:00", "番組2（局2）2026-01-02 11:00"], Body(IngestToastFormatter.BuildTexts(payload)));
+    }
 }

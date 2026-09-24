@@ -112,6 +112,7 @@ public sealed class ReapplyServiceTests : IDisposable
             new EpisodeAssembler(
                 new StationResolver(stations ?? new StationMasterConfig()),
                 new ProgramResolver(programs)),
+            new SiblingFolderDetector(new ProgramResolver(programs), new RajirekoImporter()),
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), new TagLibAudioContentComparer(), outputRoot ?? OutputRoot),
             ledger,
             TimeProvider.System,

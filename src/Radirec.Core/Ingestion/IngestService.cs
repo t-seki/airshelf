@@ -19,6 +19,7 @@ public sealed class IngestService(
     RecordingSkipPolicy skipPolicy,
     ITagReader tagReader,
     EpisodeAssembler assembler,
+    SiblingFolderDetector siblingDetector,
     IOutputTarget target,
     ILedger ledger,
     TimeProvider clock,
@@ -34,14 +35,16 @@ public sealed class IngestService(
     public async Task<IngestReport> RunOnceAsync(bool dryRun, CancellationToken cancellationToken = default)
     {
         var items = new List<IngestItemResult>();
+        var ledgerBeforeScan = new LedgerSnapshot(ledger);
         foreach (var file in source.Enumerate())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            items.Add(await ProcessAsync(file, dryRun, cancellationToken));
+            items.Add(await ProcessAsync(file, dryRun, ledgerBeforeScan, cancellationToken));
         }
 
+        var (notices, noticeError) = DetectSiblingFolders(items, ledgerBeforeScan);
         var (refreshStatus, refreshError) = await MaybeRefreshLibraryAsync(items, dryRun, cancellationToken);
-        var (notified, notifyError) = await MaybePublishSummaryAsync(items, dryRun, cancellationToken);
+        var (notified, notifyError) = await MaybePublishSummaryAsync(items, notices, dryRun, cancellationToken);
         var (failNotified, failNotifyError) = await MaybePublishFailuresAsync(items, dryRun, cancellationToken);
         return new IngestReport
         {
@@ -53,7 +56,72 @@ public sealed class IngestService(
             NotificationError = notifyError,
             FailureNotificationPublished = failNotified,
             FailureNotificationError = failNotifyError,
+            SiblingFolderNotices = notices,
+            SiblingFolderCheckError = noticeError,
         };
+    }
+
+    // 初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127)。取り込んだ回が無い走査
+    // (dry-run を含む)では調べない。判定の失敗で取り込み成功は巻き戻さない(理由は結果に残す)。
+    private (IReadOnlyList<SiblingFolderNotice> Notices, string? Error) DetectSiblingFolders(
+        IReadOnlyList<IngestItemResult> items, LedgerSnapshot ledgerBeforeScan)
+    {
+        var imported = items
+            .Where(i => i.Outcome == IngestOutcome.Imported && i.Episode is not null)
+            .Select(i => (i.Episode!.Station, i.SourcePath))
+            .ToList();
+        if (imported.Count == 0)
+            return ([], null);
+
+        if (ledgerBeforeScan.Error is { } snapshotError)
+            return ([], snapshotError);
+
+        try
+        {
+            return (siblingDetector.Detect(ledgerBeforeScan.Entries, ledgerBeforeScan.Restored, imported), null);
+        }
+        catch (Exception ex)
+        {
+            return ([], ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 走査の前の台帳(兄弟フォルダの「初めて取り込んだ」の判定に使う。#127)。走査で最初に台帳へ書く直前に 1 度だけ
+    /// 読む(取込だけでなく、出力先に同じ内容があった回の自己修復でも書くため)。台帳へ書かない走査では読まない。
+    /// 読めなくても取り込みは止めない(判定を諦めて理由を残す)。
+    /// この走査で自己修復した回(<see cref="Restored"/>)も持つ。走査前の台帳にも取込にも入らないが、フォルダは既知なので
+    /// 兄弟を探す対象に含める。
+    /// </summary>
+    private sealed class LedgerSnapshot(ILedger ledger)
+    {
+        private bool _captured;
+        private readonly List<(string Station, string SourcePath)> _restored = [];
+
+        public IReadOnlyList<LedgerEntry> Entries { get; private set; } = [];
+
+        /// <summary>この走査で自己修復(ADR-0015)して台帳に書き戻した回。</summary>
+        public IReadOnlyList<(string Station, string SourcePath)> Restored => _restored;
+
+        public string? Error { get; private set; }
+
+        public void AddRestored(string station, string sourcePath) => _restored.Add((station, sourcePath));
+
+        public void CaptureOnce()
+        {
+            if (_captured)
+                return;
+
+            _captured = true;
+            try
+            {
+                Entries = ledger.ListAll();
+            }
+            catch (Exception ex)
+            {
+                Error = $"台帳を読めませんでした: {ex.Message}";
+            }
+        }
     }
 
     // 取込失敗シグナルの発行(ADR-0011)。成功要約とは独立に、その走査で**新しく現れた**失敗
@@ -125,7 +193,8 @@ public sealed class IngestService(
     // 取込が1件以上あった実行のみ取込要約シグナルを発行(dry-run は発行しない)。
     // refresh の直後に出す。発行失敗で取り込み成功は巻き戻さない(refresh と同方針)。
     private async Task<(bool Published, string? Error)> MaybePublishSummaryAsync(
-        IReadOnlyList<IngestItemResult> items, bool dryRun, CancellationToken cancellationToken)
+        IReadOnlyList<IngestItemResult> items, IReadOnlyList<SiblingFolderNotice> notices,
+        bool dryRun, CancellationToken cancellationToken)
     {
         if (dryRun)
             return (false, null);
@@ -139,7 +208,7 @@ public sealed class IngestService(
 
         try
         {
-            await summaryPublisher.PublishAsync(IngestSummary.From(imported), cancellationToken);
+            await summaryPublisher.PublishAsync(IngestSummary.From(imported, notices), cancellationToken);
             return (true, null);
         }
         // 真のキャンセルは伝播、それ以外(publisher の発行失敗等)は握って報告する。
@@ -161,7 +230,7 @@ public sealed class IngestService(
     }
 
     private async Task<IngestItemResult> ProcessAsync(
-        RecordingFile file, bool dryRun, CancellationToken cancellationToken)
+        RecordingFile file, bool dryRun, LedgerSnapshot ledgerBeforeScan, CancellationToken cancellationToken)
     {
         if (skipPolicy.ShouldSkip(file))
             return Result(IngestOutcome.SkippedJunk, file);
@@ -209,7 +278,11 @@ public sealed class IngestService(
             if (plan.AlreadyPresent)
             {
                 if (!dryRun)
+                {
+                    ledgerBeforeScan.CaptureOnce();
                     ledger.Record(Entry(episode, file, plan.Path));
+                    ledgerBeforeScan.AddRestored(episode.Station, file.FilePath);
+                }
                 return Result(IngestOutcome.SkippedAlreadyImported, file, episode, plan.Path);
             }
 
@@ -224,6 +297,7 @@ public sealed class IngestService(
 
             var outputPath = await target.WriteAsync(file, plan, tags, cancellationToken);
 
+            ledgerBeforeScan.CaptureOnce();
             ledger.Record(Entry(episode, file, outputPath));
 
             return Result(IngestOutcome.Imported, file, episode, outputPath, episode.UsedFallback, warning);

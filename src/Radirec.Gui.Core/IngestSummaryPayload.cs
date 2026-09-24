@@ -10,6 +10,25 @@ public sealed record IngestSummaryPayload
     public int TotalImported { get; init; }
     public bool Truncated { get; init; }
     public IReadOnlyList<IngestSummaryAlbumPayload> Albums { get; init; } = [];
+
+    /// <summary>初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127)。</summary>
+    public IReadOnlyList<SiblingFolderNoticePayload> SiblingFolderNotices { get; init; } = [];
+
+    /// <summary>兄弟フォルダの知らせの総数(<see cref="SiblingFolderNotices"/> は上限で打ち切られうる。件数はこちらを出す)。</summary>
+    public int SiblingFolderNoticeCount { get; init; }
+}
+
+/// <summary>統合設定の無い兄弟フォルダの知らせ 1 件(Core の <c>SiblingFolderNotice</c> を写したもの)。</summary>
+public sealed record SiblingFolderNoticePayload
+{
+    /// <summary>初めて取り込んだフォルダ。</summary>
+    public string Folder { get; init; } = string.Empty;
+
+    /// <summary>兄弟フォルダが入っている統合番組のアルバム名。兄弟も統合されていなければ null。</summary>
+    public string? MergedAlbum { get; init; }
+
+    /// <summary>兄弟フォルダの組(<see cref="Folder"/> を含む)。</summary>
+    public IReadOnlyList<string> Folders { get; init; } = [];
 }
 
 /// <summary>要約中の 1 番組(= Jellyfin の 1 アルバム)。</summary>
