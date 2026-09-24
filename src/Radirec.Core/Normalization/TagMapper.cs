@@ -15,8 +15,9 @@ public static class TagMapper
         var date = episode.BroadcastDate;
         var mmdd = date.Month * 100 + date.Day; // MMDD(最大 1231)
 
-        // 統合番組の同日パートは track をパート番号で細分化し、アルバム内で part1→part2 の順に並べる。
-        // MMDD*10 + パート(パートは 1〜9 想定)。単一番組は MMDD のまま。ushort に収まる。
+        // PartIndex のある回は track を細分化し、同じ放送日の回をアルバム内で 1→2 の順に並べる。
+        // PartIndex は重複マーカー (N)(radikool)か、無ければ統合番組の回のパート(EpisodeAssembler)。
+        // MMDD*10 + PartIndex(1〜9 想定)。PartIndex の無い回は MMDD のまま。ushort に収まる。
         var track = episode.PartIndex is int part ? mmdd * 10 + part : mmdd;
 
         return new NormalizedTags
@@ -24,7 +25,7 @@ public static class TagMapper
             AlbumArtist = episode.Station,
             Album = episode.Program,
             Artist = string.IsNullOrWhiteSpace(episode.Artist) ? null : episode.Artist,
-            // 同日パートはタイトルにもパートを付し、トラック一覧で区別できるようにする。
+            // PartIndex(パートまたは重複マーカー)のある回はタイトルにも (N) を付し、トラック一覧で区別できるようにする。
             Title = episode.PartIndex is int p ? $"{date:yyyy-MM-dd} ({p})" : date.ToString("yyyy-MM-dd"),
             Date = date,
             // 放送年。ushort に収まる(< 65536)。

@@ -5,7 +5,7 @@ namespace Radirec.Core.Output;
 
 /// <summary>
 /// ローカル/UNC フォルダへ配置する出力先。ディレクトリ <c>{放送局}/{番組}/</c>、ファイル名
-/// <c>{番組} {YYYY-MM-DD}.{ext}</c>。統合番組の同日パートは <c>-N</c> を付す(<c>… YYYY-MM-DD-1</c>)。
+/// <c>{番組} {YYYY-MM-DD}.{ext}</c>。パート(統合番組の回)か重複マーカーのある回は <c>-N</c> を付す(<c>… YYYY-MM-DD-1</c>)。
 /// 同名ファイルが既にあれば音声部分を比べ、同じ内容なら書かずに取込済みとし、違う内容なら時刻(無ければ
 /// <c>2</c>)を付けて別名で書く(ADR-0015)。書き込みは
 /// テンポラリ(<c>.partial</c>)→ タグ付与 → 同一ディレクトリ内リネームでアトミックに確定する。
@@ -95,7 +95,8 @@ public sealed class LocalFolderTarget(
         var extension = source.Extension;
         var baseName = $"{FileNameSanitizer.Sanitize(tags.Album)} {tags.Date:yyyy-MM-dd}";
 
-        // 複数フォルダ統合番組の同日パートは、由来フォルダ順のパート番号で区別する(-1, -2, …)。
+        // PartIndex のある回は -N を付して区別する(-1, -2, …)。PartIndex は重複マーカー (N) か、
+        // 無ければ統合番組の回のパート(由来フォルダ順)。EpisodeAssembler の source.PartIndex ?? program.PartIndex。
         if (episode.PartIndex is int part)
             baseName = $"{baseName}-{part}";
 
