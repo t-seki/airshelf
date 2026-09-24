@@ -64,6 +64,60 @@ public class ConfigPathsTests
     }
 
     /// <summary>
+    /// トレイの「設定ファイルを開く」(#143)が開く場所。実際の読み込み(<see cref="ConfigLoading.TryLoad"/> の rebase)を
+    /// 通した設定から求め、相対は radirec.json のディレクトリ基準・絶対は素通りになることを確かめる。
+    /// </summary>
+    [Fact]
+    public void Locate_読み込んだ設定からradirec_json基準で場所を求める()
+    {
+        var dir = Directory.CreateTempSubdirectory("radirec-locate-").FullName;
+        try
+        {
+            var absoluteStations = Path.Combine(dir, "elsewhere", "my-stations.json");
+            var configPath = Path.Combine(dir, "radirec.json");
+            File.WriteAllText(configPath, $$"""
+                {
+                  "ProgramsFile": "sub/programs.json",
+                  "StationsFile": {{System.Text.Json.JsonSerializer.Serialize(absoluteStations)}}
+                }
+                """);
+            Assert.True(ConfigLoading.TryLoad(configPath, out var config, out var error), error);
+
+            Assert.Equal(configPath, ConfigPaths.Locate(ConfigFile.Radirec, configPath, config!.StationsFile, config.ProgramsFile));
+            Assert.Equal(
+                Path.Combine(dir, "sub", "programs.json"),
+                ConfigPaths.Locate(ConfigFile.Programs, configPath, config.StationsFile, config.ProgramsFile));
+            Assert.Equal(
+                absoluteStations,
+                ConfigPaths.Locate(ConfigFile.Stations, configPath, config.StationsFile, config.ProgramsFile));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Locate_設定を読めていなければradirec_jsonだけ決まる()
+    {
+        var configPath = Path.Combine(Path.GetTempPath(), "radirec.json");
+
+        Assert.Equal(configPath, ConfigPaths.Locate(ConfigFile.Radirec, configPath, null, null));
+        Assert.Null(ConfigPaths.Locate(ConfigFile.Programs, configPath, null, null));
+        Assert.Null(ConfigPaths.Locate(ConfigFile.Stations, configPath, null, null));
+    }
+
+    [Fact]
+    public void Locate_パスが空なら場所は決まらない()
+    {
+        // 空の ProgramsFile / StationsFile は rebase でも空のまま、LoadOptional も何も読まない(= 使っていない)。
+        var configPath = Path.Combine(Path.GetTempPath(), "radirec.json");
+
+        Assert.Null(ConfigPaths.Locate(ConfigFile.Programs, configPath, "x.json", ""));
+        Assert.Null(ConfigPaths.Locate(ConfigFile.Stations, configPath, "  ", "x.json"));
+    }
+
+    /// <summary>
     /// CLI の <c>--help</c> は属性(コンパイル時定数のみ)なので実行時プロパティを参照できず、
     /// <see cref="ConfigPaths.DefaultConfigDisplay"/> という表示用 const を経由する。
     /// **実体とドリフトすると help が嘘をつく**(#99 はまさにそれが起きた状態だった)ので、ここで固定する。

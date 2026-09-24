@@ -49,6 +49,8 @@ internal static class Program
         IServiceControl? control = null;
         string? degradedReason = null; // control==null の理由(縮退メニュー表示用)。
         string? ledgerPath = null;     // 取込履歴(S4)。設定が読めていれば worker 起動可否に依らず参照可。
+        string? configPath = null;          // 設定ファイルを開く(#143)。読めなかったときも開ける(直すため)。
+        RadirecConfig? startupConfig = null; // 同上。ワーカーが無いときの programs/stations の場所の出どころ。
         UpdateService? updateService = null;       // 自己更新(S6)。設定が読めたときだけ。
         UpdateCoordinator? updateCoordinator = null;
         NotifyIcon trayIcon;
@@ -63,9 +65,10 @@ internal static class Program
             // (既存は温存。ADR-0013 / S5)。Velopack のインストール先 %LOCALAPPDATA%\Radirec ではない。
             ConfigSeeder.SeedIfAbsent(ConfigPaths.DataRoot);
 
-            var configPath = ConfigPaths.Resolve(null);
+            configPath = ConfigPaths.Resolve(null);
             if (ConfigLoading.TryLoad(configPath, out var config, out var error))
             {
+                startupConfig = config;
                 // 設定が読めた時点で台帳パスは判る。worker の起動可否に依らず取込履歴は参照できる。
                 ledgerPath = config!.LedgerPath;
 
@@ -144,7 +147,8 @@ internal static class Program
             // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
             trayIcon.ContextMenuStrip = new ControlTrayMenu(
-                trayIcon, control, degradedReason, ledgerPath, updateService, updateCoordinator, drainWorker).Menu;
+                trayIcon, control, degradedReason, ledgerPath, updateService, updateCoordinator, drainWorker,
+                configPath, startupConfig).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
         }

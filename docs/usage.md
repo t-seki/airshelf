@@ -364,6 +364,19 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
   確認〜完了表示の途中は「今すぐ再スキャン」「設定リロード…」も選べません。確認ダイアログを開いている間に
   `programs.json` を編集したり取り込みが進んだりして予定が変わったら、[適用] しても実行せずに中止します
   (もう一度選び直してください)。
+- **設定ファイルを開く**: サブメニューの `radirec.json` / `programs.json` / `stations.json` を、Windows で `.json` に
+  関連付けたアプリ(エディタ)で開きます(関連付けが無ければ Windows の「このファイルを開く方法」が出ます)。
+  開く場所は**今読み込んでいる設定**から求めます。`programs.json` / `stations.json` は `radirec.json` の
+  `ProgramsFile` / `StationsFile` で場所を変えていればその場所(相対パスは `radirec.json` のフォルダ基準)で、
+  変えたのを「設定リロード…」で反映すると開く場所も変わります。サブメニューの各項目にマウスを載せると場所が出ます。
+  - ファイルが無ければ、初回起動時と同じ見本から作ってから開きます(`ProgramsFile` 等で別の場所を指していれば、その場所に作ります)。
+  - 保存しても**自動では反映しません**。保存したら「設定リロード…」を、統合設定を変えたなら「統合設定の再適用…」を選びます。
+  - 取り込みが停止中でも選べます。設定を読み込めずに停止しているときは `radirec.json` を開いて直し、
+    「再読み込みして再起動」を選びます(このとき「設定リロード…」は選べず、`programs.json` / `stations.json` は
+    場所が分からないので選べません)。
+  - `radirec.json` の `ProgramsFile` / `StationsFile` を空(`""`)にしてそのファイルを使わない設定にしているときも、
+    その項目は選べません(マウスを載せると、使わない設定になっている旨が出ます)。
+  - 開けなかったときはバルーンで知らせ、理由を `gui.log` に書きます。
 - **状態 / 最終スキャン**: 稼働状態・監視ルート・最終スキャン時刻/件数。
 - **取込履歴…**: 台帳の全取込を一覧表示(読み取り専用。番組/局/放送日/取込日時/ファイル)。
   出力先パスは長いため列にはファイル名だけを出し、フルパスは ToolTip と窓下部の詳細ペイン
@@ -382,7 +395,7 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 - データ: `%LOCALAPPDATA%\RadirecData\`(`radirec.json` / `ledger.db` / `stations.json` / `programs.json` / `gui.log`)
 
 初回起動時に設定を sample から生成します。`%LOCALAPPDATA%\RadirecData\radirec.json` を編集
-(`RadioRoot` / `OutputRoot` / Jellyfin / 更新用 `UpdateToken`)。トレイはログオン自動起動に自己登録されます。
+(`RadioRoot` / `OutputRoot` / Jellyfin / 更新用 `UpdateToken`。トレイの「設定ファイルを開く」からも開けます)。トレイはログオン自動起動に自己登録されます。
 動作ログは `%LOCALAPPDATA%\RadirecData\gui.log`。
 
 ### 更新(アプリ内・Velopack)

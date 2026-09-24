@@ -15,6 +15,15 @@ public sealed record ServiceStatusSnapshot
     /// <summary>現在の監視ルート。</summary>
     public required string RadioRoot { get; init; }
 
+    /// <summary>
+    /// 今読み込んでいる設定の放送局マスタのパス(解決済み)。トレイの「設定ファイルを開く」(#143)が開く場所。
+    /// 設定リロードの反映に成功したときだけ変わる(失敗なら旧構成のまま = 旧パスのまま)。
+    /// </summary>
+    public string StationsFile { get; init; } = string.Empty;
+
+    /// <summary>今読み込んでいる設定の番組 alias のパス(解決済み)。<see cref="StationsFile"/> と同じ。</summary>
+    public string ProgramsFile { get; init; } = string.Empty;
+
     /// <summary>FileSystemWatcher が有効か(false = ルート不在で定期スキャンのみ)。</summary>
     public required bool Watching { get; init; }
 
