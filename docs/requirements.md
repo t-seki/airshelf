@@ -428,9 +428,15 @@ stations:
 `albumartist` は放送局マスタで解決した正規局名を使う(番組 alias に重複記載しない)。
 未登録のフォルダはフォルダ名がそのままアルバム名になる(設定不要)。
 
-> **予定([ADR-0017](adr/0017-management-window-owns-programs-json.md))**:管理画面(§10.3)がこのファイルの主な書き手になり、
-> 書くときは全体を書き直す(コメントは残らない)。メモはエントリごとの `Note`、分けておく兄弟フォルダは最上位の
-> `KeepSeparate`(局・フォルダの組・`Note`)に持つ。
+メモはエントリごとの `Note`、分けておく兄弟フォルダは最上位の `KeepSeparate`(1 件 =
+`{ "Match": { "Station", "Folders" }, "Note" }`)に持つ([ADR-0017](adr/0017-management-window-owns-programs-json.md))。
+どちらも取り込みと再適用の解決には使わない(`KeepSeparate` を読むのは要対応の計算。[ADR-0018](adr/0018-attention-items-derived-from-state.md))。
+
+> **書き手の現状(#153)**:全体を書き直す書き手(`ProgramsFileWriter`)は Hosting にある。書く前に
+> `programs.json.bak-YYYYMMDD-HHmmss` を作り、一時ファイル経由で置き換え、読み込んだときから中身が変わっていたら書かない。
+> コメントは残らないので、コメントの件数を数えて初回保存の確認に使えるようにしてある。`Note` が null のエントリ・空の
+> `KeepSeparate` はキーごと書かない(使わない限り古い版でも読める)。**これを呼ぶ管理画面の番組ページ(§10.3・#154)と、
+> `KeepSeparate` を読む要対応(#155)はまだ無い**。今の書き手は利用者のエディタと、兄弟フォルダの提案の追記(#148)。
 
 ### 9.3 環境設定(config)
 らじれこ RADIO ルート、radikool ルート、配信先ルート=`Z:\...`、Jellyfin API URL/トークン、

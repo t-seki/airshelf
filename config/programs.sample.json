@@ -1,16 +1,10 @@
 {
   "Defaults": { "Genre": "ラジオ" },
   "Programs": [
-    // 番組の同一性はフォルダ名(ADR-0001)。既定ではフォルダ名がそのままアルバム名になる。
-    // 以下は「表示名を整える」「複数フォルダを 1 アルバムに統合する」ための任意設定。
-
-    // 例1: ラテン名の空白除去フォルダを綺麗な表示名にする
     {
       "Match": { "Station": "J-WAVE", "Folders": ["LOGISTEEDRADIONOMICS"] },
       "Canonical": { "Album": "LOGISTEED RADIONOMICS" }
     },
-
-    // 例2: 表記ゆれフォルダ / 複数フォルダを 1 アルバムに統合
     {
       "Match": { "Station": "J-WAVE", "Folders": ["SONYSONPOQUESTFORTHEFUTURE"] },
       "Canonical": { "Album": "SONY SONPO QUEST FOR THE FUTURE" }
@@ -19,8 +13,5 @@
       "Match": { "Station": "TBSラジオ", "Folders": ["パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"] },
       "Canonical": { "Album": "パンサー向井のふらっと" }
     }
-
-    // 注: オールナイトニッポン0(ZERO) のような週替わりゲスト番組は、フォルダ名がそのまま
-    // 良いアルバム名になるため設定不要(全回が自動で 1 アルバムに集約、ゲストは各回の artist)。
   ]
 }
