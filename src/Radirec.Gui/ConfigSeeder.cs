@@ -40,6 +40,7 @@ internal static class ConfigSeeder
     /// <summary>
     /// <paramref name="path"/> が無ければ <paramref name="file"/> の sample から作る。既存ファイルは上書きしない。
     /// <c>StationsFile</c> / <c>ProgramsFile</c> で既定と違う場所を指しているときもその場所に作る(親フォルダも作る)。
+    /// 書き方は <see cref="NewFileWriter.CreateIfAbsent"/>(一時ファイルに書き切ってから置く)。
     /// </summary>
     /// <returns>ファイルがある(元からある or 作れた)なら true。作れなかったら false(理由は gui.log)。</returns>
     public static bool SeedFileIfAbsent(ConfigFile file, string path)
@@ -58,18 +59,10 @@ internal static class ConfigSeeder
                 return false;
             }
 
-            if (Path.GetDirectoryName(path) is { Length: > 0 } dir)
-                Directory.CreateDirectory(dir);
-
-            // CreateNew: 確かめてから作るまでの間に利用者が作ったファイルを切り詰めない(File.Create は上書きする)。
-            using var target = new FileStream(path, FileMode.CreateNew, FileAccess.Write);
-            stream.CopyTo(target);
-            TrayLog.Info($"{name} を sample から生成しました({path})");
-            return true;
-        }
-        catch (IOException) when (File.Exists(path))
-        {
-            return true; // 確かめた直後に誰かが作った。上書きせずそのまま使う
+            // 一時ファイルに書き切ってから上書きしない形で置く(途中で切れた壊れた JSON を残さない・既存は温存)。
+            if (NewFileWriter.CreateIfAbsent(path, target => stream.CopyTo(target)))
+                TrayLog.Info($"{name} を sample から生成しました({path})");
+            return true; // false = 確かめた直後に誰かが作った。上書きせずそのまま使う
         }
         catch (Exception ex)
         {

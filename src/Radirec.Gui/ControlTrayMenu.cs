@@ -16,7 +16,8 @@ namespace Radirec.Gui;
 /// 再適用の確認〜完了表示の途中も、ダイアログが入れ子にならないよう制御の項目をすべてグレーアウトする。
 /// 「設定ファイルを開く」(#143)は制御の項目ではなく、取り込みの状態(停止中・再適用の途中)に依らず常に選べる
 /// (停止の原因の設定を直してから再起動・リロードするために要る。開くだけでワーカーには触れない)。その下の
-/// programs.json / stations.json だけは、設定を読み込めておらず場所が決まらないときにグレーアウトする。
+/// programs.json / stations.json だけは、場所が決まらないとき(設定を読み込めていない、または radirec.json の
+/// ProgramsFile / StationsFile が空でそのファイルを使わない)にグレーアウトし、理由をツールチップに出す。
 /// </summary>
 internal sealed class ControlTrayMenu
 {
@@ -328,6 +329,9 @@ internal sealed class ControlTrayMenu
         return ConfigPaths.Locate(file, _configPath, _startupConfig?.StationsFile, _startupConfig?.ProgramsFile);
     }
 
+    // 設定を読めているか(ワーカーがある = 読めた設定で動いている、または起動時に読めた)。
+    private bool ConfigLoaded => _control is not null || _startupConfig is not null;
+
     private void RefreshConfigFileItems()
     {
         if (_openConfig is null)
@@ -339,7 +343,11 @@ internal sealed class ControlTrayMenu
                 continue;
             var path = LocateConfigFile(file);
             item.Enabled = path is not null;
-            item.ToolTipText = path ?? "設定を読み込めていないため、場所が分かりません";
+            // 場所が決まらない理由は 2 つ。設定を読めていないか、読めた設定でそのファイルを使わない(パスが空)か。
+            item.ToolTipText = path
+                ?? (ConfigLoaded
+                    ? "radirec.json でこのファイルを使わない設定になっています"
+                    : "設定を読み込めていないため、場所が分かりません");
         }
     }
 
