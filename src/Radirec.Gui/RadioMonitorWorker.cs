@@ -521,6 +521,16 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             foreach (var item in report.Items.Where(i => i.Outcome == IngestOutcome.Imported && i.Message is not null))
                 _log.LogWarning("{Message}: {Output}", item.Message, item.OutputPath);
 
+            // 統合設定の無い兄弟フォルダ(#127)。取込通知には 1 行しか出せないので、全件をここに残す
+            // (通知を無効にしていても残る)。文言は取込通知と同じ。
+            foreach (var notice in report.SiblingFolderNotices)
+                _log.LogInformation(
+                    "{Notice}({Station})",
+                    IngestToastFormatter.FormatSiblingFolderNotice(notice.Folder, notice.MergedAlbum, notice.Folders),
+                    notice.Station);
+            if (report.SiblingFolderCheckError is { } siblingError)
+                _log.LogWarning("統合設定の無い兄弟フォルダを確かめられませんでした: {Error}", siblingError);
+
             // 走査ごとに status スナップショットを更新(in-process 制御)。0 件走査でも
             // 「最後にいつ走ったか」を反映する。書き手はこの直列コンシューマ 1 つだけ。
             _status = _status with

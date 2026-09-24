@@ -88,5 +88,14 @@ public sealed record IngestReport
     /// <summary>失敗シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>
     public string? FailureNotificationError { get; init; }
 
+    /// <summary>
+    /// 初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127。取込要約シグナルにも同じものを載せる)。
+    /// 取込0件・dry-run では空。
+    /// </summary>
+    public IReadOnlyList<SiblingFolderNotice> SiblingFolderNotices { get; init; } = [];
+
+    /// <summary>兄弟フォルダの判定に失敗したときのメッセージ(取り込みは成功している。成功・未判定時は null)。</summary>
+    public string? SiblingFolderCheckError { get; init; }
+
     public int Count(IngestOutcome outcome) => Items.Count(i => i.Outcome == outcome);
 }

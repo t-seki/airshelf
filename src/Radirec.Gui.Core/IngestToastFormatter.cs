@@ -15,9 +15,47 @@ public static class IngestToastFormatter
 
     // ---- 取込要約(成功。ADR-0008)----
 
-    /// <summary>取込通知(「新規取込 N件」)の text 要素列。起動時 catch-up の集約もこれで表示する(ADR-0012)。</summary>
-    public static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload) =>
-        Compose($"新規取込 {payload.TotalImported}件", FormatAlbums(payload), payload.Truncated);
+    /// <summary>
+    /// 取込通知(「新規取込 N件」)の text 要素列。起動時 catch-up の集約もこれで表示する(ADR-0012)。
+    /// 統合設定の無い兄弟フォルダの知らせ(#127)があれば、本文の最後の 1 行をそれに充てる(トーストは増やさない)。
+    /// </summary>
+    public static IReadOnlyList<string> BuildTexts(IngestSummaryPayload payload)
+    {
+        var title = $"新規取込 {payload.TotalImported}件";
+        if (payload.SiblingFolderNotices.Count == 0)
+            return Compose(title, FormatAlbums(payload), payload.Truncated);
+
+        // 番組の行は残り 1 行に畳む。Compose に 1 行で渡すと「…ほか」の分を空けて番組を 1 つも出せなくなるので、
+        // 2 番組以上なら先頭の番組の行に「…ほか」を付ける。
+        var texts = new List<string> { title };
+        var albums = FormatAlbums(payload);
+        if (albums.Count > 0)
+            texts.Add(albums.Count > 1 || payload.Truncated ? $"{albums[0]} …ほか" : albums[0]);
+        texts.Add(FormatSiblingFolderNotices(payload.SiblingFolderNotices));
+
+        return texts.Take(MaxToastTextElements).ToList();
+    }
+
+    // ---- 統合設定の無い兄弟フォルダ(#127)----
+
+    /// <summary>
+    /// 統合設定の無い兄弟フォルダの知らせ 1 件の文言。取込通知の 1 行と <c>gui.log</c> で同じものを使う。
+    /// </summary>
+    /// <param name="folder">初めて取り込んだフォルダ。</param>
+    /// <param name="mergedAlbum">兄弟フォルダが入っている統合番組のアルバム名(兄弟も統合されていなければ null)。</param>
+    /// <param name="folders">兄弟フォルダの組(<paramref name="folder"/> を含む)。</param>
+    public static string FormatSiblingFolderNotice(string folder, string? mergedAlbum, IReadOnlyList<string> folders) =>
+        mergedAlbum is not null
+            ? $"統合番組『{mergedAlbum}』に入っていないフォルダ『{folder}』があります"
+            : $"分割番組らしいフォルダ{string.Concat(folders.Select(f => $"『{f}』"))}に統合設定がありません";
+
+    // 取込通知に充てるのは 1 行だけ。2 件以上あれば先頭の 1 件に件数を添える(全件は gui.log にある)。
+    private static string FormatSiblingFolderNotices(IReadOnlyList<SiblingFolderNoticePayload> notices)
+    {
+        var first = notices[0];
+        var text = FormatSiblingFolderNotice(first.Folder, first.MergedAlbum, first.Folders);
+        return notices.Count > 1 ? $"{text}（ほか{notices.Count - 1}件）" : text;
+    }
 
     // ---- 取込失敗(ADR-0011)----
 

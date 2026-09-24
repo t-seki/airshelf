@@ -40,9 +40,10 @@ public static class CompositionRoot
         var stations = ConfigLoader.LoadOptional<StationMasterConfig>(config.StationsFile);
         var programs = ConfigLoader.LoadOptional<ProgramMasterConfig>(config.ProgramsFile);
 
+        var programResolver = new ProgramResolver(programs);
         var assembler = new EpisodeAssembler(
             new StationResolver(stations),
-            new ProgramResolver(programs));
+            programResolver);
 
         var (ledger, failureStoreFacet, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
 
@@ -70,9 +71,10 @@ public static class CompositionRoot
 
         // らじれこ(M4A)と radikool(MP3)を CanHandle で振り分ける。radikool は識別に
         // タグ(局=genre)を要するため tagReader を渡す。
+        var rajireko = new RajirekoImporter(config.KnownRecordingKinds);
         var importer = new SourceRouter(
         [
-            new RajirekoImporter(config.KnownRecordingKinds),
+            rajireko,
             new RadikoolImporter(tagReader),
         ]);
 
@@ -83,6 +85,8 @@ public static class CompositionRoot
             new RecordingSkipPolicy(config.SkipPatterns),
             tagReader,
             assembler,
+            // 兄弟フォルダの判定は取り込みと同じ番組の解決を使う(#127)。
+            new SiblingFolderDetector(programResolver, rajireko),
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), new TagLibAudioContentComparer(), config.OutputRoot),
             ledger,
             TimeProvider.System,

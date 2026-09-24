@@ -187,6 +187,7 @@ public sealed class IngestServiceTests
             new EpisodeAssembler(
                 new StationResolver(new StationMasterConfig()),
                 new ProgramResolver(new ProgramMasterConfig())),
+            new SiblingFolderDetector(new ProgramResolver(new ProgramMasterConfig()), new RajirekoImporter()),
             target ?? _target,
             _ledger,
             new FixedClock(Now),

@@ -31,8 +31,15 @@ public sealed record IngestSummary
     /// <summary>番組(アルバム)単位のまとまり(最大 <see cref="MaxAlbums"/> 件)。</summary>
     public required IReadOnlyList<IngestSummaryAlbum> Albums { get; init; }
 
+    /// <summary>
+    /// この走査で初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127)。
+    /// 1 フォルダにつき初回の取り込みでだけ現れるので、件数は小さい(打ち切らない)。
+    /// </summary>
+    public IReadOnlyList<SiblingFolderNotice> SiblingFolderNotices { get; init; } = [];
+
     /// <summary>新規取込した放送回群から要約を組み立てる(番組単位グループ + キャップ)。出現順を保つ。</summary>
-    public static IngestSummary From(IReadOnlyList<Episode> imported)
+    public static IngestSummary From(
+        IReadOnlyList<Episode> imported, IReadOnlyList<SiblingFolderNotice>? siblingFolderNotices = null)
     {
         var truncated = false;
         // 番組ごとに「実数」と「先頭 1 件」だけを持つ。放送回リストは持たない — 提示側が使うのは
@@ -80,6 +87,7 @@ public sealed record IngestSummary
                     FirstEpisode = g.First,
                 })
                 .ToList(),
+            SiblingFolderNotices = siblingFolderNotices ?? [],
         };
     }
 }
