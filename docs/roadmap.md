@@ -1,18 +1,21 @@
 # Radirec.Gui ロードマップ(常駐トレイ / 編集 GUI)
 
-> Status: Map v2 / 最終更新: 2026-08-04
+> Status: Map v3 / 最終更新: 2026-09-25
 
 これは **`Radirec.Gui`(常駐トレイ + 将来の編集 GUI)の将来オプションの地図**であり、着手の約束ではない。
 優先順位は付けていない。実際の不満が出た時点で、ある軸を greenlit してから issue を切る(§運用)。
 
 v1(2026-07-18)が並べていた軸A(通知トレイの深化)・軸B(制御チャネルの GUI 化)は**すべて決着済み**で、
 生きた軸は **軸C(M5 編集アプリ本体)だけ**になった。経緯は §経緯 に畳んである。
+2026-09-25 に、軸C とは別の **軸D(管理画面)** を greenlit した(§軸D)。
 
 一次資料へのポインタ:
 
 - **現行アーキテクチャ**: [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)(トレイ常駐 per-user)/
   [ADR-0013](adr/0013-velopack-per-user-updates.md)(Velopack 自己更新)/ 運用手順は [usage.md](usage.md) §6
 - **編集アプリの保留判断**: [requirements.md](requirements.md) §10.1 と issue #5
+- **管理画面の設計**: [requirements.md](requirements.md) §10.3 / [ADR-0017](adr/0017-management-window-owns-programs-json.md) /
+  [ADR-0018](adr/0018-attention-items-derived-from-state.md) と issue #5 のコメント(2026-09-25)
 - **移行前の設計(歴史)**: [ADR-0008](adr/0008-ingest-notification-via-eventlog-signal.md) /
   [ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) /
   [ADR-0010](adr/0010-gui-service-control-via-named-pipe.md) /
@@ -90,6 +93,21 @@ issue #5 の本体。**「CLI 運用で不足が判明したら着手」と明�
 | **C2 TagLib# で NAS 直接編集 + リフレッシュ** | #5 / §8(取込後の権威は編集側) | 「`Gui→Core` の初参照で 2 ツリーを統合。**疎結合を意図的に崩す**」 | **統合は #62 で完了**。`TagLibTagWriter` / `JellyfinLibraryRefresher` はどちらも Core にあり、後者は取り込みパイプライン(`IngestService`)経由で**既にトレイプロセス内で走っている**。残差は「**取込後のファイルへタグを書き戻す**」経路と、編集と取り込みが同じファイルに触る際の権限分離(§8) |
 | **C3 配布フロントエンド** | §14 | 「別次元(配布境界の確立)」 | **per-user インストーラ + 自己更新は ADR-0013 で出荷済み** = C3 の目標モデルそのもの。残差は `LocalFolderTarget` 既定化(§10.2)・非技術者向けの初期設定・コード署名/SmartScreen。**ただし ADR-0012 は「per-user 化は C3 を約束しない」と明記**しており、配布ゲートは維持 |
 
+## 軸D — 管理画面(greenlit 2026-09-25 / #5 の sub-issue で実装中)
+
+軸C の編集本体(回のタグを 1 つずつ直す)ではなく、**番組の設定の編集と取り込みの状況**を 1 つのウィンドウに集める
+(requirements §10.3)。greenlit の根拠は実際に出た不満 — `programs.json` をエディタで直すのがつらい、
+兄弟フォルダの知らせをトーストで見逃す、トレイのメニューと通知が増えた — である。**軸C のゲートは外していない**。
+
+- 1 つのウィンドウに 4 ページ(ホーム / 番組 / 設定 / バージョン情報)。トレイは「開く・今すぐ動かす・止める」に絞る
+- `programs.json` の書き手は管理画面になる(全体を書き直す・`Note`・`KeepSeparate`。ADR-0017)
+- 要対応はいまの状態から毎回導く(ADR-0018)
+- WPF + XAML + MVVM。ロジックは `Gui.Core` / `Hosting` に置く(§前提 の分離の使い方どおり)
+- 作る順:HTML モック → 骨組み+ホーム → 設定ページ・通知の分割 → `programs.json` の書き手 → 番組ページ →
+  要対応(兄弟フォルダ)→ 要対応(失敗・食い違った回)→ バージョン情報
+
+§地図から読める構造 の 1.(UI を厚くすると障害分離の圧力が増える)は、軸D にもそのまま当てはまる。
+
 ## 地図から読める構造(将来判断の要点)
 
 1. **疎結合への圧力は消え、代わりに障害分離への圧力が来る**。v1 の 3 軸は「2 ツリーの疎結合をどれだけ
@@ -121,7 +139,8 @@ issue #5 の本体。**「CLI 運用で不足が判明したら着手」と明�
 
 ## 運用(この地図の使い方)
 
-- **生きた軸は C のみで、ゲート下にあるため issue は切らない**。軸A / 軸B は決着済み(§経緯)。
+- **生きた軸は C と D**。C はゲート下にあるため issue は切らない。D は greenlit 済みで、#5 の sub-issue として切る。
+  軸A / 軸B は決着済み(§経緯)。
 - **軸C を greenlit した時点で**、その項目を issue #5(または新エピック)配下に sub-issue として切る。
 - 決定(採用/不採用・設計方針)が出たら、この地図ではなく該当 ADR / requirements を一次資料として更新し、
   この地図は「オプションの俯瞰」に保つ。
