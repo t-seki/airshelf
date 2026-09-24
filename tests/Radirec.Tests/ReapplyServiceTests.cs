@@ -67,7 +67,7 @@ public sealed class ReapplyServiceTests : IDisposable
             ],
         };
 
-    // 無音フィクスチャを らじれこ風の {局}/{番組}/ に置く。differentAudio なら音声区間を 1 バイト変える。
+    // 無音フィクスチャを らじれこ風の {局}/{番組}/ に置く(ファイル名の番組部は識別に使わないので表示用)。
     private string PlaceSource(string folder, string stamp, string station = Station, string? program = null)
     {
         var dir = Path.Combine(RadioRoot, station, folder);
