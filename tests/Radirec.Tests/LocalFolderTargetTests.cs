@@ -12,12 +12,28 @@ public sealed class LocalFolderTargetTests
         public void Write(string filePath, NormalizedTags tags) => Written.Add(filePath);
     }
 
+    // FakeTagWriter はバイトを変えないので、モック FS 上の全バイト比較で「音声部分の比較」を代用する。
+    // 実物(TagLib の不変区間)は TagLibAudioContentComparerTests で確かめる。
+    private sealed class FakeContentComparer(MockFileSystem fs) : IAudioContentComparer
+    {
+        public List<string> Compared { get; } = [];
+
+        /// <summary>立てると判定失敗(実装は例外を握って false を返す契約)を模す。</summary>
+        public bool Fails { get; set; }
+
+        public bool HasSameAudio(string pathA, string pathB)
+        {
+            Compared.Add(pathB);
+            return !Fails && fs.File.ReadAllBytes(pathA).AsSpan().SequenceEqual(fs.File.ReadAllBytes(pathB));
+        }
+    }
+
     private const string Root = "/out";
     private const string SourcePath = "/in/src.m4a";
 
-    private static RecordingFile Source() => new()
+    private static RecordingFile Source(string path = SourcePath) => new()
     {
-        FilePath = SourcePath,
+        FilePath = path,
         FileName = "src.m4a",
         StationFolder = "J-WAVE",
         ProgramFolder = "LOGISTEEDRADIONOMICS",
@@ -42,17 +58,31 @@ public sealed class LocalFolderTargetTests
         Genre = "ラジオ",
     };
 
+    private static LocalFolderTarget Target(MockFileSystem fs, ITagWriter? tagWriter = null, IAudioContentComparer? comparer = null)
+        => new(fs, tagWriter ?? new FakeTagWriter(), comparer ?? new FakeContentComparer(fs), Root);
+
+    // 取込と同じ順(配置先の算出 → 書き込み)で 1 回分を書く。
+    private static Task<string> WriteAsync(LocalFolderTarget sut, Episode episode, RecordingFile? source = null)
+    {
+        var src = source ?? Source();
+        return sut.WriteAsync(src, sut.Plan(src, episode, Tags()), Tags());
+    }
+
+    private static string OutDir(MockFileSystem fs) => fs.Path.Combine(Root, "J-WAVE", "LOGISTEED RADIONOMICS");
+
     [Fact]
-    public void PlanPath_UsesStationProgramAndDate()
+    public void Plan_UsesStationProgramAndDate()
     {
         var fs = new MockFileSystem();
-        var sut = new LocalFolderTarget(fs, new FakeTagWriter(), Root);
+        var sut = Target(fs);
 
-        var path = sut.PlanPath(Source(), Episode(), Tags());
+        var plan = sut.Plan(Source(), Episode(), Tags());
 
         Assert.Equal(
             fs.Path.Combine(Root, "J-WAVE", "LOGISTEED RADIONOMICS", "LOGISTEED RADIONOMICS 2026-06-12.m4a"),
-            path);
+            plan.Path);
+        Assert.False(plan.AlreadyPresent);
+        Assert.Null(plan.CollidedWith);
     }
 
     [Fact]
@@ -63,9 +93,9 @@ public sealed class LocalFolderTargetTests
             [SourcePath] = new MockFileData("audio-bytes"),
         });
         var tagWriter = new FakeTagWriter();
-        var sut = new LocalFolderTarget(fs, tagWriter, Root);
+        var sut = Target(fs, tagWriter);
 
-        var final = await sut.WriteAsync(Source(), Episode(), Tags());
+        var final = await WriteAsync(sut, Episode());
 
         // .partial 名は製品と同じ Path 操作で組み立てる(OS のパス区切り差で崩れないように)。
         var partial = fs.Path.Combine(
@@ -85,14 +115,16 @@ public sealed class LocalFolderTargetTests
         {
             [SourcePath] = new MockFileData("audio-bytes"),
         });
-        var sut = new LocalFolderTarget(fs, new FakeTagWriter(), Root);
+        var comparer = new FakeContentComparer(fs);
+        var sut = Target(fs, comparer: comparer);
 
         // 同一アルバム・同一日でも由来フォルダのパート番号で別ファイルになる。
-        var p1 = await sut.WriteAsync(Source(), Episode(partIndex: 1), Tags());
-        var p2 = await sut.WriteAsync(Source(), Episode(partIndex: 2), Tags());
+        var p1 = await WriteAsync(sut, Episode(partIndex: 1));
+        var p2 = await WriteAsync(sut, Episode(partIndex: 2));
 
         Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12-1.m4a", p1);
         Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12-2.m4a", p2);
+        Assert.Empty(comparer.Compared); // 名前が衝突しなければ中身は読まない
     }
 
     [Fact]
@@ -104,7 +136,7 @@ public sealed class LocalFolderTargetTests
             ["/out/J-WAVE/番組/回 2026-06-12.partial.m4a"] = new("orphan"),
             ["/out/J-WAVE/番組/回 2026-06-19.partial.m4a"] = new("orphan2"),
         });
-        var sut = new LocalFolderTarget(fs, new FakeTagWriter(), Root);
+        var sut = Target(fs);
 
         var removed = sut.CleanupOrphans();
 
@@ -115,19 +147,94 @@ public sealed class LocalFolderTargetTests
     }
 
     [Fact]
-    public async Task WriteAsync_OnCollision_AppendsTime()
+    public async Task WriteAsync_OnCollisionWithDifferentContent_AppendsTime()
     {
+        // 同日・別時刻で内容の違う 2 放送(ADR-0002)。両方残す。
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [SourcePath] = new MockFileData("audio-2230"),
+            ["/in/other.m4a"] = new MockFileData("audio-0105"),
+        });
+        var sut = Target(fs);
+
+        var first = await WriteAsync(sut, Episode(new TimeOnly(22, 30)));
+        var plan = sut.Plan(Source("/in/other.m4a"), Episode(new TimeOnly(1, 5)), Tags());
+        var second = await sut.WriteAsync(Source("/in/other.m4a"), plan, Tags());
+
+        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12.m4a", first);
+        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12 0105.m4a", second);
+        Assert.Equal(first, plan.CollidedWith); // 別名にしたことを呼び出し側へ知らせる(警告ログ用)
+    }
+
+    [Fact]
+    public async Task Plan_OnCollisionWithSameContent_IsAlreadyPresent_AndWritesNothing()
+    {
+        // 台帳を失った後の再走査: 出力先に同じ回の取込済みファイルがある。
         var fs = new MockFileSystem(new Dictionary<string, MockFileData>
         {
             [SourcePath] = new MockFileData("audio-bytes"),
         });
-        var sut = new LocalFolderTarget(fs, new FakeTagWriter(), Root);
+        var sut = Target(fs);
+        var existing = await WriteAsync(sut, Episode(new TimeOnly(8, 30)));
 
-        // 既に同名(同日)が存在する状況を作る
-        var first = await sut.WriteAsync(Source(), Episode(new TimeOnly(22, 30)), Tags());
-        var second = await sut.WriteAsync(Source(), Episode(new TimeOnly(1, 5)), Tags());
+        var plan = sut.Plan(Source(), Episode(new TimeOnly(8, 30)), Tags());
 
-        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12.m4a", first);
-        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12 0105.m4a", second);
+        Assert.True(plan.AlreadyPresent);
+        Assert.Equal(existing, plan.Path);
+        Assert.Single(fs.Directory.GetFiles(OutDir(fs))); // ` 0830` を作らない
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.WriteAsync(Source(), plan, Tags()));
+    }
+
+    [Fact]
+    public void Plan_SameContentAsExistingTimeSuffixedFile_DoesNotCreateThird()
+    {
+        // 以前の実装が作った near-dup(` 0830`)が既にあり、ベース名は別内容。3 つ目を作らない。
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [SourcePath] = new MockFileData("audio-0830"),
+            ["/out/J-WAVE/LOGISTEED RADIONOMICS/LOGISTEED RADIONOMICS 2026-06-12.m4a"] = new("audio-other"),
+            ["/out/J-WAVE/LOGISTEED RADIONOMICS/LOGISTEED RADIONOMICS 2026-06-12 0830.m4a"] = new("audio-0830"),
+        });
+        var sut = Target(fs);
+
+        var plan = sut.Plan(Source(), Episode(new TimeOnly(8, 30)), Tags());
+
+        Assert.True(plan.AlreadyPresent);
+        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12 0830.m4a", plan.Path);
+    }
+
+    [Fact]
+    public void Plan_TimelessSource_SameContentAsExistingNumberedFile_IsAlreadyPresent()
+    {
+        // 時刻の無いソース(radikool)の保険サフィックスは ` 2`。こちらも比較対象にする。
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [SourcePath] = new MockFileData("audio-mine"),
+            ["/out/J-WAVE/LOGISTEED RADIONOMICS/LOGISTEED RADIONOMICS 2026-06-12.m4a"] = new("audio-other"),
+            ["/out/J-WAVE/LOGISTEED RADIONOMICS/LOGISTEED RADIONOMICS 2026-06-12 2.m4a"] = new("audio-mine"),
+        });
+        var sut = Target(fs);
+
+        var plan = sut.Plan(Source(), Episode(), Tags());
+
+        Assert.True(plan.AlreadyPresent);
+        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12 2.m4a", plan.Path);
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenComparisonFails_TreatsAsDifferent_AndWrites()
+    {
+        // 判定できないときは「違う内容」扱いで書く(欠落 > 重複。ADR-0015)。
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [SourcePath] = new MockFileData("audio-bytes"),
+            ["/out/J-WAVE/LOGISTEED RADIONOMICS/LOGISTEED RADIONOMICS 2026-06-12.m4a"] = new("audio-bytes"),
+        });
+        var sut = Target(fs, comparer: new FakeContentComparer(fs) { Fails = true });
+
+        var written = await WriteAsync(sut, Episode(new TimeOnly(8, 30)));
+
+        Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12 0830.m4a", written);
+        Assert.True(fs.File.Exists(written));
     }
 }

@@ -82,7 +82,7 @@ public static class CompositionRoot
             new RecordingSkipPolicy(config.SkipPatterns),
             tagReader,
             assembler,
-            new LocalFolderTarget(fileSystem, new TagLibTagWriter(), config.OutputRoot),
+            new LocalFolderTarget(fileSystem, new TagLibTagWriter(), new TagLibAudioContentComparer(), config.OutputRoot),
             ledger,
             TimeProvider.System,
             genre,

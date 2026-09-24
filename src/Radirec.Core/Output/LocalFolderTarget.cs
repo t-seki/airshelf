@@ -6,27 +6,32 @@ namespace Radirec.Core.Output;
 /// <summary>
 /// ローカル/UNC フォルダへ配置する出力先。ディレクトリ <c>{放送局}/{番組}/</c>、ファイル名
 /// <c>{番組} {YYYY-MM-DD}.{ext}</c>。パート(統合番組の回)か重複マーカーのある回は <c>-N</c> を付す(<c>… YYYY-MM-DD-1</c>)。
-/// パート番号の無い想定外の同日衝突は時刻を保険に付す。書き込みは
+/// 同名ファイルが既にあれば音声部分を比べ、同じ内容なら書かずに取込済みとし、違う内容なら時刻(無ければ
+/// <c>2</c>)を付けて別名で書く(ADR-0015)。書き込みは
 /// テンポラリ(<c>.partial</c>)→ タグ付与 → 同一ディレクトリ内リネームでアトミックに確定する。
 /// </summary>
-public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWriter, string outputRoot)
+public sealed class LocalFolderTarget(
+    IFileSystem fileSystem, ITagWriter tagWriter, IAudioContentComparer contentComparer, string outputRoot)
     : IOutputTarget
 {
 
-    public string PlanPath(RecordingFile source, Episode episode, NormalizedTags tags)
+    public OutputPlan Plan(RecordingFile source, Episode episode, NormalizedTags tags)
     {
         var dir = DirectoryFor(tags);
-        return ResolveFinalPath(dir, episode, tags, source.Extension);
+        return ResolveFinalPath(dir, source, episode, tags);
     }
 
     public async Task<string> WriteAsync(
-        RecordingFile source, Episode episode, NormalizedTags tags,
+        RecordingFile source, OutputPlan plan, NormalizedTags tags,
         CancellationToken cancellationToken = default)
     {
-        var dir = DirectoryFor(tags);
-        fileSystem.Directory.CreateDirectory(dir);
+        // 同じ内容が既にある回は呼び出し側が書かずに済ませる契約(上書きで既存を壊さないための番人)。
+        if (plan.AlreadyPresent)
+            throw new InvalidOperationException($"同じ内容のファイルが既にあります: {plan.Path}");
 
-        var finalPath = ResolveFinalPath(dir, episode, tags, source.Extension);
+        var finalPath = plan.Path;
+        fileSystem.Directory.CreateDirectory(fileSystem.Path.GetDirectoryName(finalPath)!);
+
         // .partial は拡張子(.m4a)を保つ。TagLib は拡張子で形式判定するため
         // "foo.m4a.partial" だと書き込めない。→ "foo.partial.m4a"。
         var partialPath = PartialPathFor(finalPath);
@@ -85,8 +90,9 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
         return fileSystem.Path.Combine(dir, $"{name}.partial{ext}");
     }
 
-    private string ResolveFinalPath(string dir, Episode episode, NormalizedTags tags, string extension)
+    private OutputPlan ResolveFinalPath(string dir, RecordingFile source, Episode episode, NormalizedTags tags)
     {
+        var extension = source.Extension;
         var baseName = $"{FileNameSanitizer.Sanitize(tags.Album)} {tags.Date:yyyy-MM-dd}";
 
         // PartIndex のある回は -N を付して区別する(-1, -2, …)。PartIndex は重複マーカー (N) か、
@@ -96,10 +102,20 @@ public sealed class LocalFolderTarget(IFileSystem fileSystem, ITagWriter tagWrit
 
         var candidate = fileSystem.Path.Combine(dir, baseName + extension);
         if (!fileSystem.File.Exists(candidate))
-            return candidate;
+            return new OutputPlan { Path = candidate };
 
-        // 想定外の同日衝突(パート番号の無い同日別放送等)の保険: 時刻(あれば)で区別。
+        // 同名が既にある。台帳を失った後の再走査や size/mtime の変わったコピーでは、同じ回の取込済み
+        // ファイルがここに来る。音声部分が同じなら書かない(near-dup を作らない。ADR-0015)。
+        if (contentComparer.HasSameAudio(source.FilePath, candidate))
+            return new OutputPlan { Path = candidate, AlreadyPresent = true };
+
+        // 違う内容(想定外の同日衝突 = パート番号の無い同日別放送等)の保険: 時刻(あれば)で区別。
+        // 以前の実装が作った時刻付きの near-dup が既にあれば、それとも比べて 3 つ目を作らない。
         var suffix = episode.BroadcastTime is { } t ? t.ToString("HHmm") : "2";
-        return fileSystem.Path.Combine(dir, $"{baseName} {suffix}{extension}");
+        var alternate = fileSystem.Path.Combine(dir, $"{baseName} {suffix}{extension}");
+        if (fileSystem.File.Exists(alternate) && contentComparer.HasSameAudio(source.FilePath, alternate))
+            return new OutputPlan { Path = alternate, AlreadyPresent = true };
+
+        return new OutputPlan { Path = alternate, CollidedWith = candidate };
     }
 }

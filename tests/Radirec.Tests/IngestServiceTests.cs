@@ -52,12 +52,12 @@ public sealed class IngestServiceTests
 
     private sealed class FakeOutputTarget : IOutputTarget
     {
-        public List<Episode> Written { get; } = [];
-        public string PlanPath(RecordingFile s, Episode e, NormalizedTags t) => $"/out/{e.Program}.m4a";
-        public Task<string> WriteAsync(RecordingFile s, Episode e, NormalizedTags t, CancellationToken ct = default)
+        public List<string> Written { get; } = [];
+        public OutputPlan Plan(RecordingFile s, Episode e, NormalizedTags t) => new() { Path = $"/out/{e.Program}.m4a" };
+        public Task<string> WriteAsync(RecordingFile s, OutputPlan plan, NormalizedTags t, CancellationToken ct = default)
         {
-            Written.Add(e);
-            return Task.FromResult($"/out/{e.Program}.m4a");
+            Written.Add(plan.Path);
+            return Task.FromResult(plan.Path);
         }
         public int CleanupOrphans() => 0;
     }
@@ -81,8 +81,8 @@ public sealed class IngestServiceTests
 
     private sealed class ThrowingOutputTarget : IOutputTarget
     {
-        public string PlanPath(RecordingFile s, Episode e, NormalizedTags t) => "/out/plan.m4a";
-        public Task<string> WriteAsync(RecordingFile s, Episode e, NormalizedTags t, CancellationToken ct = default)
+        public OutputPlan Plan(RecordingFile s, Episode e, NormalizedTags t) => new() { Path = "/out/plan.m4a" };
+        public Task<string> WriteAsync(RecordingFile s, OutputPlan plan, NormalizedTags t, CancellationToken ct = default)
             => throw new IOException("NAS 書き込み失敗(テスト)");
         public int CleanupOrphans() => 0;
     }
@@ -157,9 +157,9 @@ public sealed class IngestServiceTests
 
     private sealed class PathLeakingOutputTarget : IOutputTarget
     {
-        public string PlanPath(RecordingFile s, Episode e, NormalizedTags t) => "/out/plan.m4a";
+        public OutputPlan Plan(RecordingFile s, Episode e, NormalizedTags t) => new() { Path = "/out/plan.m4a" };
         // 例外メッセージにフルパスを埋める(実 IO 例外を模す)。sanitize がこれを畳むかを検証する。
-        public Task<string> WriteAsync(RecordingFile s, Episode e, NormalizedTags t, CancellationToken ct = default)
+        public Task<string> WriteAsync(RecordingFile s, OutputPlan plan, NormalizedTags t, CancellationToken ct = default)
             => throw new IOException($"アクセスが拒否されました: {s.FilePath}");
         public int CleanupOrphans() => 0;
     }
