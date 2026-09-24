@@ -174,7 +174,7 @@ public sealed class IngestServiceTests
 
     private IngestService Build(
         IEnumerable<RecordingFile> files, IEnumerable<string>? skipPatterns = null,
-        IOutputTarget? target = null)
+        IOutputTarget? target = null, ILibraryRefresher? refresher = null)
         => new(
             new FakeRecordingSource(files.ToArray()),
             new RajirekoImporter(),
@@ -188,7 +188,7 @@ public sealed class IngestServiceTests
             _ledger,
             new FixedClock(Now),
             genre: "ラジオ",
-            _refresher,
+            refresher ?? _refresher,
             _publisher,
             _failureStore,
             _failurePublisher);
@@ -473,8 +473,31 @@ public sealed class IngestServiceTests
         var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
 
         Assert.Equal(1, _refresher.Calls);
-        Assert.True(report.LibraryRefreshed);
+        Assert.Equal(LibraryRefreshStatus.Started, report.LibraryRefresh);
         Assert.Null(report.RefreshError);
+    }
+
+    [Fact]
+    public async Task Run_WithImport_JellyfinNotConfigured_ReportsNotConfigured()
+    {
+        // 未設定(NullLibraryRefresher)は呼べば成功で終わるが、「起動」と報告してはいけない(#133)。
+        var report = await Build([Rec(StandardName)], refresher: new NullLibraryRefresher()).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.Equal(LibraryRefreshStatus.NotConfigured, report.LibraryRefresh);
+        Assert.Null(report.RefreshError);
+    }
+
+    [Fact]
+    public async Task Run_WithImport_MisconfiguredJellyfin_ReportsFailedWithReason()
+    {
+        // JellyfinUrl の形式不正は未設定ではなく失敗として理由を報告する(#133)。
+        var report = await Build([Rec(StandardName)], refresher: new MisconfiguredLibraryRefresher("形式が不正"))
+            .RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.Equal(LibraryRefreshStatus.Failed, report.LibraryRefresh);
+        Assert.Equal("形式が不正", report.RefreshError);
     }
 
     [Fact]
@@ -483,7 +506,17 @@ public sealed class IngestServiceTests
         var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true);
 
         Assert.Equal(0, _refresher.Calls);
-        Assert.False(report.LibraryRefreshed);
+        Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
+        Assert.Null(report.RefreshError);
+    }
+
+    [Fact]
+    public async Task DryRun_JellyfinNotConfigured_ReportsNotNeeded()
+    {
+        // dry-run は未設定でも「不要」(今どおり何も出さない)。
+        var report = await Build([Rec(StandardName)], refresher: new NullLibraryRefresher()).RunOnceAsync(dryRun: true);
+
+        Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
     }
 
     [Fact]
@@ -494,7 +527,19 @@ public sealed class IngestServiceTests
         var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false);
 
         Assert.Equal(0, _refresher.Calls);
-        Assert.False(report.LibraryRefreshed);
+        Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
+        Assert.Null(report.RefreshError);
+    }
+
+    [Fact]
+    public async Task Run_NoImports_JellyfinNotConfigured_ReportsNotNeeded()
+    {
+        // 取込0件なら未設定でも「不要」(今どおり何も出さない)。
+        var junk = Rec("この時間はＮＨＫネットラジオでは_20241021200956.m4a");
+        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"], refresher: new NullLibraryRefresher())
+            .RunOnceAsync(dryRun: false);
+
+        Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
     }
 
     [Fact]
@@ -507,7 +552,7 @@ public sealed class IngestServiceTests
         // 取り込み自体は成功(台帳記録済み)。更新失敗はエラーとして報告するが巻き戻さない。
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
         Assert.Single(_ledger.Keys);
-        Assert.False(report.LibraryRefreshed);
+        Assert.Equal(LibraryRefreshStatus.Failed, report.LibraryRefresh);
         Assert.Equal("boom", report.RefreshError);
     }
 
@@ -521,7 +566,7 @@ public sealed class IngestServiceTests
         var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
 
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
-        Assert.False(report.LibraryRefreshed);
+        Assert.Equal(LibraryRefreshStatus.Failed, report.LibraryRefresh);
         Assert.Equal("timeout", report.RefreshError);
     }
 

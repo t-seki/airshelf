@@ -80,10 +80,19 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
             $"ジャンク {report.Count(IngestOutcome.SkippedJunk)} / 対象外 {report.Count(IngestOutcome.SkippedUnsupported)} / " +
             $"失敗 {report.Count(IngestOutcome.Failed)} {mode}");
 
-        if (report.LibraryRefreshed)
-            AnsiConsole.MarkupLine("[green]Jellyfin ライブラリ更新: 起動しました[/]");
-        else if (report.RefreshError is { } error)
-            AnsiConsole.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新に失敗:[/] {error}");
+        // 不要(取込0件・dry-run)のときは何も出さない。
+        switch (report.LibraryRefresh)
+        {
+            case LibraryRefreshStatus.Started:
+                AnsiConsole.MarkupLine("[green]Jellyfin ライブラリ更新: 起動しました[/]");
+                break;
+            case LibraryRefreshStatus.NotConfigured:
+                AnsiConsole.MarkupLine("[grey]Jellyfin ライブラリ更新: 未設定のため行いません[/]");
+                break;
+            case LibraryRefreshStatus.Failed:
+                AnsiConsole.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新に失敗:[/] {report.RefreshError}");
+                break;
+        }
     }
 
     private static string Detail(IngestItemResult item) => item.Outcome switch

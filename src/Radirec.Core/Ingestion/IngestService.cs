@@ -40,14 +40,14 @@ public sealed class IngestService(
             items.Add(await ProcessAsync(file, dryRun, cancellationToken));
         }
 
-        var (refreshed, refreshError) = await MaybeRefreshLibraryAsync(items, dryRun, cancellationToken);
+        var (refreshStatus, refreshError) = await MaybeRefreshLibraryAsync(items, dryRun, cancellationToken);
         var (notified, notifyError) = await MaybePublishSummaryAsync(items, dryRun, cancellationToken);
         var (failNotified, failNotifyError) = await MaybePublishFailuresAsync(items, dryRun, cancellationToken);
         return new IngestReport
         {
             Items = items,
             DryRun = dryRun,
-            LibraryRefreshed = refreshed,
+            LibraryRefresh = refreshStatus,
             RefreshError = refreshError,
             NotificationPublished = notified,
             NotificationError = notifyError,
@@ -151,23 +151,28 @@ public sealed class IngestService(
 
     // 取込が1件以上あった実行のみライブラリ更新を起動(dry-run は起動しない)。
     // 更新失敗で取り込み成功は巻き戻さない(コピーは完了済み)。
-    private async Task<(bool Refreshed, string? Error)> MaybeRefreshLibraryAsync(
+    private async Task<(LibraryRefreshStatus Status, string? Error)> MaybeRefreshLibraryAsync(
         IReadOnlyList<IngestItemResult> items, bool dryRun, CancellationToken cancellationToken)
     {
         if (dryRun || !items.Any(i => i.Outcome == IngestOutcome.Imported))
-            return (false, null);
+            return (LibraryRefreshStatus.NotNeeded, null);
+
+        // 未設定は NullLibraryRefresher で表される(refresh コマンドと同じ判定)。呼べば成功で終わるが、
+        // 「起動」と報告すると更新されたと誤解させるので区別する(#133)。
+        if (refresher is NullLibraryRefresher)
+            return (LibraryRefreshStatus.NotConfigured, null);
 
         try
         {
             await refresher.RefreshAsync(cancellationToken);
-            return (true, null);
+            return (LibraryRefreshStatus.Started, null);
         }
         // 真のキャンセル(呼び出し元のトークン発火)は伝播させる。
         // HttpClient のタイムアウト(トークン未発火の TaskCanceledException)含むそれ以外の
         // 失敗は握って報告する(取り込み成功は巻き戻さない)。
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            return (false, ex.Message);
+            return (LibraryRefreshStatus.Failed, ex.Message);
         }
     }
 

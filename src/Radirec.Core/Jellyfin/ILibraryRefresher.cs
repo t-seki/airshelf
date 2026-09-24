@@ -12,3 +12,13 @@ public sealed class NullLibraryRefresher : ILibraryRefresher
 {
     public Task RefreshAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
+
+/// <summary>
+/// 設定が不正で更新できない(JellyfinUrl の形式不正等)ことを、呼ばれるたびに <see cref="JellyfinException"/> で知らせる。
+/// 未設定(<see cref="NullLibraryRefresher"/>)と区別し、設定の誤りを失敗として表に出すため(#133)。
+/// </summary>
+public sealed class MisconfiguredLibraryRefresher(string message) : ILibraryRefresher
+{
+    public Task RefreshAsync(CancellationToken cancellationToken = default) =>
+        Task.FromException(new JellyfinException(message));
+}

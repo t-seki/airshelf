@@ -48,16 +48,32 @@ public sealed record IngestItemResult
     public required FileFingerprint Fingerprint { get; init; }
 }
 
+/// <summary>取込後の Jellyfin ライブラリ更新の状態。</summary>
+public enum LibraryRefreshStatus
+{
+    /// <summary>更新の必要がない(取込0件・dry-run)。</summary>
+    NotNeeded,
+
+    /// <summary>Jellyfin が未設定(JellyfinUrl か JellyfinApiKey が空)のため行わない。</summary>
+    NotConfigured,
+
+    /// <summary>更新を起動した(サーバ側で非同期実行。完了は待たない)。</summary>
+    Started,
+
+    /// <summary>更新の起動に失敗した(理由は <see cref="IngestReport.RefreshError"/>)。JellyfinUrl の形式不正も含む。</summary>
+    Failed,
+}
+
 /// <summary>取り込み実行全体の結果。</summary>
 public sealed record IngestReport
 {
     public required IReadOnlyList<IngestItemResult> Items { get; init; }
     public required bool DryRun { get; init; }
 
-    /// <summary>取込後に Jellyfin ライブラリ更新を起動できたか(取込0件・dry-run 時は false)。</summary>
-    public bool LibraryRefreshed { get; init; }
+    /// <summary>取込後の Jellyfin ライブラリ更新の状態(取込0件・dry-run 時は <see cref="LibraryRefreshStatus.NotNeeded"/>)。</summary>
+    public LibraryRefreshStatus LibraryRefresh { get; init; }
 
-    /// <summary>ライブラリ更新に失敗したときのメッセージ(成功・未起動時は null)。</summary>
+    /// <summary>ライブラリ更新に失敗したときのメッセージ(<see cref="LibraryRefreshStatus.Failed"/> 以外は null)。</summary>
     public string? RefreshError { get; init; }
 
     /// <summary>取込要約シグナルを発行できたか(取込0件・dry-run・通知無効時は false)。</summary>
