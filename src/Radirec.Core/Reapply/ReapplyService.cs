@@ -148,10 +148,19 @@ public sealed class ReapplyService(
             return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
                 "この再適用で別の回が同じ場所へ移ります");
 
+        // 大文字小文字だけが違う(正規名の大文字小文字だけを変えた等)。本番(Windows)では同じ物理ファイルなので、
+        // 「移動先にある・同じ音声」から重複と誤判定して台帳だけを向け直すと、ファイル名・タグは変わらないうえ、
+        // 「重複は手で消す」に従うと唯一のファイルを消させてしまう。リネームの手順も別に要るので、いったん対象外にする。
+        // 大文字小文字を区別するファイルシステムでも同じ判定にする(結果を OS で変えない)。
+        if (!string.Equals(entry.OutputPath, newPath, StringComparison.Ordinal)
+            && string.Equals(entry.OutputPath, newPath, StringComparison.OrdinalIgnoreCase))
+            return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
+                "変更前と大文字小文字だけが違う場所は対象外です(同じファイルになるため)");
+
         var currentExists = fileSystem.File.Exists(entry.OutputPath);
 
         // 置き場所が変わらない(アルバム名がファイル名に使えない文字だけ違う等)。台帳だけを直す。
-        if (string.Equals(entry.OutputPath, newPath, StringComparison.Ordinal))
+        if (PathComparer.Equals(entry.OutputPath, newPath))
             return currentExists
                 ? Item(entry, ReapplyAction.LedgerOnly, episode.Program, newPath)
                 : Item(entry, ReapplyAction.Excluded, episode.Program, newPath, "出力ファイルが見つかりません");

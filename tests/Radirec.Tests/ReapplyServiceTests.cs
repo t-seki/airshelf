@@ -264,6 +264,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var second = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
         Assert.Empty(second.Items);
         Assert.False(second.HasChanges);
+        Assert.True(second.IsAligned);
         Assert.Equal(LibraryRefreshStatus.NotNeeded, second.LibraryRefresh);
     }
 
@@ -523,6 +524,31 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(0, row.PartIndex); // フォルダ 1 つの設定はパートを付けない
         Assert.Equal(OutputOf(album, "2024-12-23", station: station), row.OutputPath);
         Assert.True(File.Exists(row.OutputPath));
+    }
+
+    [Fact]
+    public async Task CaseOnlyAlbumChange_IsExcluded_NotTreatedAsADuplicate()
+    {
+        // 正規名の大文字小文字だけを変えると、Windows では変更前と同じ物理ファイルになる。重複(台帳だけ向け直す)に
+        // しない。大文字小文字を区別する FS(このテスト)でも同じ判定になる。
+        const string station = "J-WAVE";
+        const string folder = "LOGISTEEDRADIONOMICS";
+        PlaceSource(folder, Dec23At0830, station, "Logisteed Radionomics");
+        var ledger = Ledger();
+        await Ingest(ledger, Merged(station, "Logisteed Radionomics", folder)).RunOnceAsync(dryRun: false);
+        var before = Assert.Single(ledger.ListAll());
+        var bytes = File.ReadAllBytes(before.OutputPath);
+
+        var report = await Reapply(ledger, Merged(station, "LOGISTEED RADIONOMICS", folder)).RunAsync(dryRun: false);
+
+        var item = Assert.Single(report.Items);
+        Assert.Equal(ReapplyAction.Excluded, item.Action);
+        Assert.Contains("大文字小文字", item.Reason);
+        Assert.False(report.HasChanges);
+        Assert.True(report.IsAligned); // 「揃っています」+ 対象外の一覧、と示す
+        Assert.Equal(before, Assert.Single(ledger.ListAll())); // 台帳はそのまま
+        Assert.Equal(bytes, File.ReadAllBytes(before.OutputPath)); // ファイルもそのまま
+        Assert.Equal([Path.Combine(station, "Logisteed Radionomics", "Logisteed Radionomics 2024-12-23.m4a")], FilesUnder(OutputRoot));
     }
 
     [Fact]

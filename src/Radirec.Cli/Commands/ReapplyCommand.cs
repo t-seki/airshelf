@@ -57,9 +57,15 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
     {
         var mode = report.DryRun ? " [cyan](dry-run)[/]" : string.Empty;
 
-        if (report.Items.Count == 0)
+        // 変える回が無ければ「揃っています」(トレイ #126 も同じ判定)。対象外の回だけが残っていれば一覧を添える。
+        if (report.IsAligned)
         {
             AnsiConsole.MarkupLine($"取り込み済みの回は今の設定と揃っています{mode}");
+            if (report.Items.Count > 0)
+            {
+                AnsiConsole.MarkupLine($"ただし、次の {report.Items.Count} 回は対象外のため動かしません:");
+                RenderItems(report, outputRoot);
+            }
         }
         else
         {

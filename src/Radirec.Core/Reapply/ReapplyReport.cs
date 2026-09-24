@@ -21,7 +21,10 @@ public enum ReapplyAction
     /// <summary>動かさない(移動先に違う内容のファイルがある・放送局が変わった・出力ファイルが無い等)。</summary>
     Excluded,
 
-    /// <summary>実行中に失敗した(元のファイルは残っている。次の再適用でやり直せる)。</summary>
+    /// <summary>
+    /// 実行中に失敗した。どこで止まったかにより、元のファイルか移動先のファイルのどちらかが残っている
+    /// (確定・元の削除の後に台帳の書き換えで失敗すると、元は消えて移動先にある)。次の再適用で揃う。
+    /// </summary>
     Failed,
 }
 
@@ -82,8 +85,14 @@ public sealed record ReapplyReport
 
     public int Count(ReapplyAction action) => Items.Count(i => i.Action == action);
 
-    /// <summary>ファイルか台帳を変える回があるか(0 件なら「揃っています」)。</summary>
+    /// <summary>ファイルか台帳を変える回(移動・台帳のみ・重複)があるか。</summary>
     public bool HasChanges => Items.Any(i => i.Action is ReapplyAction.Move or ReapplyAction.LedgerOnly or ReapplyAction.DuplicateLeft);
+
+    /// <summary>
+    /// 「揃っています」と示してよいか(CLI とトレイ #126 で同じ判定を使う)。変える回も失敗も無いとき true。
+    /// 対象外の回だけが残っていても true で、その一覧は <see cref="Items"/> で添える。
+    /// </summary>
+    public bool IsAligned => !HasChanges && Count(ReapplyAction.Failed) == 0;
 
     /// <summary>アルバム単位のまとめ(放送局・変更前・変更後の序数順)。</summary>
     public IReadOnlyList<ReapplyAlbumSummary> Albums => Items
