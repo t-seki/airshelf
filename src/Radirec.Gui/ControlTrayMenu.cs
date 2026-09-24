@@ -1,12 +1,13 @@
 using System.ComponentModel;
 using System.Windows.Forms;
+using Radirec.Core.Reapply;
 using Radirec.Gui.Core;
 using Radirec.Hosting.Control;
 
 namespace Radirec.Gui;
 
 /// <summary>
-/// トレイの制御メニュー(ADR-0012)。rescan / status / reload を、同一プロセスでホストする
+/// トレイの制御メニュー(ADR-0012)。rescan / status / reload / 統合設定の再適用(#126)を、同一プロセスでホストする
 /// 取り込みワーカーの <see cref="IServiceControl"/> を**直接 in-process 呼び出し**で叩く(named pipe は退役)。
 /// status はメニューを開いた瞬間(<see cref="ToolStripDropDown.Opening"/>)にスナップショットを読んで表示を
 /// 更新する。取り込みワーカー未起動(設定未読込 = <see cref="IServiceControl"/> が null)のときは
@@ -23,10 +24,12 @@ internal sealed class ControlTrayMenu
     private readonly Func<Task>? _drainWorker; // 更新適用前にワーカーを graceful 停止(S6 レビュー #0)
     private readonly ToolStripMenuItem _rescan;
     private readonly ToolStripMenuItem _reload;
+    private readonly ToolStripMenuItem _reapply;
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
     private readonly ToolStripMenuItem? _applyUpdate; // 更新保留時のみ表示(S6)
     private IngestHistoryWindow? _historyWindow;
+    private bool _reapplyBusy; // 再適用の確認〜完了表示の間は項目を伏せる(UI スレッドだけが読み書きする)
 
     /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
     /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
@@ -48,6 +51,7 @@ internal sealed class ControlTrayMenu
 
         _rescan = new ToolStripMenuItem("今すぐ再スキャン", image: null, OnRescan);
         _reload = new ToolStripMenuItem("設定リロード…", image: null, OnReload);
+        _reapply = new ToolStripMenuItem("統合設定の再適用…", image: null, OnReapply);
 
         // 状態表示は非活性のラベル項目(クリック不可)。Opening で内容を差し替える。
         _statusLine = new ToolStripMenuItem("状態: 未確認") { Enabled = false };
@@ -64,6 +68,7 @@ internal sealed class ControlTrayMenu
         Menu.Items.Add(new ToolStripSeparator());
         Menu.Items.Add(_rescan);
         Menu.Items.Add(_reload);
+        Menu.Items.Add(_reapply);
         Menu.Items.Add(new ToolStripSeparator());
         Menu.Items.Add(_statusLine);
         Menu.Items.Add(_lastScanLine);
@@ -107,6 +112,7 @@ internal sealed class ControlTrayMenu
             // 取り込みワーカー未起動(設定未読込 or 起動失敗)。制御は不可、理由を明示する。
             _rescan.Enabled = false;
             _reload.Enabled = false;
+            _reapply.Enabled = false;
             _statusLine.Text = $"状態: 取り込み停止中({_degradedReason ?? "未起動"})";
             _lastScanLine.Text = "最終スキャン: —";
             return;
@@ -124,6 +130,7 @@ internal sealed class ControlTrayMenu
         {
             _rescan.Enabled = false;
             _reload.Enabled = false;
+            _reapply.Enabled = false;
             _statusLine.Text = "状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)";
             _lastScanLine.Text = "最終スキャン: —";
             return;
@@ -131,6 +138,7 @@ internal sealed class ControlTrayMenu
 
         _rescan.Enabled = true;
         _reload.Enabled = true;
+        _reapply.Enabled = !_reapplyBusy; // 確認〜完了の途中で 2 本目を始めない
 
         _statusLine.Text = status.Watching ? "状態: 稼働中(監視中)" : "状態: 稼働中(定期スキャンのみ)";
 
@@ -174,6 +182,89 @@ internal sealed class ControlTrayMenu
             _tray.ShowBalloonTip(3000, "Radirec", "設定リロードを受理しました(反映は取込完了後)", ToolTipIcon.Info);
         else
             _tray.ShowBalloonTip(5000, "Radirec", $"設定リロードは拒否されました: {outcome.Error}", ToolTipIcon.Warning);
+    }
+
+    // 統合設定の再適用(#126 / ADR-0016)。設定リロード → dry-run → 確認([適用] / [キャンセル])→ 実行 → 完了表示。
+    // リロード・dry-run・実行は worker の直列ループの上で行う(在中スキャンの完了を待つ)。UI スレッドは await で待ち、
+    // その間メニューは生きている(項目だけ伏せる)。
+    private async void OnReapply(object? sender, EventArgs e)
+    {
+        if (_control is null || _reapplyBusy)
+            return;
+
+        _reapplyBusy = true;
+        try
+        {
+            _tray.ShowBalloonTip(3000, "Radirec", "設定を読み込み、再適用の内容を確かめています(取り込み中なら完了後)", ToolTipIcon.Info);
+            var planned = await _control.PlanReapplyAsync();
+            if (planned.Report is not { } plan)
+            {
+                ShowReapplyDialog(new ReapplyDialogText("統合設定の再適用を中止しました", planned.Error ?? "理由不明"), TaskDialogIcon.Error);
+                return;
+            }
+
+            // 変える回が無ければ確認せずに終わる(CLI と同じ判定)。
+            if (plan.IsAligned)
+            {
+                ShowReapplyDialog(ReapplyDialogFormatter.BuildAligned(plan), TaskDialogIcon.Information);
+                return;
+            }
+
+            if (!ConfirmReapply(ReapplyDialogFormatter.BuildConfirmation(plan)))
+                return;
+
+            _tray.ShowBalloonTip(3000, "Radirec", "統合設定の再適用を実行しています", ToolTipIcon.Info);
+            var applied = await _control.ApplyReapplyAsync(plan);
+            if (applied.Report is not { } result)
+            {
+                ShowReapplyDialog(new ReapplyDialogText("統合設定の再適用を中止しました", applied.Error ?? "理由不明"), TaskDialogIcon.Error);
+                return;
+            }
+
+            var icon = result.Count(ReapplyAction.Failed) > 0 ? TaskDialogIcon.Warning : TaskDialogIcon.Information;
+            ShowReapplyDialog(ReapplyDialogFormatter.BuildCompletion(result), icon);
+        }
+        catch (Exception ex)
+        {
+            // async void の例外はメッセージループへ抜けてトレイごと落とすので、ここで止める。
+            TrayLog.Warn($"統合設定の再適用で例外: {ex}");
+            _tray.ShowBalloonTip(4000, "Radirec", "統合設定の再適用に失敗しました(gui.log 参照)", ToolTipIcon.Warning);
+        }
+        finally
+        {
+            _reapplyBusy = false;
+        }
+    }
+
+    // [適用] / [キャンセル] の確認。ファイルを動かす操作なので既定はキャンセル(設定リロードの確認と同じ)。
+    // MessageBox はボタンの文言を変えられないので TaskDialog を使う。
+    private static bool ConfirmReapply(ReapplyDialogText text)
+    {
+        var apply = new TaskDialogButton("適用");
+        var cancel = TaskDialogButton.Cancel;
+        var page = new TaskDialogPage
+        {
+            Caption = "統合設定の再適用",
+            Heading = text.Heading,
+            Text = text.Body,
+            Icon = TaskDialogIcon.Warning,
+            Buttons = { apply, cancel },
+            DefaultButton = cancel,
+        };
+        return TaskDialog.ShowDialog(page) == apply;
+    }
+
+    private static void ShowReapplyDialog(ReapplyDialogText text, TaskDialogIcon icon)
+    {
+        var page = new TaskDialogPage
+        {
+            Caption = "統合設定の再適用",
+            Heading = text.Heading,
+            Text = text.Body,
+            Icon = icon,
+            Buttons = { TaskDialogButton.OK },
+        };
+        TaskDialog.ShowDialog(page);
     }
 
     private void OnHistory(object? sender, EventArgs e)
