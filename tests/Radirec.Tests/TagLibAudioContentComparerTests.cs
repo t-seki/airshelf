@@ -76,6 +76,95 @@ public sealed class TagLibAudioContentComparerTests : IDisposable
         Assert.False(_sut.HasSameAudio(Fixture(fixture), other));
     }
 
+    // ---- MP4 のトップレベル構成(ADR-0015)----
+
+    // トップレベルのボックス(size + type + payload)を組み立てる。
+    private static byte[] Box(string type, byte[] payload)
+    {
+        var box = new byte[8 + payload.Length];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(box, (uint)box.Length);
+        System.Text.Encoding.ASCII.GetBytes(type).CopyTo(box, 4);
+        payload.CopyTo(box, 8);
+        return box;
+    }
+
+    // silent.m4a(ftyp / free / mdat / moov)の既存 mdat の直前に、トップレベルのボックスを差し込む。
+    private string WithBoxBeforeMdat(string name, byte[] box)
+    {
+        var bytes = File.ReadAllBytes(Fixture("silent.m4a"));
+        const int mdatOffset = 36; // フィクスチャの構成(ftyp 28 + free 8)
+        Assert.Equal("mdat", System.Text.Encoding.ASCII.GetString(bytes, mdatOffset + 4, 4));
+
+        var path = Path.Combine(_work, name);
+        File.WriteAllBytes(path, [.. bytes[..mdatOffset], .. box, .. bytes[mdatOffset..]]);
+        return path;
+    }
+
+    private static byte[] InvariantBytes(string path)
+    {
+        using var file = TagLib.File.Create(path);
+        return File.ReadAllBytes(path)[(int)file.InvariantStartPosition..(int)file.InvariantEndPosition];
+    }
+
+    [Fact]
+    public void Mp4_WithTwoMdat_WhereOnlyLastMatches_IsNotSame()
+    {
+        // 前の mdat(番組本編に相当)が違い、最後の mdat(末尾の無音に相当)だけが同じ 2 ファイル。
+        var a = WithBoxBeforeMdat("a.m4a", Box("mdat", Enumerable.Repeat((byte)0xAA, 64).ToArray()));
+        var b = WithBoxBeforeMdat("b.m4a", Box("mdat", Enumerable.Repeat((byte)0xBB, 64).ToArray()));
+
+        // 前提: TagLib の不変区間は最後の mdat しか指さないので、区間だけ見ると一致してしまう。
+        Assert.Equal(InvariantBytes(a), InvariantBytes(b));
+
+        Assert.False(_sut.HasSameAudio(a, b));
+    }
+
+    [Fact]
+    public void Mp4_Fragmented_WithMoof_IsNotSame_EvenIfIdentical()
+    {
+        // fragmented MP4(moof あり)は判定できない = 違う内容扱い。中身が同一でも同じとは言わない。
+        var box = Box("moof", new byte[16]);
+        var a = WithBoxBeforeMdat("a.m4a", box);
+        var b = WithBoxBeforeMdat("b.m4a", box);
+
+        Assert.False(_sut.HasSameAudio(a, b));
+    }
+
+    [Fact]
+    public void Mp4_WithBrokenTopLevelBox_IsNotSame()
+    {
+        // トップレベルのボックスがファイル末尾を越える size を名乗る(壊れたヘッダ)。
+        var broken = new byte[8];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(broken, 0x7FFF_FFFF);
+        System.Text.Encoding.ASCII.GetBytes("free").CopyTo(broken, 4);
+        var a = Path.Combine(_work, "a.m4a");
+        var b = Path.Combine(_work, "b.m4a");
+        File.WriteAllBytes(a, [.. File.ReadAllBytes(Fixture("silent.m4a")), .. broken]);
+        File.Copy(a, b);
+
+        Assert.False(_sut.HasSameAudio(a, b));
+    }
+
+    [Fact]
+    public void Mp4_WithLargeSizeMdat_IsStillCompared()
+    {
+        // 64bit largesize(size == 1)の mdat 1 つでも、ボックスを辿れて比較の対象になる。
+        var bytes = File.ReadAllBytes(Fixture("silent.m4a"));
+        const int mdatOffset = 36;
+        var mdatSize = (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(mdatOffset));
+        var large = new byte[16];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(large, 1);
+        System.Text.Encoding.ASCII.GetBytes("mdat").CopyTo(large, 4);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(large.AsSpan(8), (ulong)mdatSize + 8);
+        var a = Path.Combine(_work, "a.m4a");
+        var b = Path.Combine(_work, "b.m4a");
+        File.WriteAllBytes(a,
+            [.. bytes[..mdatOffset], .. large, .. bytes[(mdatOffset + 8)..(mdatOffset + mdatSize)], .. bytes[(mdatOffset + mdatSize)..]]);
+        File.Copy(a, b);
+
+        Assert.True(_sut.HasSameAudio(a, b));
+    }
+
     [Fact]
     public void Unreadable_IsNotSame_WithoutThrowing()
     {
