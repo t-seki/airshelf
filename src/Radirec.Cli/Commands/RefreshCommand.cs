@@ -39,7 +39,7 @@ public sealed class RefreshCommand : AsyncCommand<RefreshCommand.Settings>
                 AnsiConsole.MarkupLine("[green]Jellyfin ライブラリ更新を起動しました。[/]");
                 return 0;
             }
-            // HTTP エラー(JellyfinException)に加え、接続不可/DNS/TLS(HttpRequestException)・
+            // HTTP エラー・設定の不正(JellyfinUrl の形式不正)(JellyfinException)に加え、接続不可/DNS/TLS(HttpRequestException)・
             // タイムアウト(TaskCanceledException)も親切に扱う(疎通確認コマンドの主目的)。
             catch (Exception ex) when (ex is JellyfinException or HttpRequestException or TaskCanceledException)
             {
