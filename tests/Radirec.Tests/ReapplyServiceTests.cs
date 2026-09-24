@@ -498,6 +498,49 @@ public sealed class ReapplyServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CopiedByHand_Duplicate_FixesTheTargetTags_AndKeepsTheOriginal()
+    {
+        // 手作業の統合で mv ではなく cp した回:統合先のコピーのタグは (1) のまま。台帳だけをそちらへ向けると、
+        // 以後は記録どおりとして直らないので、移動先のタグも揃える(#141)。
+        PlaceSource(Folder1, Dec23At0830);
+        var ledger = Ledger();
+        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
+        var original = OutputOf(Folder1, "2024-12-23");
+        var target = OutputOf(Album, "2024-12-23", part: 1);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.Copy(original, target);
+        var originalBytes = File.ReadAllBytes(original);
+        var targetBytes = File.ReadAllBytes(target);
+        var otherBefore = TagsOf(target);
+        var refresher = new CountingRefresher();
+
+        var dryRun = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        var planned = Assert.Single(dryRun.Items);
+        Assert.Equal(ReapplyAction.DuplicateLeft, planned.Action);
+        Assert.True(planned.RewritesTags);
+        Assert.Contains("タグ", planned.Reason);
+        Assert.Equal(1, dryRun.DuplicatesRewritingTags);
+        Assert.Equal(targetBytes, File.ReadAllBytes(target)); // dry-run は書き換えない
+
+        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false);
+
+        var item = Assert.Single(report.Items);
+        Assert.Equal(ReapplyAction.DuplicateLeft, item.Action);
+        Assert.True(item.RewritesTags);
+        Assert.Equal(1, report.RewritesFiles);
+        var after = TagsOf(target);
+        Assert.Equal((Album, "2024-12-23 (1)", 12231u), (after.Album, after.Title, after.Track));
+        Assert.Equal((otherBefore.Comment, otherBefore.Genre, otherBefore.Disc, otherBefore.Artist),
+            (after.Comment, after.Genre, after.Disc, after.Artist));
+        Assert.Equal(originalBytes, File.ReadAllBytes(original)); // 元の場所のファイルは消さず、書き換えもしない
+        Assert.Contains(ledger.ListAll(), e => e.OutputPath == target && e.Program == Album);
+        Assert.Equal(1, refresher.Calls); // タグを書き換えたので Jellyfin を更新する
+        Assert.Empty(Directory.GetFiles(OutputRoot, "*.partial.*", SearchOption.AllDirectories));
+
+        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items);
+    }
+
+    [Fact]
     public async Task FileAtNewPlaceWithUnreadableTags_IsExcluded_AndNothingChanges()
     {
         var (ledger, target) = await IngestOneAndRenameByHandAsync();
@@ -645,7 +688,9 @@ public sealed class ReapplyServiceTests : IDisposable
 
         var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
 
-        Assert.Equal(ReapplyAction.DuplicateLeft, Assert.Single(report.Items, i => i.ToPath == target).Action);
+        var item = Assert.Single(report.Items, i => i.ToPath == target);
+        Assert.Equal(ReapplyAction.DuplicateLeft, item.Action);
+        Assert.False(item.RewritesTags); // 移動先のタグは確定の前に書いてあるので揃っている
         Assert.Equal(originalBytes, File.ReadAllBytes(original)); // 元は壊れない
         Assert.Contains(ledger.ListAll(), e => e.OutputPath == target);
         Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items); // 揃った

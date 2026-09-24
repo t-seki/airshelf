@@ -20,6 +20,7 @@ namespace Radirec.Core.Reapply;
 /// 台帳を書き換える → 空になった移動元フォルダを消す、の順で、どこで止まっても元のファイルが先に壊れず、
 /// 次の再適用で揃う(ADR-0003 と同じ考え方)。ファイルが既に今の設定の場所にある回は、タグ(<c>album</c> /
 /// <c>title</c> / <c>track</c>)が違えば同じ場所で書き換えてから台帳を直し、揃っていれば台帳だけを直す(#141)。
+/// 移動先に同じ内容のファイルがある回(重複)も、移動先のタグが違えば同じように書き換える。
 /// </remarks>
 public sealed class ReapplyService(
     IFileSystem fileSystem,
@@ -132,11 +133,15 @@ public sealed class ReapplyService(
         HashSet<string> claimedPaths, HashSet<(string Key, TimeOnly? Time, int Part)> claimedKeys)
     {
         var item = PlanPlacement(entry, episode, updated, claimedPaths, claimedKeys);
-        return item.Action == ReapplyAction.LedgerOnly ? CheckTags(item, entry, episode, tags) : item;
+        return item.Action is ReapplyAction.LedgerOnly or ReapplyAction.DuplicateLeft
+            ? CheckTags(item, entry, episode, tags)
+            : item;
     }
 
-    // 台帳だけ直す候補の回(ファイルは既に今の設定の場所にある)だけ、ファイルのタグを読む(全回のファイルは開かない)。
-    // ファイル名だけ手で直した回は album / title / track が古いままなので、揃っていなければ台帳とタグを直す(#141)。
+    // 台帳を今の設定の場所のファイルへ向ける回(台帳だけ直す候補・重複)だけ、そのファイルのタグを読む(全回のファイルは
+    // 開かない)。手作業の統合でファイル名だけ直した回(mv)や、統合先へコピーした回(cp)は album / title / track が
+    // 古いままなので、揃っていなければ同じ場所でタグを書き換える(#141)。台帳の記録が今の設定と揃っている回は
+    // RunAsync が先に飛ばすので、ここには来ない(そのタグは確かめない)。
     private ReapplyItem CheckTags(ReapplyItem item, LedgerEntry entry, Episode episode, NormalizedTags tags)
     {
         PlacementTags current;
@@ -152,8 +157,19 @@ public sealed class ReapplyService(
         }
 
         var aligned = current.Album == tags.Album && current.Title == tags.Title && current.Track == tags.Track;
-        return aligned ? item : item with { Action = ReapplyAction.LedgerAndTags };
+        if (aligned)
+            return item;
+
+        // 重複の回は区分を変えず(元の場所のファイルを残すことは変わらない)、移動先のタグも直すことを理由に添える。
+        return item.Action == ReapplyAction.DuplicateLeft
+            ? item with { RewritesTags = true, Reason = DuplicateReasonWithTags }
+            : item with { Action = ReapplyAction.LedgerAndTags, RewritesTags = true };
     }
+
+    private const string DuplicateReason = "移動先に同じ内容のファイルがあるため、元の場所のファイルを残しています";
+
+    private const string DuplicateReasonWithTags =
+        DuplicateReason + "。移動先のファイルのタグ(album / title / track)を直します";
 
     // 置き場所(移動・台帳だけ・重複・対象外)を決める。
     private ReapplyItem PlanPlacement(
@@ -212,8 +228,7 @@ public sealed class ReapplyService(
         // 移動先に既にある。音声部分が同じなら台帳だけを向け直し、元の場所のファイルは消さない(ADR-0015 の比較)。
         // 違う内容なら動かさない。取り込みのように ` HHmm` の別名で逃がすことはしない(ADR-0016)。
         return contentComparer.HasSameAudio(entry.OutputPath, newPath)
-            ? Item(entry, ReapplyAction.DuplicateLeft, episode.Program, newPath,
-                "移動先に同じ内容のファイルがあるため、元の場所のファイルを残しています")
+            ? Item(entry, ReapplyAction.DuplicateLeft, episode.Program, newPath, DuplicateReason)
             : Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
                 "移動先に内容の違うファイルがあります(衝突のため対象外)");
     }
@@ -232,10 +247,11 @@ public sealed class ReapplyService(
                 fileSystem.File.Delete(entry.OutputPath);
                 vacatedDirectories.Add(fileSystem.Path.GetDirectoryName(entry.OutputPath)!);
             }
-            else if (item.Action == ReapplyAction.LedgerAndTags)
+            else if (item.RewritesTags)
             {
-                // 移動と同じく、ファイルを先に揃えてから台帳を書き換える。確定後・台帳の前に止まっても、
-                // 次の再適用がタグの揃った回(台帳だけ直す)として台帳を直す。
+                // 台帳とタグを直す回・移動先のタグが古い重複の回。移動と同じく、ファイルを先に揃えてから台帳を書き換える。
+                // 確定後・台帳の前に止まっても、次の再適用がタグの揃った回(台帳だけ直す・重複)として台帳を直す。
+                // 重複の回でも元の場所のファイルには触れない。
                 await target.RewritePlacementAsync(updated.OutputPath, tags, cancellationToken);
             }
 

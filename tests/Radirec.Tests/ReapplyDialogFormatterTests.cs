@@ -126,6 +126,31 @@ public sealed class ReapplyDialogFormatterTests
     }
 
     [Fact]
+    public void 確認で移動先のタグも直す重複の回があれば件数を添える()
+    {
+        var plan = Report(true,
+        [
+            Item(ReapplyAction.DuplicateLeft) with { RewritesTags = true },
+            Item(ReapplyAction.DuplicateLeft),
+        ]);
+
+        var text = ReapplyDialogFormatter.BuildConfirmation(plan);
+
+        Assert.Contains("重複が残っている回のうち 1 回は、移動先のファイルのタグ(album / title / track)も書き換えます。", text.Body);
+    }
+
+    [Fact]
+    public void 完了で移動先のタグを直した重複の回があればメタデータ更新を案内する()
+    {
+        var withTags = ReapplyDialogFormatter.BuildCompletion(
+            Report(false, [Item(ReapplyAction.DuplicateLeft) with { RewritesTags = true }]));
+        var without = ReapplyDialogFormatter.BuildCompletion(Report(false, [Item(ReapplyAction.DuplicateLeft)]));
+
+        Assert.Contains("Jellyfin でメタデータを更新してください。", withTags.Body);
+        Assert.DoesNotContain("メタデータ", without.Body);
+    }
+
+    [Fact]
     public void 確認で失敗は0なら出さない()
     {
         var text = ReapplyDialogFormatter.BuildConfirmation(Report(true, Repeat(1, ReapplyAction.Move)));

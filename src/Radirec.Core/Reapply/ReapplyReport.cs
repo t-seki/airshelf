@@ -20,7 +20,8 @@ public enum ReapplyAction
 
     /// <summary>
     /// 移動先に音声部分が同じファイルが既にある。台帳だけをそちらへ向け直し、元の場所のファイルは消さずに残す
-    /// (利用者が確かめて消す)。
+    /// (利用者が確かめて消す)。移動先のファイルの <c>album</c> / <c>title</c> / <c>track</c> が今の設定と違えば
+    /// (手作業で統合先へコピーした回)、置き場所を変えずにタグも書き換える(<see cref="ReapplyItem.RewritesTags"/>)。
     /// </summary>
     DuplicateLeft,
 
@@ -29,8 +30,9 @@ public enum ReapplyAction
 
     /// <summary>
     /// 実行中に失敗した。どこで止まったかにより、元のファイルか移動先のファイルのどちらかが残っている
-    /// (確定・元の削除の後に台帳の書き換えで失敗すると、元は消えて移動先にある)。台帳とタグを直す回は、ファイルは
-    /// 同じ場所にあり、確定の前なら元のタグのまま、確定の後ならタグだけ揃っている。次の再適用で揃う。
+    /// (確定・元の削除の後に台帳の書き換えで失敗すると、元は消えて移動先にある)。台帳とタグを直す回(タグも直す重複の
+    /// 回の移動先も)は、ファイルは同じ場所にあり、確定の前なら元のタグのまま、確定の後ならタグだけ揃っている。
+    /// 次の再適用で揃う。
     /// </summary>
     Failed,
 }
@@ -62,6 +64,12 @@ public sealed record ReapplyItem
 
     /// <summary>対象外・失敗の理由。重複の注記。それ以外は null。</summary>
     public string? Reason { get; init; }
+
+    /// <summary>
+    /// 台帳が向く先のファイル(<see cref="ToPath"/>)の <c>album</c> / <c>title</c> / <c>track</c> を、置き場所を変えずに
+    /// 書き換えるか。台帳とタグを直す回と、移動先のファイルのタグが古い重複の回(手作業で統合先へコピーした回)で true。
+    /// </summary>
+    public bool RewritesTags { get; init; }
 }
 
 /// <summary>アルバム単位のまとめ(変更前 → 変更後の組ごとの件数)。</summary>
@@ -100,10 +108,13 @@ public sealed record ReapplyReport
         or ReapplyAction.LedgerOnly or ReapplyAction.DuplicateLeft);
 
     /// <summary>
-    /// 出力ファイル(置き場所かタグ)を書き換える回の数(移動・台帳とタグ)。Jellyfin のライブラリ更新と、
-    /// メタデータ更新の案内はこれが 1 以上のときに出す。
+    /// 出力ファイル(置き場所かタグ)を書き換える回の数(移動・台帳とタグ・移動先のタグも直す重複)。Jellyfin の
+    /// ライブラリ更新と、メタデータ更新の案内はこれが 1 以上のときに出す。
     /// </summary>
-    public int RewritesFiles => Count(ReapplyAction.Move) + Count(ReapplyAction.LedgerAndTags);
+    public int RewritesFiles => Count(ReapplyAction.Move) + DuplicatesRewritingTags + Count(ReapplyAction.LedgerAndTags);
+
+    /// <summary>重複の回のうち、移動先のファイルのタグも直す回の数。</summary>
+    public int DuplicatesRewritingTags => Items.Count(i => i.Action == ReapplyAction.DuplicateLeft && i.RewritesTags);
 
     /// <summary>
     /// 「揃っています」と示してよいか(CLI とトレイ #126 で同じ判定を使う)。変える回も失敗も無いとき true。

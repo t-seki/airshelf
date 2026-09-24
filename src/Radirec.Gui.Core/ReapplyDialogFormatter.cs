@@ -65,6 +65,8 @@ public static class ReapplyDialogFormatter
             notes.Add("台帳とタグを直す回は、ファイル名はそのままで、ファイルのタグ(album / title / track)を書き換えます。");
         if (plan.Count(ReapplyAction.DuplicateLeft) > 0)
             notes.Add("重複が残っている回は、移動先に同じ内容のファイルがあるため、元の場所のファイルを消さずに残します(確かめて手で消してください)。");
+        if (plan.DuplicatesRewritingTags > 0)
+            notes.Add($"重複が残っている回のうち {plan.DuplicatesRewritingTags} 回は、移動先のファイルのタグ(album / title / track)も書き換えます。");
         if (plan.Count(ReapplyAction.Excluded) > 0)
             notes.Add("対象外の回(衝突・放送局の変更など)は動かしません。");
         if (notes.Count > 0)
@@ -82,7 +84,7 @@ public static class ReapplyDialogFormatter
 
     /// <summary>
     /// 実行後の完了表示。件数は確認時の予定ではなく実行の結果から出す(確認ダイアログを開いている間に取り込みが
-    /// 挟まりうるため)。ファイルを書き換えた回(移動・台帳とタグ)があれば Jellyfin でのメタデータ更新を案内する
+    /// 挟まりうるため)。ファイルを書き換えた回(移動・台帳とタグ・タグも直した重複)があれば Jellyfin でのメタデータ更新を案内する
     /// (CLI と同じ条件。ADR-0016)。
     /// </summary>
     public static ReapplyDialogText BuildCompletion(ReapplyReport result)

@@ -77,6 +77,10 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
                 $"台帳だけ直す {report.Count(ReapplyAction.LedgerOnly)} / " +
                 $"重複が残っている {report.Count(ReapplyAction.DuplicateLeft)} / 対象外 {report.Count(ReapplyAction.Excluded)} / " +
                 $"失敗 {report.Count(ReapplyAction.Failed)}{mode}");
+            if (report.DuplicatesRewritingTags > 0)
+                AnsiConsole.MarkupLine(
+                    $"[grey]重複が残っている回のうち {report.DuplicatesRewritingTags} 回は、移動先のファイルのタグ(album / title / track)も" +
+                    (report.DryRun ? "書き換えます。[/]" : "書き換えました。[/]"));
         }
 
         RenderSiblings(report);
@@ -179,6 +183,7 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
         ReapplyAction.Move => (dryRun ? "移動予定" : "移動", dryRun ? "cyan" : "green"),
         ReapplyAction.LedgerAndTags => ("台帳とタグ", dryRun ? "cyan" : "green"),
         ReapplyAction.LedgerOnly => ("台帳のみ", "green"),
+        // 移動先のタグも直す重複の回は、明細の詳細(理由)にその旨が出る。
         ReapplyAction.DuplicateLeft => ("重複", "yellow"),
         ReapplyAction.Excluded => ("対象外", "grey"),
         ReapplyAction.Failed => ("失敗", "red"),
