@@ -73,7 +73,8 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
             AnsiConsole.MarkupLineInterpolated($"[grey]明細のパスは出力先({outputRoot})からの相対パスです[/]");
             RenderItems(report, outputRoot);
             AnsiConsole.MarkupLine(
-                $"移動・リネーム {report.Count(ReapplyAction.Move)} / 台帳だけ直す {report.Count(ReapplyAction.LedgerOnly)} / " +
+                $"移動・リネーム {report.Count(ReapplyAction.Move)} / 台帳とタグを直す {report.Count(ReapplyAction.LedgerAndTags)} / " +
+                $"台帳だけ直す {report.Count(ReapplyAction.LedgerOnly)} / " +
                 $"重複が残っている {report.Count(ReapplyAction.DuplicateLeft)} / 対象外 {report.Count(ReapplyAction.Excluded)} / " +
                 $"失敗 {report.Count(ReapplyAction.Failed)}{mode}");
         }
@@ -93,10 +94,10 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
                 break;
         }
 
-        // 移動した回のタグは通常スキャンで反映されないことがある(ADR-0016。FullRefresh は自動化しない)。
-        if (!report.DryRun && report.Count(ReapplyAction.Move) > 0)
+        // 書き換えた回のタグは通常スキャンで反映されないことがある(ADR-0016。FullRefresh は自動化しない)。
+        if (!report.DryRun && report.RewritesFiles > 0)
             AnsiConsole.MarkupLine(
-                "[grey]タグ(title / track)が反映されないアルバムがあれば、Jellyfin でメタデータを更新してください。[/]");
+                "[grey]タグ(album / title / track)が反映されないアルバムがあれば、Jellyfin でメタデータを更新してください。[/]");
     }
 
     private static void RenderAlbums(ReapplyReport report)
@@ -105,6 +106,7 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
         table.AddColumn("放送局");
         table.AddColumn("変更前 → 変更後");
         table.AddColumn(new TableColumn("移動").RightAligned());
+        table.AddColumn(new TableColumn("台帳とタグ").RightAligned());
         table.AddColumn(new TableColumn("台帳のみ").RightAligned());
         table.AddColumn(new TableColumn("重複").RightAligned());
         table.AddColumn(new TableColumn("対象外").RightAligned());
@@ -116,6 +118,7 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
                 Markup.Escape(album.Station),
                 Markup.Escape($"{album.FromAlbum} → {album.ToAlbum}"),
                 album.Moves.ToString(),
+                album.LedgerAndTags.ToString(),
                 album.LedgerOnly.ToString(),
                 album.DuplicatesLeft.ToString(),
                 album.Excluded.ToString(),
@@ -174,6 +177,7 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
     private static (string Label, string Color) Describe(ReapplyAction action, bool dryRun) => action switch
     {
         ReapplyAction.Move => (dryRun ? "移動予定" : "移動", dryRun ? "cyan" : "green"),
+        ReapplyAction.LedgerAndTags => ("台帳とタグ", dryRun ? "cyan" : "green"),
         ReapplyAction.LedgerOnly => ("台帳のみ", "green"),
         ReapplyAction.DuplicateLeft => ("重複", "yellow"),
         ReapplyAction.Excluded => ("対象外", "grey"),

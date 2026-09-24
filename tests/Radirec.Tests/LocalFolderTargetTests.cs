@@ -128,6 +128,57 @@ public sealed class LocalFolderTargetTests
         Assert.Empty(comparer.Compared); // 名前が衝突しなければ中身は読まない
     }
 
+    // 置き場所のタグ書き込みを、ファイルの中身を書き換えることで模す(失敗も指定できる)。
+    private sealed class RewritingTagWriter(MockFileSystem fs, bool fails = false) : ITagWriter
+    {
+        public List<string> Written { get; } = [];
+        public void Write(string filePath, NormalizedTags tags) => Written.Add(filePath);
+
+        public void WritePlacement(string filePath, NormalizedTags tags)
+        {
+            Written.Add(filePath);
+            if (fails)
+                throw new IOException("書き込みに失敗しました");
+            fs.File.WriteAllText(filePath, "tagged");
+        }
+    }
+
+    private const string InPlacePath = "/out/J-WAVE/LOGISTEED RADIONOMICS/LOGISTEED RADIONOMICS 2026-06-12.m4a";
+    private const string InPlacePartial = "/out/J-WAVE/LOGISTEED RADIONOMICS/LOGISTEED RADIONOMICS 2026-06-12.partial.m4a";
+
+    [Fact]
+    public async Task RewritePlacement_WritesTagsOnPartial_AndReplacesTheFileInPlace()
+    {
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [InPlacePath] = new("original"),
+            [InPlacePartial] = new("leftover"), // 前回止まったときの書きかけ
+        });
+        var tagWriter = new RewritingTagWriter(fs);
+
+        await Target(fs, tagWriter).RewritePlacementAsync(InPlacePath, Tags());
+
+        Assert.Equal([fs.Path.GetFullPath(InPlacePartial)], tagWriter.Written.Select(fs.Path.GetFullPath)); // タグは .partial に書く
+        Assert.Equal("tagged", fs.File.ReadAllText(InPlacePath)); // 同じ名前へ置き換わる
+        Assert.False(fs.File.Exists(InPlacePartial));
+        Assert.Single(fs.Directory.GetFiles(fs.Path.GetDirectoryName(InPlacePath)!));
+    }
+
+    [Fact]
+    public async Task RewritePlacement_WhenTagWriteFails_KeepsTheOriginal_AndRemovesThePartial()
+    {
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [InPlacePath] = new("original"),
+        });
+
+        await Assert.ThrowsAsync<IOException>(
+            () => Target(fs, new RewritingTagWriter(fs, fails: true)).RewritePlacementAsync(InPlacePath, Tags()));
+
+        Assert.Equal("original", fs.File.ReadAllText(InPlacePath));
+        Assert.False(fs.File.Exists(InPlacePartial));
+    }
+
     [Fact]
     public void CleanupOrphans_DeletesOnlyPartialTempFiles()
     {

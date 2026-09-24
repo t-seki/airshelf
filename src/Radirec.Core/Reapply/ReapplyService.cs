@@ -18,7 +18,8 @@ namespace Radirec.Core.Reapply;
 /// 対象はらじれこの回だけ。台帳の <c>source_path</c> のフォルダ名を今の設定で解決し直し、記録された
 /// アルバム名・パートと食い違う回を扱う。1 回分の手順は <c>.partial</c> にコピー → タグ書換 → 確定 → 元を消す →
 /// 台帳を書き換える → 空になった移動元フォルダを消す、の順で、どこで止まっても元のファイルが先に壊れず、
-/// 次の再適用で揃う(ADR-0003 と同じ考え方)。
+/// 次の再適用で揃う(ADR-0003 と同じ考え方)。ファイルが既に今の設定の場所にある回は、タグ(<c>album</c> /
+/// <c>title</c> / <c>track</c>)が違えば同じ場所で書き換えてから台帳を直し、揃っていれば台帳だけを直す(#141)。
 /// </remarks>
 public sealed class ReapplyService(
     IFileSystem fileSystem,
@@ -27,6 +28,7 @@ public sealed class ReapplyService(
     IStationResolver stationResolver,
     IProgramResolver programResolver,
     LocalFolderTarget target,
+    IPlacementTagReader tagReader,
     IAudioContentComparer contentComparer,
     ILibraryRefresher refresher)
 {
@@ -93,8 +95,9 @@ public sealed class ReapplyService(
                 OutputPath = newPath,
             };
 
-            var item = Plan(entry, episode, updated, claimedPaths, claimedKeys);
-            if (item.Action is ReapplyAction.Move or ReapplyAction.LedgerOnly or ReapplyAction.DuplicateLeft)
+            var item = Plan(entry, episode, updated, tags, claimedPaths, claimedKeys);
+            if (item.Action is ReapplyAction.Move or ReapplyAction.LedgerAndTags or ReapplyAction.LedgerOnly
+                or ReapplyAction.DuplicateLeft)
             {
                 claimedPaths.Add(newPath);
                 claimedKeys.Add((updated.IdentityKey, updated.BroadcastTime, updated.PartIndex));
@@ -108,22 +111,52 @@ public sealed class ReapplyService(
         if (!dryRun)
             RemoveEmptyDirectories(vacatedDirectories);
 
-        var (refreshStatus, refreshError) = dryRun || !items.Any(i => i.Action == ReapplyAction.Move)
-            ? (LibraryRefreshStatus.NotNeeded, null)
-            : await LibraryRefresh.RunAsync(refresher, cancellationToken);
-
-        return new ReapplyReport
+        var report = new ReapplyReport
         {
             Items = items,
             DryRun = dryRun,
             UnintegratedSiblings = UnintegratedSiblings(knownFolders),
-            LibraryRefresh = refreshStatus,
-            RefreshError = refreshError,
         };
+
+        // ファイル(置き場所かタグ)を書き換えた回があれば、Jellyfin の通常スキャンを起動する。
+        var (refreshStatus, refreshError) = dryRun || report.RewritesFiles == 0
+            ? (LibraryRefreshStatus.NotNeeded, null)
+            : await LibraryRefresh.RunAsync(refresher, cancellationToken);
+
+        return report with { LibraryRefresh = refreshStatus, RefreshError = refreshError };
     }
 
     // 1 回分をどう扱うかを、ファイルと台帳を見て決める(副作用なし。dry-run と実行で同じ)。
     private ReapplyItem Plan(
+        LedgerEntry entry, Episode episode, LedgerEntry updated, NormalizedTags tags,
+        HashSet<string> claimedPaths, HashSet<(string Key, TimeOnly? Time, int Part)> claimedKeys)
+    {
+        var item = PlanPlacement(entry, episode, updated, claimedPaths, claimedKeys);
+        return item.Action == ReapplyAction.LedgerOnly ? CheckTags(item, entry, episode, tags) : item;
+    }
+
+    // 台帳だけ直す候補の回(ファイルは既に今の設定の場所にある)だけ、ファイルのタグを読む(全回のファイルは開かない)。
+    // ファイル名だけ手で直した回は album / title / track が古いままなので、揃っていなければ台帳とタグを直す(#141)。
+    private ReapplyItem CheckTags(ReapplyItem item, LedgerEntry entry, Episode episode, NormalizedTags tags)
+    {
+        PlacementTags current;
+        try
+        {
+            current = tagReader.ReadPlacement(item.ToPath);
+        }
+        catch (Exception ex)
+        {
+            // 読めない(壊れている・他のアプリが開いている等)なら、タグも台帳も触らない。揃っているか分からない回の
+            // 台帳だけを直すと、次の再適用で記録どおりとして見過ごされるため。
+            return Item(entry, ReapplyAction.Excluded, episode.Program, item.ToPath, $"タグを読み取れません({ex.Message})");
+        }
+
+        var aligned = current.Album == tags.Album && current.Title == tags.Title && current.Track == tags.Track;
+        return aligned ? item : item with { Action = ReapplyAction.LedgerAndTags };
+    }
+
+    // 置き場所(移動・台帳だけ・重複・対象外)を決める。
+    private ReapplyItem PlanPlacement(
         LedgerEntry entry, Episode episode, LedgerEntry updated,
         HashSet<string> claimedPaths, HashSet<(string Key, TimeOnly? Time, int Part)> claimedKeys)
     {
@@ -199,6 +232,12 @@ public sealed class ReapplyService(
                 fileSystem.File.Delete(entry.OutputPath);
                 vacatedDirectories.Add(fileSystem.Path.GetDirectoryName(entry.OutputPath)!);
             }
+            else if (item.Action == ReapplyAction.LedgerAndTags)
+            {
+                // 移動と同じく、ファイルを先に揃えてから台帳を書き換える。確定後・台帳の前に止まっても、
+                // 次の再適用がタグの揃った回(台帳だけ直す)として台帳を直す。
+                await target.RewritePlacementAsync(updated.OutputPath, tags, cancellationToken);
+            }
 
             if (!ledger.Replace(entry, updated))
                 return item with
@@ -211,7 +250,8 @@ public sealed class ReapplyService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // 1 回分の失敗で全体を止めない。元のファイルは確定前なら残り、確定後なら移動先にある(次の再適用で揃う)。
+            // 1 回分の失敗で全体を止めない。元のファイルは確定前なら残り、確定後なら移動先にある(タグを直す回は
+            // 同じ場所に、確定前なら元のタグのまま・確定後なら揃ったタグである)。いずれも次の再適用で揃う。
             return item with { Action = ReapplyAction.Failed, Reason = ex.Message };
         }
     }

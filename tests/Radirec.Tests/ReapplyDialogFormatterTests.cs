@@ -95,12 +95,34 @@ public sealed class ReapplyDialogFormatterTests
 
         // 変える回 = 移動 + 台帳のみ + 重複(対象外は含めない)
         Assert.Equal("16 回を今の設定に揃えます", text.Heading);
-        Assert.Contains("合計: 移動・リネーム 12 回 / 台帳だけ直す 3 回 / 重複が残っている 1 回 / 対象外 0 回", text.Body);
+        Assert.Contains("合計: 移動・リネーム 12 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 3 回 / 重複が残っている 1 回 / 対象外 0 回", text.Body);
         Assert.Contains($"・TBSラジオ「{Long}(1)」→「{Long}」\n　　移動・リネーム 12 / 重複が残っている 1", text.Body);
         Assert.Contains($"・TBSラジオ「{Long}(2)」→「{Long}」\n　　台帳だけ直す 3", text.Body);
         Assert.Contains("元の場所のファイルを消さずに残します", text.Body);
         Assert.DoesNotContain("対象外の回", text.Body);
+        Assert.DoesNotContain("台帳とタグを直す回は", text.Body);
         Assert.EndsWith($"1 回ずつの明細は gui.log({ReapplyDialogFormatter.LogLocation})に書きました。", text.Body);
+    }
+
+    [Fact]
+    public void 確認で台帳とタグを直す回を別の区分として移動の次に出す()
+    {
+        var plan = Report(true,
+        [
+            Item(ReapplyAction.Move),
+            .. Repeat(2, ReapplyAction.LedgerAndTags),
+            Item(ReapplyAction.LedgerOnly),
+        ]);
+        Assert.False(plan.IsAligned);
+
+        var text = ReapplyDialogFormatter.BuildConfirmation(plan);
+
+        // 変える回に台帳とタグを直す回も含む
+        Assert.Equal("4 回を今の設定に揃えます", text.Heading);
+        Assert.Contains("合計: 移動・リネーム 1 回 / 台帳とタグを直す 2 回 / 台帳だけ直す 1 回 / 重複が残っている 0 回 / 対象外 0 回", text.Body);
+        Assert.Contains($"・TBSラジオ「{Long}(1)」→「{Long}」\n　　移動・リネーム 1 / 台帳とタグを直す 2 / 台帳だけ直す 1", text.Body);
+        // NAS 上のファイルのタグを書き換えることが確認の段階で分かる
+        Assert.Contains("台帳とタグを直す回は、ファイル名はそのままで、ファイルのタグ(album / title / track)を書き換えます。", text.Body);
     }
 
     [Fact]
@@ -168,14 +190,25 @@ public sealed class ReapplyDialogFormatterTests
         var text = ReapplyDialogFormatter.BuildCompletion(result);
 
         Assert.Equal("統合設定の再適用が完了しました", text.Heading);
-        Assert.StartsWith("移動・リネーム 5 回 / 台帳だけ直す 1 回 / 重複が残っている 0 回 / 対象外 0 回", text.Body);
+        Assert.StartsWith("移動・リネーム 5 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 1 回 / 重複が残っている 0 回 / 対象外 0 回", text.Body);
         Assert.Contains("Jellyfin ライブラリ更新: 起動しました", text.Body);
-        Assert.Contains("タグ(title / track)が反映されないアルバムがあれば、Jellyfin でメタデータを更新してください。", text.Body);
+        Assert.Contains("タグ(album / title / track)が反映されないアルバムがあれば、Jellyfin でメタデータを更新してください。", text.Body);
         Assert.DoesNotContain("失敗", text.Body);
     }
 
     [Fact]
-    public void 移動が無ければメタデータ更新は案内しない()
+    public void 台帳とタグを直した回だけでもメタデータ更新を案内する()
+    {
+        var text = ReapplyDialogFormatter.BuildCompletion(
+            Report(false, [Item(ReapplyAction.LedgerAndTags)], refresh: LibraryRefreshStatus.Started));
+
+        Assert.StartsWith("移動・リネーム 0 回 / 台帳とタグを直す 1 回 / 台帳だけ直す 0 回", text.Body);
+        Assert.Contains("Jellyfin ライブラリ更新: 起動しました", text.Body);
+        Assert.Contains("Jellyfin でメタデータを更新してください。", text.Body);
+    }
+
+    [Fact]
+    public void ファイルを書き換えていなければメタデータ更新は案内しない()
     {
         var text = ReapplyDialogFormatter.BuildCompletion(Report(false, [Item(ReapplyAction.LedgerOnly)]));
 
@@ -230,13 +263,23 @@ public sealed class ReapplyDialogFormatterTests
         var lines = ReapplyDialogFormatter.BuildLogLines(plan);
 
         Assert.Equal(4, lines.Count);
-        Assert.Equal("統合設定の再適用 確認(dry-run): 移動・リネーム 1 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 1 回", lines[0]);
+        Assert.Equal("統合設定の再適用 確認(dry-run): 移動・リネーム 1 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 1 回", lines[0]);
         Assert.Equal(
             $@"  移動予定 TBSラジオ 2026-09-19 13:00 「{Long}(1)」→「{Long}」 Z:\{Long}(1)\{Long}(1) 2026-09-19.m4a → Z:\{Long}\{Long} 2026-09-19-1.m4a",
             lines[1]);
         Assert.StartsWith("  対象外 TBSラジオ 2026-09-19 「", lines[2]);
         Assert.EndsWith("(出力ファイルが見つかりません)", lines[2]);
         Assert.Equal("  統合設定の無い兄弟フォルダ TBSラジオ: 番組X(1) / 番組X(2)(設定なし)", lines[3]);
+    }
+
+    [Fact]
+    public void 明細行で台帳とタグを直す回は台帳のみと区別する()
+    {
+        var lines = ReapplyDialogFormatter.BuildLogLines(
+            Report(false, [Item(ReapplyAction.LedgerAndTags), Item(ReapplyAction.LedgerOnly)]));
+
+        Assert.StartsWith("  台帳とタグ TBSラジオ 2026-09-19 「", lines[1]);
+        Assert.StartsWith("  台帳のみ TBSラジオ 2026-09-19 「", lines[2]);
     }
 
     [Fact]

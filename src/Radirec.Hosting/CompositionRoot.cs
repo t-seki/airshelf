@@ -163,6 +163,7 @@ public static class CompositionRoot
             new StationResolver(stations),
             new ProgramResolver(programs),
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), comparer, config.OutputRoot),
+            new TagLibTagReader(),
             comparer,
             refresher);
 

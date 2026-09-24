@@ -50,8 +50,8 @@ public static class ReapplyDialogFormatter
     /// <summary>dry-run の結果に変える回があるときの確認ダイアログ([適用] / [キャンセル])の文言。</summary>
     public static ReapplyDialogText BuildConfirmation(ReapplyReport plan)
     {
-        var changes = plan.Count(ReapplyAction.Move) + plan.Count(ReapplyAction.LedgerOnly)
-            + plan.Count(ReapplyAction.DuplicateLeft);
+        var changes = plan.Count(ReapplyAction.Move) + plan.Count(ReapplyAction.LedgerAndTags)
+            + plan.Count(ReapplyAction.LedgerOnly) + plan.Count(ReapplyAction.DuplicateLeft);
 
         var sections = new List<string>
         {
@@ -61,6 +61,8 @@ public static class ReapplyDialogFormatter
         };
 
         var notes = new List<string>();
+        if (plan.Count(ReapplyAction.LedgerAndTags) > 0)
+            notes.Add("台帳とタグを直す回は、ファイル名はそのままで、ファイルのタグ(album / title / track)を書き換えます。");
         if (plan.Count(ReapplyAction.DuplicateLeft) > 0)
             notes.Add("重複が残っている回は、移動先に同じ内容のファイルがあるため、元の場所のファイルを消さずに残します(確かめて手で消してください)。");
         if (plan.Count(ReapplyAction.Excluded) > 0)
@@ -80,7 +82,8 @@ public static class ReapplyDialogFormatter
 
     /// <summary>
     /// 実行後の完了表示。件数は確認時の予定ではなく実行の結果から出す(確認ダイアログを開いている間に取り込みが
-    /// 挟まりうるため)。移動があれば Jellyfin でのメタデータ更新を案内する(CLI と同じ条件。ADR-0016)。
+    /// 挟まりうるため)。ファイルを書き換えた回(移動・台帳とタグ)があれば Jellyfin でのメタデータ更新を案内する
+    /// (CLI と同じ条件。ADR-0016)。
     /// </summary>
     public static ReapplyDialogText BuildCompletion(ReapplyReport result)
     {
@@ -94,8 +97,8 @@ public static class ReapplyDialogFormatter
         var lines = new List<string>();
         if (Refresh(result) is { } refresh)
             lines.Add(refresh);
-        if (result.Count(ReapplyAction.Move) > 0)
-            lines.Add("タグ(title / track)が反映されないアルバムがあれば、Jellyfin でメタデータを更新してください。");
+        if (result.RewritesFiles > 0)
+            lines.Add("タグ(album / title / track)が反映されないアルバムがあれば、Jellyfin でメタデータを更新してください。");
         if (failed > 0)
             lines.Add("失敗した回は、もう一度再適用すると揃います。");
         if (result.Count(ReapplyAction.DuplicateLeft) > 0)
@@ -143,6 +146,7 @@ public static class ReapplyDialogFormatter
         var parts = new List<string>
         {
             $"移動・リネーム {report.Count(ReapplyAction.Move)} 回",
+            $"台帳とタグを直す {report.Count(ReapplyAction.LedgerAndTags)} 回",
             $"台帳だけ直す {report.Count(ReapplyAction.LedgerOnly)} 回",
             $"重複が残っている {report.Count(ReapplyAction.DuplicateLeft)} 回",
             $"対象外 {report.Count(ReapplyAction.Excluded)} 回",
@@ -153,7 +157,7 @@ public static class ReapplyDialogFormatter
     }
 
     // アルバム単位のまとめ。長い番組名でも崩れないよう、変更前 → 変更後と件数を別の行にする。
-    // 件数は 0 でない種類だけ(アルバムごとに 5 種類並べると読めないため)。
+    // 件数は 0 でない種類だけ(アルバムごとに 6 種類並べると読めないため)。
     private static string Albums(ReapplyReport report)
     {
         var albums = report.Albums;
@@ -174,6 +178,7 @@ public static class ReapplyDialogFormatter
     {
         var parts = new List<string>();
         if (album.Moves > 0) parts.Add($"移動・リネーム {album.Moves}");
+        if (album.LedgerAndTags > 0) parts.Add($"台帳とタグを直す {album.LedgerAndTags}");
         if (album.LedgerOnly > 0) parts.Add($"台帳だけ直す {album.LedgerOnly}");
         if (album.DuplicatesLeft > 0) parts.Add($"重複が残っている {album.DuplicatesLeft}");
         if (album.Excluded > 0) parts.Add($"対象外 {album.Excluded}");
@@ -214,6 +219,7 @@ public static class ReapplyDialogFormatter
     private static string Label(ReapplyAction action, bool dryRun) => action switch
     {
         ReapplyAction.Move => dryRun ? "移動予定" : "移動",
+        ReapplyAction.LedgerAndTags => "台帳とタグ",
         ReapplyAction.LedgerOnly => "台帳のみ",
         ReapplyAction.DuplicateLeft => "重複",
         ReapplyAction.Excluded => "対象外",
