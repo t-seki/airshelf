@@ -60,7 +60,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     // 並行 reload の「読込→Set」を直列化する門(#43)。適用順序 = 受理順序を保つ。
     private readonly object _reloadGate = new();
 
-    // 統合設定の再適用の要求(#126)。結果を返す非冪等の要求なので DropWrite のトリガチャネルには乗せず、
+    // 統合設定の再適用の実行(#126)。結果を返す非冪等の要求なので DropWrite のトリガチャネルには乗せず、
     // 取りこぼさないキューで運ぶ(起こしはトリガチャネル。reload のスロットと同じ理屈)。ループが抜けたら
     // 残りを失敗で完了させ、待っているトレイを起こす。
     private readonly ConcurrentQueue<ReapplyJob> _reapplyJobs = new();
@@ -555,7 +555,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         base.Dispose();
     }
 
-    /// <summary>再適用の要求 1 つ。<see cref="Plan"/> が null なら確認(dry-run)、あれば実行。</summary>
+    /// <summary>再適用の実行 1 つ。<see cref="Plan"/> が null なら確認(dry-run)、あれば実行。</summary>
     private sealed record ReapplyJob(ReapplyReport? Plan)
     {
         // 待っているのは UI スレッド。ループのスレッドで続きを走らせない。
