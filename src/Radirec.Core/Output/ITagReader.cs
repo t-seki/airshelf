@@ -14,3 +14,17 @@ public interface ITagReader
     /// <summary>genre + artist を 1 回のオープンで読む。radikool の識別(局=genre)用。</summary>
     RawTags ReadTags(string filePath);
 }
+
+/// <summary>
+/// アルバム内の置き場所を表すタグ(<see cref="ITagWriter.WritePlacement"/> が書く 3 つ)。無ければ null / 0。
+/// </summary>
+public sealed record PlacementTags(string? Album, string? Title, uint Track);
+
+/// <summary>
+/// 出力済みのファイルから置き場所のタグを読む(統合設定の再適用で、ファイル名だけ手で直した回を見つけるため。#141)。
+/// 取り込みの <see cref="ITagReader"/> とは使い手が違うので分ける。
+/// </summary>
+public interface IPlacementTagReader
+{
+    PlacementTags ReadPlacement(string filePath);
+}

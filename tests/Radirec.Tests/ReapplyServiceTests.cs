@@ -124,7 +124,8 @@ public sealed class ReapplyServiceTests : IDisposable
     }
 
     private ReapplyService Reapply(
-        ILedger ledger, ProgramMasterConfig programs, StationMasterConfig? stations = null, ILibraryRefresher? refresher = null)
+        ILedger ledger, ProgramMasterConfig programs, StationMasterConfig? stations = null, ILibraryRefresher? refresher = null,
+        ITagWriter? tagWriter = null)
     {
         var fileSystem = new FileSystem();
         var comparer = new TagLibAudioContentComparer();
@@ -134,9 +135,23 @@ public sealed class ReapplyServiceTests : IDisposable
             new RajirekoImporter(),
             new StationResolver(stations ?? new StationMasterConfig()),
             new ProgramResolver(programs),
-            new LocalFolderTarget(fileSystem, new TagLibTagWriter(), comparer, OutputRoot),
+            new LocalFolderTarget(fileSystem, tagWriter ?? new TagLibTagWriter(), comparer, OutputRoot),
+            new TagLibTagReader(),
             comparer,
             refresher ?? new NullLibraryRefresher());
+    }
+
+    // (1) の 1 回だけを統合設定の無いまま取り込み、統合先の名前へファイルを mv しただけ(タグは (1) のまま)の状態を作る。
+    // 返すのは台帳と、今の設定での場所(mv 先)。
+    private async Task<(SqliteLedger Ledger, string Target)> IngestOneAndRenameByHandAsync()
+    {
+        PlaceSource(Folder1, Dec23At0830);
+        var ledger = Ledger();
+        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
+        var target = OutputOf(Album, "2024-12-23", part: 1);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.Move(OutputOf(Folder1, "2024-12-23"), target);
+        return (ledger, target);
     }
 
     // (1) に 2 回、(2) に 1 回を、統合設定の無いまま取り込んだ状態を作る。
@@ -216,8 +231,8 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.All(report.Items, i => Assert.Equal(ReapplyAction.Move, i.Action));
         Assert.Equal(
             [
-                new ReapplyAlbumSummary(Station, Folder1, Album, Moves: 2, 0, 0, 0, 0),
-                new ReapplyAlbumSummary(Station, Folder2, Album, Moves: 1, 0, 0, 0, 0),
+                new ReapplyAlbumSummary(Station, Folder1, Album, Moves: 2, 0, 0, 0, 0, 0),
+                new ReapplyAlbumSummary(Station, Folder2, Album, Moves: 1, 0, 0, 0, 0, 0),
             ],
             report.Albums);
         Assert.Contains(report.Items, i => i.ToPath == OutputOf(Album, "2024-12-23", part: 1));
@@ -332,21 +347,213 @@ public sealed class ReapplyServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task FileAlreadyAtNewPlace_OnlyTheLedgerIsFixed()
+    public async Task FileAndTagsAlreadyAtNewPlace_OnlyTheLedgerIsFixed()
     {
-        // 手作業で統合済みの回(記録の場所に無く、今の設定の場所にある)。
-        var ledger = await IngestSplitAsync();
+        // 手作業で統合済みの回(記録の場所に無く、今の設定の場所にあり、タグも揃っている)。
+        PlaceSource(Folder1, Dec23At0830);
+        var ledger = Ledger();
+        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
+        var original = OutputOf(Folder1, "2024-12-23");
         var target = OutputOf(Album, "2024-12-23", part: 1);
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.Move(OutputOf(Folder1, "2024-12-23"), target);
+        await NewTarget().RelocateAsync(original, target, TagsFor(Album, 1));
+        File.Delete(original);
+        var bytes = File.ReadAllBytes(target);
+        var refresher = new CountingRefresher();
+
+        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false);
+
+        var item = Assert.Single(report.Items);
+        Assert.Equal(ReapplyAction.LedgerOnly, item.Action);
+        Assert.Equal(bytes, File.ReadAllBytes(target)); // ファイルは動かさない・書き換えない
+        Assert.Contains(ledger.ListAll(), e => e.OutputPath == target && e.PartIndex == 1 && e.Program == Album);
+        Assert.Equal(0, refresher.Calls); // ファイルを変えていないので Jellyfin は更新しない
+    }
+
+    // ---- ファイル名だけ手で直した回(台帳とタグを直す。#141)----
+
+    [Fact]
+    public async Task FileRenamedByHand_TagsAndLedgerAreFixed_AndOtherTagsAreKept()
+    {
+        var (ledger, target) = await IngestOneAndRenameByHandAsync();
+        using (var file = TagLib.File.Create(target))
+        {
+            file.Tag.Performers = ["ゲスト"];
+            file.Save();
+        }
+
+        var before = TagsOf(target);
+        Assert.Equal((Folder1, "2024-12-23", 1223u), (before.Album, before.Title, before.Track));
+        var refresher = new CountingRefresher();
+
+        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false);
+
+        var item = Assert.Single(report.Items);
+        Assert.Equal(ReapplyAction.LedgerAndTags, item.Action);
+        Assert.Equal(target, item.ToPath);
+        Assert.Equal(1, report.Count(ReapplyAction.LedgerAndTags));
+        Assert.Equal(1, report.RewritesFiles);
+
+        // album / title / track だけが新しく取り込んだ場合と同じになり、他のタグは残る。
+        var after = TagsOf(target);
+        Assert.Equal((Album, "2024-12-23 (1)", 12231u), (after.Album, after.Title, after.Track));
+        Assert.Equal((before.Comment, before.Genre, before.Disc, "ゲスト"), (after.Comment, after.Genre, after.Disc, after.Artist));
+
+        // ファイルは動かさない(同じ場所のまま)。.partial も残らない。
+        Assert.Equal([Path.Combine(Station, Album, $"{Album} 2024-12-23-1.m4a")], FilesUnder(OutputRoot));
+        Assert.Contains(ledger.ListAll(), e => e.OutputPath == target && e.PartIndex == 1 && e.Program == Album);
+
+        // タグを書き換えたので Jellyfin の通常スキャンを起動する。
+        Assert.Equal(1, refresher.Calls);
+        Assert.Equal(LibraryRefreshStatus.Started, report.LibraryRefresh);
+
+        // 2 回目は揃っている。
+        var second = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        Assert.Empty(second.Items);
+        Assert.True(second.IsAligned);
+    }
+
+    [Fact]
+    public async Task FileRenamedByHand_DryRun_ShowsLedgerAndTags_AndChangesNothing()
+    {
+        var (ledger, target) = await IngestOneAndRenameByHandAsync();
+        var bytes = File.ReadAllBytes(target);
+        var ledgerBefore = ledger.ListAll();
+
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+
+        Assert.Equal(ReapplyAction.LedgerAndTags, Assert.Single(report.Items).Action);
+        Assert.Equal([new ReapplyAlbumSummary(Station, Folder1, Album, 0, LedgerAndTags: 1, 0, 0, 0, 0)], report.Albums);
+        Assert.True(report.HasChanges);
+        Assert.False(report.IsAligned);
+        Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
+        Assert.Equal(bytes, File.ReadAllBytes(target));
+        Assert.Equal(ledgerBefore, ledger.ListAll());
+    }
+
+    [Fact]
+    public async Task FileRenamedByHand_TagRewriteFails_TheOriginalIsIntact_AndARerunFixesIt()
+    {
+        var (ledger, target) = await IngestOneAndRenameByHandAsync();
+        var bytes = File.ReadAllBytes(target);
+        var ledgerBefore = ledger.ListAll();
+
+        // .partial にタグを書いている途中で止まった(書き込みに失敗した)。
+        var report = await Reapply(ledger, Merged(), tagWriter: new FailingPlacementWriter()).RunAsync(dryRun: false);
+
+        var item = Assert.Single(report.Items);
+        Assert.Equal(ReapplyAction.Failed, item.Action);
+        Assert.Equal(bytes, File.ReadAllBytes(target)); // 元のファイルは壊れない
+        Assert.Equal([Path.Combine(Station, Album, $"{Album} 2024-12-23-1.m4a")], FilesUnder(OutputRoot)); // .partial も残らない
+        Assert.Equal(ledgerBefore, ledger.ListAll()); // 台帳もそのまま
+
+        var rerun = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        Assert.Equal(ReapplyAction.LedgerAndTags, Assert.Single(rerun.Items).Action);
+        Assert.Equal(Album, TagsOf(target).Album);
+    }
+
+    [Fact]
+    public async Task FileRenamedByHand_LeftoverPartialIsReplaced()
+    {
+        // 前回の書き換えが .partial の途中で止まり、書きかけが残っている。
+        var (ledger, target) = await IngestOneAndRenameByHandAsync();
+        var partial = Path.Combine(OutputRoot, Station, Album, $"{Album} 2024-12-23-1.partial.m4a");
+        File.WriteAllBytes(partial, [1, 2, 3]);
+
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+
+        Assert.Equal(ReapplyAction.LedgerAndTags, Assert.Single(report.Items).Action);
+        Assert.False(File.Exists(partial));
+        Assert.Equal(Album, TagsOf(target).Album);
+    }
+
+    [Fact]
+    public async Task FileRenamedByHand_StoppedAfterTagCommitBeforeTheLedger_RerunFixesOnlyTheLedger()
+    {
+        // タグの確定の後・台帳を書き換える前に止まった状態:タグは揃っていて、台帳は古いまま。
+        var (ledger, target) = await IngestOneAndRenameByHandAsync();
+        await NewTarget().RewritePlacementAsync(target, TagsFor(Album, 1));
         var bytes = File.ReadAllBytes(target);
 
         var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
 
-        var item = Assert.Single(report.Items, i => i.ToPath == target);
-        Assert.Equal(ReapplyAction.LedgerOnly, item.Action);
-        Assert.Equal(bytes, File.ReadAllBytes(target)); // ファイルは動かさない・書き換えない
-        Assert.Contains(ledger.ListAll(), e => e.OutputPath == target && e.PartIndex == 1 && e.Program == Album);
+        Assert.Equal(ReapplyAction.LedgerOnly, Assert.Single(report.Items).Action);
+        Assert.Equal(bytes, File.ReadAllBytes(target));
+        Assert.Contains(ledger.ListAll(), e => e.OutputPath == target && e.Program == Album);
+        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items);
+    }
+
+    [Fact]
+    public async Task DifferentPlan_WhenTagsWereFixedSinceConfirmation()
+    {
+        // 確認の後に、別の手段でタグが揃えられた(台帳とタグを直す → 台帳だけ直す に変わる)。
+        var (ledger, target) = await IngestOneAndRenameByHandAsync();
+
+        var confirmed = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        await NewTarget().RewritePlacementAsync(target, TagsFor(Album, 1));
+        var replanned = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+
+        Assert.Equal(ReapplyAction.LedgerAndTags, Assert.Single(confirmed.Items).Action);
+        Assert.Equal(ReapplyAction.LedgerOnly, Assert.Single(replanned.Items).Action);
+        Assert.False(replanned.HasSamePlanAs(confirmed));
+    }
+
+    [Fact]
+    public async Task CopiedByHand_Duplicate_FixesTheTargetTags_AndKeepsTheOriginal()
+    {
+        // 手作業の統合で mv ではなく cp した回:統合先のコピーのタグは (1) のまま。台帳だけをそちらへ向けると、
+        // 以後は記録どおりとして直らないので、移動先のタグも揃える(#141)。
+        PlaceSource(Folder1, Dec23At0830);
+        var ledger = Ledger();
+        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
+        var original = OutputOf(Folder1, "2024-12-23");
+        var target = OutputOf(Album, "2024-12-23", part: 1);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.Copy(original, target);
+        var originalBytes = File.ReadAllBytes(original);
+        var targetBytes = File.ReadAllBytes(target);
+        var otherBefore = TagsOf(target);
+        var refresher = new CountingRefresher();
+
+        var dryRun = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        var planned = Assert.Single(dryRun.Items);
+        Assert.Equal(ReapplyAction.DuplicateLeft, planned.Action);
+        Assert.True(planned.RewritesTags);
+        Assert.Contains("タグ", planned.Reason);
+        Assert.Equal(1, dryRun.DuplicatesRewritingTags);
+        Assert.Equal(targetBytes, File.ReadAllBytes(target)); // dry-run は書き換えない
+
+        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false);
+
+        var item = Assert.Single(report.Items);
+        Assert.Equal(ReapplyAction.DuplicateLeft, item.Action);
+        Assert.True(item.RewritesTags);
+        Assert.Equal(1, report.RewritesFiles);
+        var after = TagsOf(target);
+        Assert.Equal((Album, "2024-12-23 (1)", 12231u), (after.Album, after.Title, after.Track));
+        Assert.Equal((otherBefore.Comment, otherBefore.Genre, otherBefore.Disc, otherBefore.Artist),
+            (after.Comment, after.Genre, after.Disc, after.Artist));
+        Assert.Equal(originalBytes, File.ReadAllBytes(original)); // 元の場所のファイルは消さず、書き換えもしない
+        Assert.Contains(ledger.ListAll(), e => e.OutputPath == target && e.Program == Album);
+        Assert.Equal(1, refresher.Calls); // タグを書き換えたので Jellyfin を更新する
+        Assert.Empty(Directory.GetFiles(OutputRoot, "*.partial.*", SearchOption.AllDirectories));
+
+        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items);
+    }
+
+    [Fact]
+    public async Task FileAtNewPlaceWithUnreadableTags_IsExcluded_AndNothingChanges()
+    {
+        var (ledger, target) = await IngestOneAndRenameByHandAsync();
+        File.WriteAllBytes(target, [1, 2, 3]); // 壊れていてタグを読めない
+        var ledgerBefore = ledger.ListAll();
+
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+
+        var item = Assert.Single(report.Items);
+        Assert.Equal(ReapplyAction.Excluded, item.Action);
+        Assert.Contains("タグを読み取れません", item.Reason);
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(target));
+        Assert.Equal(ledgerBefore, ledger.ListAll());
     }
 
     [Fact]
@@ -481,7 +688,9 @@ public sealed class ReapplyServiceTests : IDisposable
 
         var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
 
-        Assert.Equal(ReapplyAction.DuplicateLeft, Assert.Single(report.Items, i => i.ToPath == target).Action);
+        var item = Assert.Single(report.Items, i => i.ToPath == target);
+        Assert.Equal(ReapplyAction.DuplicateLeft, item.Action);
+        Assert.False(item.RewritesTags); // 移動先のタグは確定の前に書いてあるので揃っている
         Assert.Equal(originalBytes, File.ReadAllBytes(original)); // 元は壊れない
         Assert.Contains(ledger.ListAll(), e => e.OutputPath == target);
         Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items); // 揃った
@@ -632,6 +841,15 @@ public sealed class ReapplyServiceTests : IDisposable
             Calls++;
             return Task.CompletedTask;
         }
+    }
+
+    // 置き場所のタグ(.partial への書き込み)で失敗する。取り込みの全タグ書き込みは本物のまま。
+    private sealed class FailingPlacementWriter : ITagWriter
+    {
+        public void Write(string filePath, NormalizedTags tags) => new TagLibTagWriter().Write(filePath, tags);
+
+        public void WritePlacement(string filePath, NormalizedTags tags) =>
+            throw new IOException("書き込みに失敗しました");
     }
 
     private LocalFolderTarget NewTarget()
