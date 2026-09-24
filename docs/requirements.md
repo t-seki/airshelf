@@ -311,11 +311,12 @@ alias 設計が必要(§9)。
 > **named pipe 制御チャネルは退役**し、rescan/reload/status は**トレイメニューからの in-process 呼び出し**に
 > なった(CLI 制御 verb は廃止。移設先は**トレイメニュー**で、下の「現在地」を参照)。以下の named pipe 記述は
 > 移行前の設計。「利用者→常駐へ指示を出す」概念(3 コマンド)は不変。
+> → #126 で 4 種目の「再適用の要求」を足した(下の一覧)。
 
 取込通知が**サービス発・一方向**なのに対し、常駐サービスへ**利用者側から指示を出す**逆方向の
 経路を制御チャネルとして持つ。到達範囲は**ローカル同一ユーザー**に限定し、リモート制御は含めない。
 
-現時点の制御コマンドは 3 種([CONTEXT.md](../CONTEXT.md) が語彙の権威):
+現時点の制御コマンドは 4 種([CONTEXT.md](../CONTEXT.md) が語彙の権威):
 
 - **rescan(手動再スキャン)**: 自動トリガを待たず取り込み走査を今すぐ 1 回要求する(受理まで。
   完了は待たない)。§7 の走査トリガ⑤に相当。
@@ -324,13 +325,16 @@ alias 設計が必要(§9)。
   弾かれ、再構築に失敗しても**旧構成のまま稼働継続**する。
 - **status(状態取得)**: サービスの**ライブ状態**(稼働状態・監視ルート・最終スキャン完了時刻と
   その結果)を読む。
+- **再適用の要求**(#126 で追加。トレイのみ): 設定リロードを反映したうえで統合設定の**再適用**
+  ([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))の dry-run の結果を返し、
+  利用者が確認したら実行する。rescan / reload と違い、受理ではなく**結果が返るまで待つ**。
 
 サービス未起動/未応答時は各コマンドともエラー表示 + 終了コード 1 で破綻しない。実装(named pipe・
 同一ユーザー限定の認可・再構築のセマンティクス)は [ADR-0010](adr/0010-gui-service-control-via-named-pipe.md)、
 Windows 実機での検証手順は [control-channel-verification.md](control-channel-verification.md) に委ねる。
 利用者向けのコマンド一覧は [usage.md](usage.md) を参照。
 
-**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、3 コマンドとも in-process 呼び出し
+**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、4 コマンドとも in-process 呼び出し
 ([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。CLI の制御 verb
 (`status`/`rescan`/`reload`)は廃止された。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
 (`ControlTrayMenu` → `IServiceControl.RequestRescan`)、常駐プロセス内の走査要求になる。
@@ -556,6 +560,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
       → **機構は [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で変質**。named pipe は退役し、
       トレイメニューからの in-process 呼び出しへ。3 コマンドという概念は不変。跨プロセスでなくなったため
       [control-channel-verification.md](control-channel-verification.md)(OBSOLETE)の実機検証項目は失効。
+      → #126 で 4 種目の「再適用の要求」(結果が返るまで待つ)を足した(§7.2)。
 - [x] radikool のフォーマット・命名・タグ: **MP3/ID3、`{局コード}/{番組名}_{YYYYMMDD}.mp3`、
       genre=局表示名** で確定(§5.2)。ルート=`I:\d\radikool\records`。
 - [x] radikool 局フォルダ: `FMT / JOAK-FM / LFR / QRR / fm_tokyo`。放送局マスタは genre から

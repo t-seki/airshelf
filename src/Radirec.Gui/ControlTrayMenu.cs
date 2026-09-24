@@ -11,7 +11,8 @@ namespace Radirec.Gui;
 /// 取り込みワーカーの <see cref="IServiceControl"/> を**直接 in-process 呼び出し**で叩く(named pipe は退役)。
 /// status はメニューを開いた瞬間(<see cref="ToolStripDropDown.Opening"/>)にスナップショットを読んで表示を
 /// 更新する。取り込みワーカー未起動(設定未読込 = <see cref="IServiceControl"/> が null)のときは
-/// rescan/reload をグレーアウトし「取り込み停止中」を表示する縮退にする。
+/// 制御の項目(rescan / reload / 再適用)をすべてグレーアウトし「取り込み停止中」を表示する縮退にする。
+/// 再適用の確認〜完了表示の途中も、ダイアログが入れ子にならないよう制御の項目をすべてグレーアウトする。
 /// </summary>
 internal sealed class ControlTrayMenu
 {
@@ -29,7 +30,7 @@ internal sealed class ControlTrayMenu
     private readonly ToolStripMenuItem _lastScanLine;
     private readonly ToolStripMenuItem? _applyUpdate; // 更新保留時のみ表示(S6)
     private IngestHistoryWindow? _historyWindow;
-    private bool _reapplyBusy; // 再適用の確認〜完了表示の間は項目を伏せる(UI スレッドだけが読み書きする)
+    private bool _reapplyBusy; // 再適用の確認〜完了表示の間は制御の項目を伏せる(UI スレッドだけが読み書きする)
 
     /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
     /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
@@ -125,7 +126,7 @@ internal sealed class ControlTrayMenu
     private void ApplyReachable(ServiceStatusSnapshot status)
     {
         // ワーカーが異常終了してもトレイ(メッセージループ)は生存しうる。その場合「稼働中」と偽らず、
-        // 停止を明示して rescan/reload を伏せる(誤って「動いている」と信じさせない。ADR-0012)。
+        // 停止を明示して制御の項目(rescan / reload / 再適用)を伏せる(誤って「動いている」と信じさせない。ADR-0012)。
         if (!status.Running)
         {
             _rescan.Enabled = false;
@@ -136,9 +137,11 @@ internal sealed class ControlTrayMenu
             return;
         }
 
-        _rescan.Enabled = true;
-        _reload.Enabled = true;
-        _reapply.Enabled = !_reapplyBusy; // 確認〜完了の途中で 2 本目を始めない
+        // 再適用の確認〜完了の途中は、2 本目の再適用も、再スキャン・設定リロード(確認の MessageBox が
+        // 再適用のダイアログと入れ子になる・確認した設定を途中で差し替える)も始めない。
+        _rescan.Enabled = !_reapplyBusy;
+        _reload.Enabled = !_reapplyBusy;
+        _reapply.Enabled = !_reapplyBusy;
 
         _statusLine.Text = status.Watching ? "状態: 稼働中(監視中)" : "状態: 稼働中(定期スキャンのみ)";
 
@@ -157,6 +160,9 @@ internal sealed class ControlTrayMenu
 
     private void OnRescan(object? sender, EventArgs e)
     {
+        if (_reapplyBusy) // 項目は伏せてあるが、念のため(再適用の途中は受けない)
+            return;
+
         // 要求チャネルへ coalesce される冪等操作。即座に返る(スキャン完了は待たない)。
         _control?.RequestRescan();
         _tray.ShowBalloonTip(3000, "Radirec", "手動再スキャンを要求しました", ToolTipIcon.Info);
@@ -164,7 +170,7 @@ internal sealed class ControlTrayMenu
 
     private void OnReload(object? sender, EventArgs e)
     {
-        if (_control is null)
+        if (_control is null || _reapplyBusy) // 再適用の途中は受けない(項目も伏せてある)
             return;
 
         var confirm = MessageBox.Show(
@@ -186,7 +192,7 @@ internal sealed class ControlTrayMenu
 
     // 統合設定の再適用(#126 / ADR-0016)。設定リロード → dry-run → 確認([適用] / [キャンセル])→ 実行 → 完了表示。
     // リロード・dry-run・実行は worker の直列ループの上で行う(在中スキャンの完了を待つ)。UI スレッドは await で待ち、
-    // その間メニューは生きている(項目だけ伏せる)。
+    // その間メニューは生きている(制御の項目だけ伏せる)。
     private async void OnReapply(object? sender, EventArgs e)
     {
         if (_control is null || _reapplyBusy)
