@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows.Forms;
 using Radirec.Core.Reapply;
 using Radirec.Gui.Core;
@@ -14,6 +15,7 @@ namespace Radirec.Gui;
 /// 更新する。取り込みワーカー未起動(設定未読込 = <see cref="IServiceControl"/> が null)のときは
 /// 制御の項目(rescan / reload / 再適用)をすべてグレーアウトし「取り込み停止中」を表示する縮退にする。
 /// 再適用の確認〜完了表示の途中も、ダイアログが入れ子にならないよう制御の項目をすべてグレーアウトする。
+/// 再適用の確認ダイアログに統合設定の無い兄弟フォルダがあれば、その提案を programs.json に追記して開ける(#144)。
 /// 「設定ファイルを開く」(#143)は制御の項目ではなく、取り込みの状態(停止中・再適用の途中)に依らず常に選べる
 /// (停止の原因の設定を直してから再起動・リロードするために要る。開くだけでワーカーには触れない)。その下の
 /// programs.json / stations.json だけは、場所が決まらないとき(設定を読み込めていない、または radirec.json の
@@ -242,15 +244,29 @@ internal sealed class ControlTrayMenu
                 return;
             }
 
-            // 変える回が無ければ確認せずに終わる(CLI と同じ判定)。
-            if (plan.IsAligned)
+            // 統合設定の無い兄弟フォルダがあれば、提案を programs.json に追記して開くボタンも出す(#144)。
+            // programs.json を使わない設定(ProgramsFile が空)なら追記先が無いので出さない。
+            var canAppend = plan.UnintegratedSiblings.Count > 0 && LocateConfigFile(ConfigFile.Programs) is not null;
+            while (true)
             {
-                ShowReapplyDialog(ReapplyDialogFormatter.BuildAligned(plan), TaskDialogIcon.Information);
-                return;
-            }
+                // 変える回が無ければ確認せずに終わる(CLI と同じ判定)。
+                var choice = plan.IsAligned
+                    ? ShowAligned(ReapplyDialogFormatter.BuildAligned(plan, canAppend), canAppend)
+                    : ConfirmReapply(ReapplyDialogFormatter.BuildConfirmation(plan, canAppend), canAppend);
 
-            if (!ConfirmReapply(ReapplyDialogFormatter.BuildConfirmation(plan)))
-                return;
+                // 追記を選んだら、その回の再適用は行わない(利用者が programs.json を確かめて保存してから選び直す)。
+                // 追記の確認でキャンセルしたときだけ、元のダイアログに戻る。
+                if (choice == ReapplyChoice.Append)
+                {
+                    if (await AppendSiblingProposalsAsync(plan))
+                        return;
+                    continue;
+                }
+
+                if (choice != ReapplyChoice.Apply)
+                    return;
+                break;
+            }
 
             _tray.ShowBalloonTip(3000, "Radirec", "統合設定の再適用を実行しています", ToolTipIcon.Info);
             var applied = await _control.ApplyReapplyAsync(plan);
@@ -275,11 +291,20 @@ internal sealed class ControlTrayMenu
         }
     }
 
+    // 再適用の確認ダイアログで選ばれたもの。
+    private enum ReapplyChoice
+    {
+        Apply,  // [適用]
+        Append, // [統合設定を追記して開く](#144)
+        Close,  // [キャンセル] / [OK] / 閉じた
+    }
+
     // [適用] / [キャンセル] の確認。ファイルを動かす操作なので既定はキャンセル(設定リロードの確認と同じ)。
     // MessageBox はボタンの文言を変えられないので TaskDialog を使う。
-    private static bool ConfirmReapply(ReapplyDialogText text)
+    private static ReapplyChoice ConfirmReapply(ReapplyDialogText text, bool canAppend)
     {
         var apply = new TaskDialogButton("適用");
+        var append = new TaskDialogButton(ReapplyDialogFormatter.AppendButton);
         var cancel = TaskDialogButton.Cancel;
         var page = new TaskDialogPage
         {
@@ -287,10 +312,129 @@ internal sealed class ControlTrayMenu
             Heading = text.Heading,
             Text = text.Body,
             Icon = TaskDialogIcon.Warning,
-            Buttons = { apply, cancel },
             DefaultButton = cancel,
         };
-        return TaskDialog.ShowDialog(page) == apply;
+        page.Buttons.Add(apply);
+        if (canAppend)
+            page.Buttons.Add(append);
+        page.Buttons.Add(cancel);
+
+        var chosen = TaskDialog.ShowDialog(page);
+        return chosen == apply ? ReapplyChoice.Apply : chosen == append ? ReapplyChoice.Append : ReapplyChoice.Close;
+    }
+
+    // 揃っているときの表示([OK] だけ。統合設定の無い兄弟フォルダがあれば [統合設定を追記して開く] も)。
+    private static ReapplyChoice ShowAligned(ReapplyDialogText text, bool canAppend)
+    {
+        var append = new TaskDialogButton(ReapplyDialogFormatter.AppendButton);
+        var page = new TaskDialogPage
+        {
+            Caption = "統合設定の再適用",
+            Heading = text.Heading,
+            Text = text.Body,
+            Icon = TaskDialogIcon.Information,
+        };
+        if (canAppend)
+            page.Buttons.Add(append);
+        page.Buttons.Add(TaskDialogButton.OK);
+        return TaskDialog.ShowDialog(page) == append ? ReapplyChoice.Append : ReapplyChoice.Close;
+    }
+
+    // 統合設定の無い兄弟フォルダの提案を programs.json に追記して開く(#144)。追記する中身を見せて [追記] / [キャンセル]
+    // → バックアップを作って追記 → エディタで開く → 保存してから再適用を選び直すようバルーンで案内する。
+    // 追記できない(壊れている・"Programs" の配列が無い・確認の間に変わった等)ときは何も書かずにエラーを出し、ファイルだけ開く。
+    // ファイルの読み書きはワーカースレッドで行う(ProgramsFile が NAS を指していても UI スレッドを塞がない)。
+    // 戻り値: 追記の確認で [キャンセル] したときだけ false(呼び出し元は再適用の確認ダイアログに戻る)。
+    private async Task<bool> AppendSiblingProposalsAsync(ReapplyReport plan)
+    {
+        if (LocateConfigFile(ConfigFile.Programs) is not { } path)
+            return true; // ボタンは出していない(programs.json を使わない設定)
+
+        var name = Path.GetFileName(path);
+        var groups = plan.UnintegratedSiblings.Select(s => s.Group).ToList();
+
+        ProgramsAppendPlan append;
+        try
+        {
+            append = await Task.Run(() => ProgramsFileAppender.Plan(path, groups, DateOnly.FromDateTime(DateTime.Now)));
+        }
+        catch (ProgramsAppendException ex)
+        {
+            await ShowAppendFailedAndOpenAsync(path, ex.Message, ex);
+            return true;
+        }
+
+        if (append.Proposals.Count == 0)
+        {
+            ShowReapplyDialog(ReapplyDialogFormatter.BuildNothingToAppend(name), TaskDialogIcon.Information);
+            await OpenProgramsFileAsync(path, null);
+            return true;
+        }
+
+        if (!ConfirmAppend(ReapplyDialogFormatter.BuildAppendConfirmation(append.Proposals, name), append.Snippet))
+            return false;
+
+        string backup;
+        try
+        {
+            backup = await Task.Run(() => ProgramsFileAppender.Apply(append, DateTime.Now));
+        }
+        catch (ProgramsAppendException ex)
+        {
+            await ShowAppendFailedAndOpenAsync(path, ex.Message, ex);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // バックアップか置き換えで失敗した。置き換えは一時ファイル経由なので programs.json は元のまま。
+            await ShowAppendFailedAndOpenAsync(path, $"書き込みに失敗しました: {ex.Message}", ex);
+            return true;
+        }
+
+        TrayLog.Info($"{name} に統合設定の提案を {append.Proposals.Count} 組追記しました({path}。バックアップ: {backup}):\n{append.Snippet}");
+        await OpenProgramsFileAsync(path, ReapplyDialogFormatter.AppendedBalloon(name));
+        return true;
+    }
+
+    private async Task ShowAppendFailedAndOpenAsync(string path, string reason, Exception ex)
+    {
+        TrayLog.Warn($"{Path.GetFileName(path)} に統合設定の提案を追記できませんでした({path}): {ex}");
+        ShowReapplyDialog(ReapplyDialogFormatter.BuildAppendFailed(Path.GetFileName(path), reason), TaskDialogIcon.Error);
+        await OpenProgramsFileAsync(path, null);
+    }
+
+    // programs.json を開く。開けたら balloon(null なら開いたときの知らせ)を、開けなければその理由をバルーンで出す。
+    private async Task OpenProgramsFileAsync(string path, string? balloon)
+    {
+        var opened = await ConfigFileOpener.OpenAsync(ConfigFile.Programs, path);
+        if (!opened.Ok)
+            _tray.ShowBalloonTip(4000, "Radirec", opened.Message ?? $"{Path.GetFileName(path)} を開けませんでした", ToolTipIcon.Warning);
+        else if ((balloon ?? opened.Message) is { } message)
+            _tray.ShowBalloonTip(5000, "Radirec", message, ToolTipIcon.Info);
+    }
+
+    // 追記の確認([追記] / [キャンセル])。追記する中身は「詳細」に開いた状態で見せる。既定はキャンセル(ファイルを書き換えるため)。
+    private static bool ConfirmAppend(ReapplyDialogText text, string snippet)
+    {
+        var append = new TaskDialogButton("追記");
+        var cancel = TaskDialogButton.Cancel;
+        var page = new TaskDialogPage
+        {
+            Caption = "統合設定の再適用",
+            Heading = text.Heading,
+            Text = text.Body,
+            Icon = TaskDialogIcon.Information,
+            Buttons = { append, cancel },
+            DefaultButton = cancel,
+            Expander = new TaskDialogExpander(snippet)
+            {
+                Expanded = true,
+                CollapsedButtonText = "詳細(追記する中身)",
+                ExpandedButtonText = "詳細を隠す",
+                Position = TaskDialogExpanderPosition.AfterText,
+            },
+        };
+        return TaskDialog.ShowDialog(page) == append;
     }
 
     private static void ShowReapplyDialog(ReapplyDialogText text, TaskDialogIcon icon)

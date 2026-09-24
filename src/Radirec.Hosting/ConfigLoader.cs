@@ -23,6 +23,13 @@ public static class ConfigLoader
                ?? throw new InvalidOperationException($"設定を解析できません: {path}");
     }
 
+    /// <summary>
+    /// 読み込み済みの中身を、ファイルから読むときと同じ規則で解析する(programs.json への追記の前後の確かめ。#144)。
+    /// </summary>
+    /// <exception cref="JsonException">JSON として読めない・未知のプロパティがある。</exception>
+    public static T Parse<T>(string json) where T : new()
+        => JsonSerializer.Deserialize<T>(json, Options) ?? new T();
+
     public static T LoadOptional<T>(string path) where T : new()
     {
         if (!File.Exists(path))

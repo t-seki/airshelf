@@ -1,4 +1,5 @@
 using Radirec.Core.Ingestion;
+using Radirec.Core.Normalization;
 using Radirec.Core.Reapply;
 
 namespace Radirec.Gui.Core;
@@ -31,7 +32,8 @@ public static class ReapplyDialogFormatter
     /// dry-run の結果が揃っている(<see cref="ReapplyReport.IsAligned"/>)ときの表示。対象外の回が残っていれば件数を添え、
     /// 統合設定の無い兄弟フォルダも示す(揃っていても、分割されたままの番組に気づけるように)。
     /// </summary>
-    public static ReapplyDialogText BuildAligned(ReapplyReport plan)
+    /// <param name="canAppend">[統合設定を追記して開く] を出すか(兄弟フォルダの段に案内を 1 行添える。#144)。</param>
+    public static ReapplyDialogText BuildAligned(ReapplyReport plan, bool canAppend = false)
     {
         var sections = new List<string>();
 
@@ -41,14 +43,15 @@ public static class ReapplyDialogFormatter
         else
             sections.Add("変更するものはありません。");
 
-        if (Siblings(plan) is { } siblings)
+        if (Siblings(plan, canAppend) is { } siblings)
             sections.Add(siblings);
 
         return new ReapplyDialogText("取り込み済みの回は今の設定と揃っています", Join(sections));
     }
 
     /// <summary>dry-run の結果に変える回があるときの確認ダイアログ([適用] / [キャンセル])の文言。</summary>
-    public static ReapplyDialogText BuildConfirmation(ReapplyReport plan)
+    /// <param name="canAppend">[統合設定を追記して開く] を出すか(兄弟フォルダの段に案内を 1 行添える。#144)。</param>
+    public static ReapplyDialogText BuildConfirmation(ReapplyReport plan, bool canAppend = false)
     {
         var changes = plan.Count(ReapplyAction.Move) + plan.Count(ReapplyAction.LedgerAndTags)
             + plan.Count(ReapplyAction.LedgerOnly) + plan.Count(ReapplyAction.DuplicateLeft);
@@ -72,7 +75,7 @@ public static class ReapplyDialogFormatter
         if (notes.Count > 0)
             sections.Add(string.Join("\n", notes));
 
-        if (Siblings(plan) is { } siblings)
+        if (Siblings(plan, canAppend) is { } siblings)
             sections.Add(siblings);
 
         sections.Add(DetailsInLog);
@@ -112,6 +115,51 @@ public static class ReapplyDialogFormatter
 
         return new ReapplyDialogText(heading, Join(sections));
     }
+
+    // ---- 統合設定の追記(#144)----
+
+    /// <summary>確認ダイアログの「統合設定の無い兄弟フォルダ」から、提案を programs.json に追記して開くボタン。</summary>
+    public const string AppendButton = "統合設定を追記して開く";
+
+    /// <summary>追記した後に出すバルーン(その回の再適用は行わないので、保存してから選び直してもらう)。</summary>
+    public static string AppendedBalloon(string fileName)
+        => $"{fileName} に統合設定の提案を追記しました。確かめて保存したら、もう一度「統合設定の再適用…」を選んでください";
+
+    /// <summary>
+    /// 追記の確認([追記] / [キャンセル])。何を追記するかを組ごとに 1 行で示す(追記する中身そのものはダイアログの
+    /// 「詳細」に出す)。<paramref name="proposals"/> は追記する全部(確認ダイアログの兄弟フォルダの上限では切らない)。
+    /// </summary>
+    public static ReapplyDialogText BuildAppendConfirmation(IReadOnlyList<SiblingProgramProposal> proposals, string fileName)
+    {
+        var lines = proposals.Take(MaxAppendLines).Select(p => p.JoinsExisting
+            ? $"・{p.Station} 統合番組『{p.Album}』に足すフォルダ {p.Folders.Count} つ(コメントで案内します。既存の設定は変えません)"
+            : $"・{p.Station}「{p.Album}」: {p.Folders.Count} フォルダを統合する設定").ToList();
+        if (proposals.Count > MaxAppendLines)
+            lines.Add($"…ほか {proposals.Count - MaxAppendLines} 組");
+
+        var sections = new List<string>
+        {
+            string.Join("\n", lines),
+            $"追記する中身は「詳細」にあります。追記の前に、同じフォルダへバックアップ({fileName}.bak-日時)を作ります。",
+            "追記したらエディタで開きます。確かめて直し、保存してから、もう一度「統合設定の再適用…」を選んでください" +
+            "(今回の再適用は行いません)。",
+        };
+        return new ReapplyDialogText($"次の {proposals.Count} 組を {fileName} に追記して開きます", Join(sections));
+    }
+
+    /// <summary>今の programs.json では、どの組にも統合設定の無いフォルダが残っていない(dry-run の後に直した等)。</summary>
+    public static ReapplyDialogText BuildNothingToAppend(string fileName) => new(
+        "追記するものはありません",
+        $"{fileName} には、兄弟フォルダの統合設定が既にあります。{fileName} を開きます。\n\n" +
+        "保存済みなら、もう一度「統合設定の再適用…」を選んでください。");
+
+    /// <summary>追記できなかった(壊れている・"Programs" の配列が無い・確認中に変わった等)。何も書かずにファイルだけ開く。</summary>
+    public static ReapplyDialogText BuildAppendFailed(string fileName, string reason) => new(
+        $"{fileName} に追記できませんでした",
+        $"{reason}\n\n{fileName} には何も書き込んでいません。{fileName} を開きます。");
+
+    // 追記の確認に並べる組の上限(中身は「詳細」に全部ある)。
+    private const int MaxAppendLines = 8;
 
     // ---- gui.log の明細 ----
 
@@ -189,7 +237,7 @@ public static class ReapplyDialogFormatter
     }
 
     // 統合設定の無い兄弟フォルダ(#127 の補い)。無ければ null。
-    private static string? Siblings(ReapplyReport report)
+    private static string? Siblings(ReapplyReport report, bool canAppend)
     {
         var groups = report.UnintegratedSiblings;
         if (groups.Count == 0)
@@ -199,6 +247,8 @@ public static class ReapplyDialogFormatter
         lines.AddRange(groups.Take(MaxSiblingGroups).Select(g => "・" + SiblingLine(g)));
         if (groups.Count > MaxSiblingGroups)
             lines.Add($"…ほか {groups.Count - MaxSiblingGroups} 組(gui.log 参照)");
+        if (canAppend)
+            lines.Add($"[{AppendButton}] で、統合設定の提案を programs.json に追記して開けます(今回の再適用は行いません)。");
         return string.Join("\n", lines);
     }
 

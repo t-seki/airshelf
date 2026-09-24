@@ -46,7 +46,7 @@ public static class NewFileWriter
         }
     }
 
-    private static void TryDelete(string path)
+    internal static void TryDelete(string path)
     {
         try
         {
