@@ -273,6 +273,18 @@ public sealed class ReapplyDialogFormatterTests
         Assert.Contains("何も書き込んでいません", text.Body);
     }
 
+    [Fact]
+    public void 見本から作ったあとに追記できなかったときは_何も書いていないとは言わない()
+    {
+        var text = ReapplyDialogFormatter.BuildAppendFailed("programs.json", "programs.json を読めません", seeded: true);
+
+        Assert.Equal("programs.json に追記できませんでした", text.Heading);
+        Assert.StartsWith("programs.json を読めません", text.Body);
+        Assert.Contains("programs.json が無かったので見本から作りましたが、提案の追記はできませんでした。", text.Body);
+        Assert.DoesNotContain("何も書き込んでいません", text.Body);
+        Assert.EndsWith("programs.json を開きます。", text.Body);
+    }
+
     // ---- 完了 ----
 
     [Fact]

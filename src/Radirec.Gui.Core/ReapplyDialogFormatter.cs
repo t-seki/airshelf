@@ -164,9 +164,14 @@ public static class ReapplyDialogFormatter
         "保存済みなら、もう一度「統合設定の再適用…」を選んでください。");
 
     /// <summary>追記できなかった(壊れている・"Programs" の配列が無い・確認中に変わった等)。何も書かずにファイルだけ開く。</summary>
-    public static ReapplyDialogText BuildAppendFailed(string fileName, string reason) => new(
+    /// <param name="seeded">
+    /// programs.json が無かったので、追記の前に見本から作ったか(このときは「何も書き込んでいない」とは言えない)。
+    /// </param>
+    public static ReapplyDialogText BuildAppendFailed(string fileName, string reason, bool seeded = false) => new(
         $"{fileName} に追記できませんでした",
-        $"{reason}\n\n{fileName} には何も書き込んでいません。{fileName} を開きます。");
+        seeded
+            ? $"{reason}\n\n{fileName} が無かったので見本から作りましたが、提案の追記はできませんでした。{fileName} を開きます。"
+            : $"{reason}\n\n{fileName} には何も書き込んでいません。{fileName} を開きます。");
 
     /// <summary>追記の確認の「詳細」に見せる、追記する中身の行数の上限(ダイアログはスクロールしないため)。</summary>
     public const int MaxSnippetLines = 30;

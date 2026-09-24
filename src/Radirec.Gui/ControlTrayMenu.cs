@@ -380,7 +380,7 @@ internal sealed class ControlTrayMenu
         }
         catch (ProgramsAppendException ex)
         {
-            await ShowAppendFailedAndOpenAsync(path, ex.Message, ex);
+            await ShowAppendFailedAndOpenAsync(path, ex.Message, ex, seeded: !existed);
             return true;
         }
 
@@ -401,13 +401,13 @@ internal sealed class ControlTrayMenu
         }
         catch (ProgramsAppendException ex)
         {
-            await ShowAppendFailedAndOpenAsync(path, ex.Message, ex);
+            await ShowAppendFailedAndOpenAsync(path, ex.Message, ex, seeded: !existed);
             return true;
         }
         catch (Exception ex)
         {
             // バックアップか置き換えで失敗した。置き換えは一時ファイル経由なので programs.json は元のまま。
-            await ShowAppendFailedAndOpenAsync(path, $"書き込みに失敗しました: {ex.Message}", ex);
+            await ShowAppendFailedAndOpenAsync(path, $"書き込みに失敗しました: {ex.Message}", ex, seeded: !existed);
             return true;
         }
 
@@ -416,10 +416,11 @@ internal sealed class ControlTrayMenu
         return true;
     }
 
-    private async Task ShowAppendFailedAndOpenAsync(string path, string reason, Exception ex)
+    // seeded: 追記の前に見本から programs.json を作ったか(このときは「何も書き込んでいない」と言わない)。
+    private async Task ShowAppendFailedAndOpenAsync(string path, string reason, Exception ex, bool seeded)
     {
         TrayLog.Warn($"{Path.GetFileName(path)} に統合設定の提案を追記できませんでした({path}): {ex}");
-        ShowReapplyDialog(ReapplyDialogFormatter.BuildAppendFailed(Path.GetFileName(path), reason), TaskDialogIcon.Error);
+        ShowReapplyDialog(ReapplyDialogFormatter.BuildAppendFailed(Path.GetFileName(path), reason, seeded), TaskDialogIcon.Error);
         await OpenProgramsFileAsync(path, null);
     }
 

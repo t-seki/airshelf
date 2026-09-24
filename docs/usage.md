@@ -397,7 +397,8 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
   (見本の例のエントリも入っています。追記の確認で [キャンセル] しても、作った見本は残ります)。見本からも作れなければ
   エラーを出して終わります。
   `programs.json` が壊れている・`"Programs"` の配列が見つからない・確かめている間に `programs.json` が変わった、などで
-  追記できないときは、何も書かずにエラーを出し、`programs.json` だけを開きます。
+  追記できないときは、何も書かずにエラーを出し、`programs.json` だけを開きます。ただし `programs.json` が無くて
+  見本から作った後に追記できなかったときは、作った見本は残り、エラーでも「見本から作りましたが、提案の追記はできませんでした」と示します。
 - **設定ファイルを開く**: サブメニューの `radirec.json` / `programs.json` / `stations.json` を、Windows で `.json` に
   関連付けたアプリ(エディタ)で開きます(関連付けが無ければ Windows の「このファイルを開く方法」が出ます)。
   開く場所は**今読み込んでいる設定**から求めます。`programs.json` / `stations.json` は `radirec.json` の
