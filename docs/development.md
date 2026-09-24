@@ -102,7 +102,7 @@ Git for Windows を PATH に置く、こと。
 ```
 src/Radirec.Core/     ドメインロジック(OS 非依存・テスト可能)
 src/Radirec.Hosting/  合成ルート + 環境設定・パス解決 + 制御(Control/)。Cli と Gui が共有する
-src/Radirec.Cli/      単一 exe radirec.exe。dev/batch の単発 CLI(ingest / refresh / organize-source)
+src/Radirec.Cli/      単一 exe radirec.exe。dev/batch の単発 CLI(ingest / reapply / refresh / organize-source)
 src/Radirec.Gui/      本番の常駐本体 Radirec.Gui.exe。取り込みワーカー + トレイ + 通知 + 履歴 UI + 自己更新
 src/Radirec.Gui.Core/ Gui のテスト可能な提示ロジック(WinRT/WPF/WinForms シェルから隔離)
 tests/Radirec.Tests/  xUnit

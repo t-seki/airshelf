@@ -157,23 +157,7 @@ public sealed class IngestService(
         if (dryRun || !items.Any(i => i.Outcome == IngestOutcome.Imported))
             return (LibraryRefreshStatus.NotNeeded, null);
 
-        // 未設定は NullLibraryRefresher で表される(refresh コマンドと同じ判定)。呼べば成功で終わるが、
-        // 「起動」と報告すると更新されたと誤解させるので区別する(#133)。
-        if (refresher is NullLibraryRefresher)
-            return (LibraryRefreshStatus.NotConfigured, null);
-
-        try
-        {
-            await refresher.RefreshAsync(cancellationToken);
-            return (LibraryRefreshStatus.Started, null);
-        }
-        // 真のキャンセル(呼び出し元のトークン発火)は伝播させる。
-        // HttpClient のタイムアウト(トークン未発火の TaskCanceledException)含むそれ以外の
-        // 失敗は握って報告する(取り込み成功は巻き戻さない)。
-        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            return (LibraryRefreshStatus.Failed, ex.Message);
-        }
+        return await LibraryRefresh.RunAsync(refresher, cancellationToken);
     }
 
     private async Task<IngestItemResult> ProcessAsync(

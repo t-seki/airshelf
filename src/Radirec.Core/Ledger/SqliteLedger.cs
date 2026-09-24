@@ -263,18 +263,71 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         return cmd.ExecuteScalar() is not null;
     }
 
+    private const string InsertColumnsSql =
+        """
+        INTO imports
+            (identity_key, broadcast_time, part_index, station, program, broadcast_date, source_path,
+             output_path, rule_version, used_fallback, imported_at, size_bytes, last_write)
+        VALUES
+            ($id, $time, $part, $station, $program, $date, $source, $output, $rule, $fallback, $imported,
+             $size, $lw);
+        """;
+
     public void Record(LedgerEntry entry)
     {
         using var cmd = _connection.CreateCommand();
-        cmd.CommandText =
-            """
-            INSERT OR IGNORE INTO imports
-                (identity_key, broadcast_time, part_index, station, program, broadcast_date, source_path,
-                 output_path, rule_version, used_fallback, imported_at, size_bytes, last_write)
-            VALUES
-                ($id, $time, $part, $station, $program, $date, $source, $output, $rule, $fallback, $imported,
-                 $size, $lw);
-            """;
+        cmd.CommandText = "INSERT OR IGNORE " + InsertColumnsSql;
+        BindEntry(cmd, entry);
+        cmd.ExecuteNonQuery();
+    }
+
+    public bool Replace(LedgerEntry current, LedgerEntry updated)
+    {
+        // 主キーが変わる更新(再適用。ADR-0016)。UPDATE で PK 列を書き換えると衝突時の扱いが読みにくいので、
+        // 旧行の削除と新行の追加を 1 トランザクションで行う。新旧の主キーが同じ(正規名の空白だけが変わった等)
+        // でも、削除してから追加するので自分自身とは衝突しない。
+        using var tx = _connection.BeginTransaction();
+
+        using (var delete = _connection.CreateCommand())
+        {
+            delete.Transaction = tx;
+            delete.CommandText =
+                "DELETE FROM imports WHERE identity_key = $id AND broadcast_time = $t AND part_index = $p;";
+            delete.Parameters.AddWithValue("$id", current.IdentityKey);
+            delete.Parameters.AddWithValue("$t", TimeKey(current.BroadcastTime));
+            delete.Parameters.AddWithValue("$p", current.PartIndex);
+            if (delete.ExecuteNonQuery() != 1)
+            {
+                // 書き換える元の記録が無い(別の経路で既に書き換わった等)。何も変えない。
+                tx.Rollback();
+                return false;
+            }
+        }
+
+        using (var insert = _connection.CreateCommand())
+        {
+            insert.Transaction = tx;
+            // INSERT OR IGNORE ではなく素の INSERT。新しい主キーが別の行で使われていたら制約違反で知る
+            // (黙って捨てると旧行だけが消えて記録を失う)。
+            insert.CommandText = "INSERT " + InsertColumnsSql;
+            BindEntry(insert, updated);
+            try
+            {
+                insert.ExecuteNonQuery();
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 19) // SQLITE_CONSTRAINT
+            {
+                tx.Rollback();
+                return false;
+            }
+        }
+
+        tx.Commit();
+        return true;
+    }
+
+    private static void BindEntry(SqliteCommand cmd, LedgerEntry entry)
+    {
         cmd.Parameters.AddWithValue("$id", entry.IdentityKey);
         cmd.Parameters.AddWithValue("$time", TimeKey(entry.BroadcastTime));
         cmd.Parameters.AddWithValue("$part", entry.PartIndex);
@@ -288,7 +341,6 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         cmd.Parameters.AddWithValue("$imported", entry.ImportedAtUtc.ToString("O", CultureInfo.InvariantCulture));
         cmd.Parameters.AddWithValue("$size", entry.Fingerprint.SizeBytes);
         cmd.Parameters.AddWithValue("$lw", entry.Fingerprint.LastWriteUtcTicks);
-        cmd.ExecuteNonQuery();
     }
 
     public IReadOnlyList<LedgerEntry> ListAll()

@@ -11,6 +11,10 @@ app.Configure(config =>
         .WithDescription("らじれこ録音を正規化して取り込む(--dry-run で予定表示)")
         .WithExample("ingest", "--dry-run")
         .WithExample("ingest", "--config", "radirec.json");
+    config.AddCommand<ReapplyCommand>("reapply")
+        .WithDescription("今の番組の設定(統合・正規名)を取り込み済みの回へ再適用する(--dry-run で予定表示)")
+        .WithExample("reapply", "--dry-run")
+        .WithExample("reapply", "--config", "radirec.json");
     config.AddCommand<RefreshCommand>("refresh")
         .WithDescription("Jellyfin のライブラリ更新を手動で起動する")
         .WithExample("refresh", "--config", "radirec.json");
@@ -20,7 +24,7 @@ app.Configure(config =>
         .WithExample("organize-source", "--from", @"I:\radio\old", "--to", @"I:\radio\radirec\RADIO");
     // 常駐(service)と制御 verb(rescan/status/reload)は撤去した。常駐はトレイ(Radirec.Gui)が
     // 担い、制御はトレイメニューから in-process で行う(ADR-0012)。radirec.exe は dev/batch 用の
-    // 単発 CLI(ingest / refresh)に縮小。
+    // 単発 CLI(ingest / reapply / refresh 等)に縮小。
 });
 
 return await app.RunAsync(args);

@@ -427,7 +427,7 @@ stations:
 radirec-tool/
   core/   # ドメインロジック: パース(importer) / 正規化ルール / 放送局・番組解決 /
           #   タグ書込(TagLib#) / import-once 台帳 / Jellyfin リフレッシュ。GUI 非依存・テスト可能
-  cli/    # 薄い入口(dev/batch の単発)。radirec ingest / refresh / organize-source
+  cli/    # 薄い入口(dev/batch の単発)。radirec ingest / reapply / refresh / organize-source
   gui/    # 本番の常駐本体。取り込みワーカー + トレイ + 取込通知 + 取込履歴 UI + 制御 + 自己更新。
           #   取込後編集グリッド(§10.1)は同プロジェクトに後載せ・保留
   docs/  tests/

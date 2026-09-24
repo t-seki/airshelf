@@ -114,6 +114,91 @@ public sealed class SqliteLedgerTests : IDisposable
         Assert.True(ledger.Contains(key, null, 0));
     }
 
+    // ---- Replace(統合設定の再適用。ADR-0016)----
+
+    [Fact]
+    public void Replace_ChangesPrimaryKey_AndKeepsOtherColumns()
+    {
+        using var ledger = new SqliteLedger(DbPath);
+        var oldKey = Key("番組(1)");
+        var newKey = Key("番組");
+        var time = new TimeOnly(8, 30);
+        var current = Entry(oldKey, source: "/in/a.m4a", time: time) with
+        {
+            Fingerprint = new FileFingerprint(1234, 5678),
+            UsedFallback = true,
+        };
+        ledger.Record(current);
+
+        var updated = current with
+        {
+            IdentityKey = newKey.Value,
+            Program = "番組",
+            PartIndex = 1,
+            OutputPath = "/out/番組/番組 2026-06-12-1.m4a",
+        };
+        Assert.True(ledger.Replace(current, updated));
+
+        Assert.False(ledger.Contains(oldKey, time, 0));
+        Assert.True(ledger.Contains(newKey, time, 1));
+        var row = Assert.Single(ledger.ListAll());
+        Assert.Equal("番組", row.Program);
+        Assert.Equal(1, row.PartIndex);
+        Assert.Equal("/out/番組/番組 2026-06-12-1.m4a", row.OutputPath);
+        // 書き換えない列は元のまま(取込元・取込日時・内容フィンガープリント・フォールバック)。
+        Assert.Equal("/in/a.m4a", row.SourcePath);
+        Assert.Equal(current.ImportedAtUtc, row.ImportedAtUtc);
+        Assert.Equal(new FileFingerprint(1234, 5678), row.Fingerprint);
+        Assert.True(row.UsedFallback);
+        Assert.True(ledger.ContainsContent(new FileFingerprint(1234, 5678), row.BroadcastDate, time));
+    }
+
+    [Fact]
+    public void Replace_SamePrimaryKey_UpdatesInPlace()
+    {
+        // 正規名の空白だけが変わる(LOGISTEEDRADIONOMICS → LOGISTEED RADIONOMICS)と同一性キーは変わらない。
+        // 旧行を消してから足すので、自分自身とは衝突しない。
+        using var ledger = new SqliteLedger(DbPath);
+        var before = Key("LOGISTEEDRADIONOMICS");
+        var after = Key("LOGISTEED RADIONOMICS");
+        Assert.Equal(before.Value, after.Value);
+        var current = Entry(before);
+        ledger.Record(current);
+
+        Assert.True(ledger.Replace(current, current with { Program = "LOGISTEED RADIONOMICS" }));
+
+        Assert.Equal("LOGISTEED RADIONOMICS", Assert.Single(ledger.ListAll()).Program);
+    }
+
+    [Fact]
+    public void Replace_WhenNewKeyIsTakenByAnotherRow_ReturnsFalse_AndChangesNothing()
+    {
+        using var ledger = new SqliteLedger(DbPath);
+        var current = Entry(Key("番組(1)"), source: "/in/a.m4a");
+        var other = Entry(Key("番組"), source: "/in/b.m4a", part: 1);
+        ledger.Record(current);
+        ledger.Record(other);
+
+        var updated = current with { IdentityKey = Key("番組").Value, Program = "番組", PartIndex = 1 };
+        Assert.False(ledger.Replace(current, updated));
+
+        // ロールバックされ、旧行は消えていない。
+        Assert.True(ledger.Contains(Key("番組(1)"), null, 0));
+        Assert.Equal(2, ledger.ListAll().Count);
+        Assert.Equal("/in/b.m4a", ledger.ListAll().Single(e => e.Program == "番組").SourcePath);
+    }
+
+    [Fact]
+    public void Replace_WhenCurrentRowIsMissing_ReturnsFalse_AndAddsNothing()
+    {
+        using var ledger = new SqliteLedger(DbPath);
+        var missing = Entry(Key("番組(1)"));
+
+        Assert.False(ledger.Replace(missing, missing with { IdentityKey = Key("番組").Value, Program = "番組" }));
+
+        Assert.Empty(ledger.ListAll());
+    }
+
     [Fact]
     public void Persists_AcrossReopen()
     {

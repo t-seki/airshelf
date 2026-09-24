@@ -64,6 +64,18 @@ public sealed class TagLibTagWriter : ITagWriter
         file.Save();
     }
 
+    public void WritePlacement(string filePath, NormalizedTags tags)
+    {
+        using var file = TagLib.File.Create(filePath);
+
+        var tag = file.Tag;
+        tag.Album = tags.Album;
+        tag.Title = tags.Title;
+        tag.Track = tags.Track;
+
+        file.Save();
+    }
+
     /// <summary>書き込んだフル ISO 日付(<c>©day</c>)を読み戻す。検証・確認用。</summary>
     public static string? ReadIsoDate(string filePath)
     {

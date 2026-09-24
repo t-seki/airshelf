@@ -78,6 +78,19 @@ public sealed class LocalFolderTarget(
         return count;
     }
 
+    private void TryDelete(string path)
+    {
+        try
+        {
+            if (fileSystem.File.Exists(path))
+                fileSystem.File.Delete(path);
+        }
+        catch
+        {
+            // 後始末の失敗で元の例外を隠さない。
+        }
+    }
+
     private string DirectoryFor(NormalizedTags tags)
         => fileSystem.Path.Combine(
             outputRoot, FileNameSanitizer.Sanitize(tags.AlbumArtist), FileNameSanitizer.Sanitize(tags.Album));
@@ -90,15 +103,58 @@ public sealed class LocalFolderTarget(
         return fileSystem.Path.Combine(dir, $"{name}.partial{ext}");
     }
 
+    /// <summary>
+    /// 同名衝突が無いときの配置先(<c>{放送局}/{番組}/{番組} YYYY-MM-DD[-N]{ext}</c>)。取り込みの
+    /// <see cref="Plan"/> と再適用(ADR-0016)で同じ規則を使うために公開する。
+    /// </summary>
+    public string PreferredPath(Episode episode, NormalizedTags tags, string extension)
+        => fileSystem.Path.Combine(DirectoryFor(tags), BaseNameFor(episode, tags) + extension);
+
+    /// <summary>
+    /// 取り込み済みのファイルを <paramref name="newPath"/> へ置き直す(統合設定の再適用。ADR-0016)。
+    /// 取り込みと同じく <c>.partial</c> にコピー → <see cref="ITagWriter.WritePlacement"/> で
+    /// <c>album</c> / <c>title</c> / <c>track</c> だけ書き換え → リネームで確定する。元のファイルは消さない
+    /// (消すのは呼び出し側。確定前に止まっても元が残る)。<paramref name="newPath"/> に既にファイルがあれば
+    /// 確定のリネームが失敗する(上書きしない)。
+    /// </summary>
+    public Task RelocateAsync(
+        string currentPath, string newPath, NormalizedTags tags, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        fileSystem.Directory.CreateDirectory(fileSystem.Path.GetDirectoryName(newPath)!);
+
+        var partialPath = PartialPathFor(newPath);
+        if (fileSystem.File.Exists(partialPath))
+            fileSystem.File.Delete(partialPath);
+
+        fileSystem.File.Copy(currentPath, partialPath, overwrite: false);
+        try
+        {
+            tagWriter.WritePlacement(partialPath, tags);
+            fileSystem.File.Move(partialPath, newPath);
+        }
+        catch
+        {
+            // 確定できなかった .partial は残さない(残っても次の再適用・起動時の掃除で消えるが、先に片付ける)。
+            TryDelete(partialPath);
+            throw;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // PartIndex のある回は -N を付して区別する(-1, -2, …)。PartIndex は重複マーカー (N) か、
+    // 無ければ統合番組の回のパート(由来フォルダ順)。EpisodeAssembler の source.PartIndex ?? program.PartIndex。
+    private static string BaseNameFor(Episode episode, NormalizedTags tags)
+    {
+        var baseName = $"{FileNameSanitizer.Sanitize(tags.Album)} {tags.Date:yyyy-MM-dd}";
+        return episode.PartIndex is int part ? $"{baseName}-{part}" : baseName;
+    }
+
     private OutputPlan ResolveFinalPath(string dir, RecordingFile source, Episode episode, NormalizedTags tags)
     {
         var extension = source.Extension;
-        var baseName = $"{FileNameSanitizer.Sanitize(tags.Album)} {tags.Date:yyyy-MM-dd}";
-
-        // PartIndex のある回は -N を付して区別する(-1, -2, …)。PartIndex は重複マーカー (N) か、
-        // 無ければ統合番組の回のパート(由来フォルダ順)。EpisodeAssembler の source.PartIndex ?? program.PartIndex。
-        if (episode.PartIndex is int part)
-            baseName = $"{baseName}-{part}";
+        var baseName = BaseNameFor(episode, tags);
 
         var candidate = fileSystem.Path.Combine(dir, baseName + extension);
         if (!fileSystem.File.Exists(candidate))

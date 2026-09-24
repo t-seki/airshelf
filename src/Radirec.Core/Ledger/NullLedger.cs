@@ -16,5 +16,8 @@ public sealed class NullLedger : ILedger
     public void Record(LedgerEntry entry)
         => throw new InvalidOperationException("NullLedger には記録できません(dry-run 用)。");
 
+    public bool Replace(LedgerEntry current, LedgerEntry updated)
+        => throw new InvalidOperationException("NullLedger は書き換えられません(dry-run 用)。");
+
     public IReadOnlyList<LedgerEntry> ListAll() => [];
 }
