@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using Radirec.Core.Ingestion;
+using Radirec.Core.Reapply;
 using Radirec.Gui.Core;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
@@ -21,7 +23,8 @@ namespace Radirec.Gui;
 /// リソースを破棄するレースを避ける。in-process 制御(ADR-0012)の <see cref="IServiceControl"/> 実装も
 /// 兼ね、rescan は要求チャネルへ、status はスレッドセーフな状態スナップショットを直接返し、reload は
 /// **config 由来ランタイム一式(グラフ + watcher + タイマー)をプロセス内で丸ごと再構築**する
-/// (部分 hot-swap はしない)。
+/// (部分 hot-swap はしない)。統合設定の再適用(#126 / ADR-0016)も同じ直列ループの上で、reload の反映の後・
+/// スキャンの前に行う。
 ///
 /// トレイ常駐移行(ADR-0012)で、取込通知は EventLog シグナルではなく**注入された in-process publisher**
 /// (トレイのトースト)で発行する。ホストは <see cref="Radirec.Gui"/> のユーザーセッションプロセス。
@@ -56,6 +59,19 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 
     // 並行 reload の「読込→Set」を直列化する門(#43)。適用順序 = 受理順序を保つ。
     private readonly object _reloadGate = new();
+
+    // 統合設定の再適用の実行(#126)。結果を返す非冪等の要求なので DropWrite のトリガチャネルには乗せず、
+    // 取りこぼさないキューで運ぶ(起こしはトリガチャネル。reload のスロットと同じ理屈)。ループが抜けたら
+    // 残りを失敗で完了させ、待っているトレイを起こす。
+    private readonly ConcurrentQueue<ReapplyJob> _reapplyJobs = new();
+
+    // 直近の設定リロードの反映に失敗した理由(成功なら null)。書き手・読み手とも直列ループ。
+    // TryLoad は radirec.json しか見ないので、programs.json / stations.json の読み込み失敗はここで初めて判る。
+    private string? _lastReloadError;
+
+    // 直近の再適用の確認(dry-run)と、そのときの config・番組/放送局の設定。実行はこの確認に対してだけ行い、
+    // 番組/放送局の設定も読み直さずにこれを使う(直列ループのみが読み書きする)。
+    private (ReapplyReport Plan, RadirecConfig Config, ReapplySettings Settings)? _lastReapplyPlan;
 
     private FileSystemWatcher? _watcher;
     private Timer? _debounceTimer; // 書き込み中の連続イベントを束ねる(単一の再利用タイマー)
@@ -127,6 +143,56 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         }
     }
 
+    /// <summary>
+    /// 統合設定の再適用の確認(#126)。<see cref="RequestReload"/> と同じ検証で設定リロードを投入し、続けて
+    /// dry-run のジョブを投入する。ループはジョブを取り出した直後にも保留中の reload を反映してから処理するので、
+    /// dry-run は必ず新しい設定で走り、反映に失敗していれば中止する(<see cref="ReapplyAsync"/>)。
+    /// </summary>
+    public Task<ReapplyResult> PlanReapplyAsync()
+    {
+        if (!_running)
+            return Task.FromResult(ReapplyResult.Failed("取り込みが停止中のため受理できません"));
+
+        lock (_reloadGate)
+        {
+            if (!ConfigLoading.TryLoad(_configPath, out var newConfig, out var error))
+                return Task.FromResult(ReapplyResult.Failed($"設定の読み込みに失敗しました: {error}"));
+
+            // reload を先に置く(Set)。ジョブはその後に積むので、ループがジョブを取り出した時点で reload も
+            // 見えており、ジョブの処理の直前の Take で反映される(ExecuteAsync)。
+            _pendingReload.Set(newConfig!);
+            return EnqueueReapply(new ReapplyJob(Plan: null));
+        }
+    }
+
+    /// <summary>確認した再適用の実行(#126)。直列ループの上で、確認のときと設定が同じ場合だけ実行する。</summary>
+    public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan)
+    {
+        if (!_running)
+            return Task.FromResult(ReapplyResult.Failed("取り込みが停止中のため受理できません"));
+
+        return EnqueueReapply(new ReapplyJob(plan));
+    }
+
+    private Task<ReapplyResult> EnqueueReapply(ReapplyJob job)
+    {
+        _reapplyJobs.Enqueue(job);
+        Request("再適用");
+
+        // 積んだ直後にループが抜けていた(停止と競合)なら、誰も処理しないので自分で失敗にする。
+        if (!_running)
+            FailPendingReapplyJobs();
+
+        return job.Completion.Task;
+    }
+
+    // ループが抜けた後に残ったジョブを失敗で完了させる(トレイが永久に待たないように)。
+    private void FailPendingReapplyJobs()
+    {
+        while (_reapplyJobs.TryDequeue(out var job))
+            job.Completion.TrySetResult(ReapplyResult.Failed("取り込みが停止したため中止しました"));
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _log.LogInformation("Radirec 常駐取り込み開始。監視ルート: {Root}", _config.RadioRoot);
@@ -150,6 +216,18 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 if (_pendingReload.Take() is { } newConfig)
                     ApplyReload(newConfig);
 
+                // 再適用(#126)は reload の反映の後、スキャンの前に処理する。取り込みと同時には走らない。
+                // トレイは別スレッドで「reload の Set → ジョブの Enqueue」を行うので、上の Take の後・ここの
+                // Dequeue の前に割り込まれうる。ジョブを取り出した後にもう一度 Take し、ジョブより先に置かれた
+                // reload を必ず反映してから処理する(Dequeue でジョブが見えたなら、その前の Set も見える)。
+                while (_reapplyJobs.TryDequeue(out var job))
+                {
+                    if (_pendingReload.Take() is { } configBeforeJob)
+                        ApplyReload(configBeforeJob);
+
+                    await RunReapplyAsync(job, stoppingToken);
+                }
+
                 await ScanAsync(trigger, stoppingToken);
             }
         }
@@ -160,8 +238,128 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         finally
         {
             _running = false; // 以降の reload 要求は受理しない(誤成功を返さない)。
+            FailPendingReapplyJobs();
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         }
+    }
+
+    // 再適用のジョブを 1 つ処理し、必ず結果で完了させる。ここから例外を漏らすと BackgroundService が fault して
+    // 常駐ごと落ちるので、停止要求(OCE)以外はすべて結果にして返す。
+    private async Task RunReapplyAsync(ReapplyJob job, CancellationToken cancellationToken)
+    {
+        try
+        {
+            job.Completion.TrySetResult(await ReapplyAsync(job.Plan, cancellationToken));
+        }
+        catch (OperationCanceledException)
+        {
+            job.Completion.TrySetResult(ReapplyResult.Failed("取り込みが停止したため中止しました"));
+            throw; // 停止要求はコンシューマループへ伝播させて終了する。
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "統合設定の再適用で想定外の例外");
+            job.Completion.TrySetResult(ReapplyResult.Failed($"再適用に失敗しました: {ex.Message}"));
+        }
+    }
+
+    // plan が null なら確認(dry-run)、あれば実行。
+    private Task<ReapplyResult> ReapplyAsync(ReapplyReport? plan, CancellationToken cancellationToken)
+        => plan is null ? PlanAsync(cancellationToken) : ApplyAsync(plan, cancellationToken);
+
+    // 確認:今の config(reload 反映後)で番組/放送局の設定を読み、dry-run する。読んだ設定は実行に持ち越す。
+    private async Task<ReapplyResult> PlanAsync(CancellationToken cancellationToken)
+    {
+        _lastReapplyPlan = null;
+
+        // 設定リロードが反映できなかった(programs.json の JSON が壊れている等)。取り込みは旧構成のまま
+        // 稼働しているので、再適用だけを新しい設定で走らせることはせず中止する(ADR-0016)。
+        if (_lastReloadError is { } reloadError)
+        {
+            _log.LogWarning("統合設定の再適用: 設定の反映に失敗したため中止しました: {Error}", reloadError);
+            return ReapplyResult.Failed($"設定の読み込みに失敗しました: {reloadError}");
+        }
+
+        var config = _config;
+        ReapplySettings settings;
+        try
+        {
+            settings = CompositionRoot.LoadReapplySettings(config);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "統合設定の再適用: 番組・放送局の設定の読み込みに失敗しました");
+            return ReapplyResult.Failed($"設定の読み込みに失敗しました: {ex.Message}");
+        }
+
+        var (plan, error) = await RunServiceAsync(config, settings, dryRun: true, cancellationToken);
+        if (plan is null)
+            return ReapplyResult.Failed(error!);
+
+        LogReport(plan);
+        _lastReapplyPlan = (plan, config, settings);
+        return ReapplyResult.Ok(plan);
+    }
+
+    // 実行:確認のときの config・番組/放送局の設定で、まず dry-run を計算し直し、確認した予定と同じときだけ実行する。
+    // 確認ダイアログを開いている間に programs.json が編集された・取り込みでファイルや台帳が変わった等で予定が
+    // ずれていれば、見せていない変更をしないよう中止する。
+    private async Task<ReapplyResult> ApplyAsync(ReapplyReport plan, CancellationToken cancellationToken)
+    {
+        const string Retry = "もう一度「統合設定の再適用…」からやり直してください";
+
+        if (_lastReapplyPlan is not { } last || !ReferenceEquals(last.Plan, plan))
+            return ReapplyResult.Failed($"確認した内容が古くなったため中止しました。{Retry}");
+
+        // 実行に使えるのは直前の確認だけ。ここで忘れる(同じ確認で 2 回実行しない・中止した確認を再利用しない)。
+        _lastReapplyPlan = null;
+
+        if (!ReferenceEquals(last.Config, _config))
+            return ReapplyResult.Failed($"確認のあとに設定が変わったため中止しました。{Retry}");
+
+        var (replanned, replanError) = await RunServiceAsync(last.Config, last.Settings, dryRun: true, cancellationToken);
+        if (replanned is null)
+            return ReapplyResult.Failed(replanError!);
+        if (!replanned.HasSamePlanAs(plan))
+        {
+            _log.LogWarning("統合設定の再適用: 確認のあとに状態が変わったため中止しました(実行直前の予定が確認と違います)");
+            LogReport(replanned);
+            return ReapplyResult.Failed($"確認のあとに状態が変わったため中止しました(取り込みや設定の変更で予定が変わりました)。{Retry}");
+        }
+
+        var (result, error) = await RunServiceAsync(last.Config, last.Settings, dryRun: false, cancellationToken);
+        if (result is null)
+            return ReapplyResult.Failed(error!);
+
+        LogReport(result);
+        return ReapplyResult.Ok(result);
+    }
+
+    // 読み込み済みの設定で再適用を組み立てて走らせる。組み立て(台帳オープン等)の失敗は理由で返す。
+    private async Task<(ReapplyReport? Report, string? Error)> RunServiceAsync(
+        RadirecConfig config, ReapplySettings settings, bool dryRun, CancellationToken cancellationToken)
+    {
+        ReapplyService service;
+        IDisposable? disposable;
+        try
+        {
+            (service, disposable) = CompositionRoot.BuildReapply(config, dryRun, settings);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "統合設定の再適用: 組み立てに失敗しました");
+            return (null, $"再適用の準備に失敗しました: {ex.Message}");
+        }
+
+        using (disposable)
+            return (await service.RunAsync(dryRun, cancellationToken), null);
+    }
+
+    // 1 回ずつの明細は gui.log に書く(ダイアログはアルバム単位のまとめだけ)。
+    private void LogReport(ReapplyReport report)
+    {
+        foreach (var line in ReapplyDialogFormatter.BuildLogLines(report))
+            _log.LogInformation("{Line}", line);
     }
 
     private void Request(string trigger) => _requests.Writer.TryWrite(trigger);
@@ -181,8 +379,11 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         {
             // 旧構成(グラフ + watcher + タイマー)は無傷。reload だけ失敗し、常駐は死なせない。
             _log.LogError(ex, "設定リロード: 新グラフの構築に失敗しました。旧構成を維持して継続します");
+            _lastReloadError = ex.Message; // 再適用(#126)はこれを見て中止する
             return;
         }
+
+        _lastReloadError = null;
 
         // 新グラフ構築成功 → 旧 config 由来ランタイムを破棄し、watcher/タイマーも新 config で張り直す。
         // この swap 相は直列ループスレッド上。ここで throw を漏らすと BackgroundService が fault し、
@@ -200,6 +401,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         catch (Exception ex)
         {
             _log.LogError(ex, "設定リロードの適用中に想定外の例外。定期スキャンで継続を試みます");
+            // 新しい config に差し替わる前に落ちたなら、再適用(#126)も新しい設定では走らせない。
+            if (!ReferenceEquals(_config, newConfig))
+                _lastReloadError = ex.Message;
             // 自動走査を絶やさないよう、最低限の定期タイマーを確保する(監視は次回起動 or 再 reload で回収)。
             if (_periodicTimer is null)
             {
@@ -349,5 +553,13 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         // コンシューマループ(ExecuteAsync)は StopAsync で完了済み。ここでは現行の config 由来資源を解放。
         TeardownConfigRuntime();
         base.Dispose();
+    }
+
+    /// <summary>再適用の実行 1 つ。<see cref="Plan"/> が null なら確認(dry-run)、あれば実行。</summary>
+    private sealed record ReapplyJob(ReapplyReport? Plan)
+    {
+        // 待っているのは UI スレッド。ループのスレッドで続きを走らせない。
+        public TaskCompletionSource<ReapplyResult> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

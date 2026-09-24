@@ -123,11 +123,26 @@ public static class CompositionRoot
     /// </summary>
     /// <returns>再適用と、破棄すべきリソース(台帳・Jellyfin 接続)。</returns>
     public static (ReapplyService Service, IDisposable? Disposable) BuildReapply(RadirecConfig config, bool dryRun)
+        => BuildReapply(config, dryRun, LoadReapplySettings(config));
+
+    /// <summary>
+    /// 再適用が使う番組・放送局の設定(<c>programs.json</c> / <c>stations.json</c>)をディスクから読む。
+    /// トレイ(#126)は確認(dry-run)のときに 1 度だけ読み、実行にも同じものを渡す(確認の後にファイルが
+    /// 編集されても、見せていない設定で動かさないため)。
+    /// </summary>
+    public static ReapplySettings LoadReapplySettings(RadirecConfig config) => new(
+        ConfigLoader.LoadOptional<StationMasterConfig>(config.StationsFile),
+        ConfigLoader.LoadOptional<ProgramMasterConfig>(config.ProgramsFile));
+
+    /// <summary>
+    /// 読み込み済みの番組・放送局の設定で再適用を組み立てる(<paramref name="settings"/> 以外にディスクの
+    /// <c>programs.json</c> / <c>stations.json</c> は読まない)。
+    /// </summary>
+    public static (ReapplyService Service, IDisposable? Disposable) BuildReapply(
+        RadirecConfig config, bool dryRun, ReapplySettings settings)
     {
         var fileSystem = new FileSystem();
-
-        var stations = ConfigLoader.LoadOptional<StationMasterConfig>(config.StationsFile);
-        var programs = ConfigLoader.LoadOptional<ProgramMasterConfig>(config.ProgramsFile);
+        var (stations, programs) = settings;
 
         var (ledger, _, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
 

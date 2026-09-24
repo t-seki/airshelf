@@ -162,6 +162,46 @@ public sealed class ReapplyServiceTests : IDisposable
             .Select(p => Path.GetRelativePath(root, p)).Order(StringComparer.Ordinal).ToArray()
         : [];
 
+    // ---- 確認した予定と実行直前の予定の照合(トレイ #126)----
+
+    [Fact]
+    public async Task SamePlan_WhenNothingChangedSinceConfirmation()
+    {
+        var ledger = await IngestSplitAsync();
+        var programs = Merged();
+
+        var confirmed = await Reapply(ledger, programs).RunAsync(dryRun: true);
+        var replanned = await Reapply(ledger, programs).RunAsync(dryRun: true);
+
+        Assert.True(replanned.HasSamePlanAs(confirmed));
+    }
+
+    [Fact]
+    public async Task DifferentPlan_WhenProgramsChangedSinceConfirmation()
+    {
+        // 確認ダイアログを開いている間に programs.json の統合先が書き換わった場合。
+        var ledger = await IngestSplitAsync();
+
+        var confirmed = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        var replanned = await Reapply(ledger, Merged(album: "別の統合先")).RunAsync(dryRun: true);
+
+        Assert.False(replanned.HasSamePlanAs(confirmed));
+    }
+
+    [Fact]
+    public async Task DifferentPlan_WhenTargetAppearedSinceConfirmation()
+    {
+        // 確認の後に、移動先へ違う内容のファイルが現れた(移動 → 衝突のため対象外 に変わる)。
+        var ledger = await IngestSplitAsync();
+        var programs = Merged();
+
+        var confirmed = await Reapply(ledger, programs).RunAsync(dryRun: true);
+        CopyWithDifferentAudio(OutputOf(Album, "2024-12-23", part: 1));
+        var replanned = await Reapply(ledger, programs).RunAsync(dryRun: true);
+
+        Assert.False(replanned.HasSamePlanAs(confirmed));
+    }
+
     [Fact]
     public async Task DryRun_ShowsMovesPerAlbum_AndChangesNothing()
     {

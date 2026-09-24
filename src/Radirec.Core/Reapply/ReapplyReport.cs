@@ -94,6 +94,14 @@ public sealed record ReapplyReport
     /// </summary>
     public bool IsAligned => !HasChanges && Count(ReapplyAction.Failed) == 0;
 
+    /// <summary>
+    /// 2 つの dry-run の予定が同じか(各回の扱い・放送局・変更前後のアルバムと場所・理由がすべて同じ順で一致)。
+    /// トレイ(#126)は実行の直前に dry-run を計算し直し、利用者が確認した予定と違えば実行しない
+    /// (確認ダイアログを開いている間にファイルや台帳が変わった場合に、見せていない変更をしないため)。
+    /// 兄弟フォルダの一覧は提示だけなので比べない。
+    /// </summary>
+    public bool HasSamePlanAs(ReapplyReport other) => Items.SequenceEqual(other.Items);
+
     /// <summary>アルバム単位のまとめ(放送局・変更前・変更後の序数順)。</summary>
     public IReadOnlyList<ReapplyAlbumSummary> Albums => Items
         .GroupBy(i => (i.Station, i.FromAlbum, i.ToAlbum))
