@@ -204,6 +204,87 @@ public sealed class ReapplyDialogFormatterTests
         Assert.DoesNotContain($"番組{ReapplyDialogFormatter.MaxSiblingGroups + 1}(1)", text.Body);
     }
 
+    // ---- 統合設定の追記(#144)----
+
+    [Fact]
+    public void 追記できるときだけ兄弟フォルダの段にボタンの案内を添える()
+    {
+        var plan = Report(true, [Item(ReapplyAction.Move)], [Sibling("番組", "番組(1)", "番組(2)")]);
+        var aligned = Report(true, [], [Sibling("番組", "番組(1)", "番組(2)")]);
+
+        Assert.Contains("[統合設定を追記して開く] で", ReapplyDialogFormatter.BuildConfirmation(plan, canAppend: true).Body);
+        Assert.Contains("[統合設定を追記して開く] で", ReapplyDialogFormatter.BuildAligned(aligned, canAppend: true).Body);
+        Assert.DoesNotContain("追記", ReapplyDialogFormatter.BuildConfirmation(plan).Body);
+        // 兄弟フォルダが無ければ案内も無い
+        Assert.DoesNotContain("追記", ReapplyDialogFormatter.BuildConfirmation(Report(true, [Item(ReapplyAction.Move)]), canAppend: true).Body);
+    }
+
+    [Fact]
+    public void 追記の確認は組の数と中身を組ごとに示し_再適用を選び直すよう案内する()
+    {
+        SiblingProgramProposal[] proposals =
+        [
+            new("文化放送", "てるのりのワルノリ", ["てるのりのワルノリ (1)", "てるのりのワルノリ (2)"], JoinsExisting: false),
+            new("文化放送", "おとなりさん", ["おとなりさん 11時12時"], JoinsExisting: true),
+        ];
+
+        var text = ReapplyDialogFormatter.BuildAppendConfirmation(proposals, "programs.json");
+
+        Assert.Equal("次の 2 組を programs.json に追記して開きます", text.Heading);
+        Assert.Contains("・文化放送「てるのりのワルノリ」: 2 フォルダを統合する設定", text.Body);
+        Assert.Contains("・文化放送 統合番組『おとなりさん』に足すフォルダ 1 つ(コメントで案内します。既存の設定は変えません)", text.Body);
+        Assert.Contains("programs.json.bak-日時", text.Body);
+        Assert.Contains("もう一度「統合設定の再適用…」を選んでください", text.Body);
+        Assert.Contains("もう一度「統合設定の再適用…」を選んでください", ReapplyDialogFormatter.AppendedBalloon("programs.json"));
+    }
+
+    [Fact]
+    public void 見本から作ってから追記したときはバルーンでそれも知らせる()
+    {
+        Assert.StartsWith("programs.json が無かったので見本から作り、統合設定の提案を追記しました。",
+            ReapplyDialogFormatter.AppendedBalloon("programs.json", seeded: true));
+        Assert.StartsWith("programs.json に統合設定の提案を追記しました。", ReapplyDialogFormatter.AppendedBalloon("programs.json"));
+
+        var failed = ReapplyDialogFormatter.BuildSeedFailed("programs.json");
+        Assert.Contains("見本から作ることもできませんでした", failed.Body);
+        Assert.DoesNotContain("開きます", failed.Body); // 作れなければ開けないので、開くとは言わない
+    }
+
+    [Fact]
+    public void 追記する中身は上限の行数で畳む()
+    {
+        var shortSnippet = "a\nb\n";
+        var longSnippet = string.Concat(Enumerable.Range(1, ReapplyDialogFormatter.MaxSnippetLines + 5).Select(i => $"line{i}\n"));
+
+        Assert.Equal("a\nb", ReapplyDialogFormatter.SnippetPreview(shortSnippet));
+        var preview = ReapplyDialogFormatter.SnippetPreview(longSnippet);
+        Assert.Contains($"line{ReapplyDialogFormatter.MaxSnippetLines}\n", preview);
+        Assert.DoesNotContain($"line{ReapplyDialogFormatter.MaxSnippetLines + 1}", preview);
+        Assert.EndsWith("…ほか 5 行(追記した後に開くファイルで確かめてください)", preview);
+    }
+
+    [Fact]
+    public void 追記できなかったときは理由と何も書いていないことを示す()
+    {
+        var text = ReapplyDialogFormatter.BuildAppendFailed("programs.json", "programs.json を読めません(JSON が壊れています)");
+
+        Assert.Equal("programs.json に追記できませんでした", text.Heading);
+        Assert.StartsWith("programs.json を読めません", text.Body);
+        Assert.Contains("何も書き込んでいません", text.Body);
+    }
+
+    [Fact]
+    public void 見本から作ったあとに追記できなかったときは_何も書いていないとは言わない()
+    {
+        var text = ReapplyDialogFormatter.BuildAppendFailed("programs.json", "programs.json を読めません", seeded: true);
+
+        Assert.Equal("programs.json に追記できませんでした", text.Heading);
+        Assert.StartsWith("programs.json を読めません", text.Body);
+        Assert.Contains("programs.json が無かったので見本から作りましたが、提案の追記はできませんでした。", text.Body);
+        Assert.DoesNotContain("何も書き込んでいません", text.Body);
+        Assert.EndsWith("programs.json を開きます。", text.Body);
+    }
+
     // ---- 完了 ----
 
     [Fact]

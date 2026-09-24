@@ -9,7 +9,8 @@ namespace Radirec.Tests;
 public sealed class SiblingFoldersTests
 {
     // 実データのフォルダ名(放送局, 番組フォルダ)。兄弟 8 組と、兄弟にならない紛らわしい名前。
-    private static readonly ProgramFolder[] RealFolders =
+    // 統合設定の提案(SiblingProgramProposalsTests)も同じ実データで確かめる。
+    internal static readonly ProgramFolder[] RealFolders =
     [
         // --- 兄弟 8 組 ---
         new("TBSラジオ", "パンサー向井のふらっと(1)"),
