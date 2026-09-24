@@ -188,7 +188,10 @@ GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる
 
 - `src/Radirec.Gui/` — WSL で起動できず、CI では画面を確かめられない。実機で見てから入れる
 - `src/Radirec.Core/Ledger/` — 台帳スキーマとマイグレーション。壊れると既存の台帳に影響する
-- `.github/workflows/` — `release.yml` は母艦の self-hosted runner で動く
+- `.github/workflows/` — 中の 2 本はどちらも自動では入れられない:
+  - `ci.yml` は自動マージの条件にしている CI そのもの。変えると検証が緩みうる
+  - `release.yml` は母艦の self-hosted runner + `contents: write` で動き、PR の CI では検証されない
+    ([依存の更新・脆弱性](#依存の更新脆弱性dependabot)を参照)
 
 ### マージ後の確認(デプロイ)
 
