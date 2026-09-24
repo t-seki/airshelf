@@ -95,24 +95,10 @@ public static class ProgramsFileAppender
                 $"確認している間に {Path.GetFileName(plan.Path)} が変わったため、追記しませんでした(もう一度選び直してください)");
 
         // バックアップが作れなければ(投げたら)本体は書き換えない。
-        var backup = WriteBackup(plan.Path, plan.Original, now);
+        // 中身は書く直前に確かめた元の中身。
+        var backup = FileBackup.Create(plan.Path, plan.Original, now);
         ReplacingFileWriter.Replace(plan.Path, s => s.Write(plan.Updated));
         return backup;
-    }
-
-    // programs.json.bak-YYYYMMDD-HHmmss。同じ秒のバックアップが既にあれば -2, -3 … を付ける(前のバックアップを上書きしない)。
-    // 中身は書く直前に確かめた元の中身。NewFileWriter で一時ファイルに書き切ってから置くので、NAS への書き込みが途中で
-    // 切れても、壊れたバックアップが正式な名前で残らない(「バックアップで置き換えれば戻る」を保つ)。
-    private static string WriteBackup(string path, byte[] original, DateTime now)
-    {
-        var stem = $"{path}.bak-{now:yyyyMMdd-HHmmss}";
-        var candidate = stem;
-        for (var n = 2; ; n++)
-        {
-            if (NewFileWriter.CreateIfAbsent(candidate, s => s.Write(original)))
-                return candidate;
-            candidate = $"{stem}-{n}"; // 既にある(または置く直前に誰かが作った)。別名にする
-        }
     }
 
     /// <summary>
