@@ -145,6 +145,7 @@ public static class CompositionRoot
     /// <summary>
     /// config から Jellyfin リフレッシャを組み立てる(<c>refresh</c> コマンドでも再利用)。
     /// URL / API キーが未設定なら <see cref="NullLibraryRefresher"/>(何もしない)を返す。
+    /// URL の形式が不正なら <see cref="MisconfiguredLibraryRefresher"/>(呼ぶと失敗する)を返す。
     /// </summary>
     public static (ILibraryRefresher Refresher, IDisposable? Disposable) BuildRefresher(RadirecConfig config)
     {
@@ -152,9 +153,11 @@ public static class CompositionRoot
             return (new NullLibraryRefresher(), null);
 
         // BaseAddress は末尾スラッシュ必須("Library/Refresh" 相対解決のため)。
-        // URL が不正形式でも取り込み(主機能)をブロックしない。リフレッシュだけ無効化する。
+        // URL が不正形式でも取り込み(主機能)をブロックしない。ただし未設定とは区別し、更新のたびに
+        // 失敗として報告して設定の誤りに気づけるようにする(#133)。
         if (!Uri.TryCreate(config.JellyfinUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
-            return (new NullLibraryRefresher(), null);
+            return (new MisconfiguredLibraryRefresher(
+                $"JellyfinUrl の形式が不正です({config.JellyfinUrl})。radirec.json を確認してください。"), null);
 
         // 既定 100 秒だと更新遅延時に取込コマンドが長く固まるため、明示的に短くする。
         var http = new HttpClient { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(30) };
