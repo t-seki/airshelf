@@ -143,6 +143,42 @@ public sealed class LocalFolderTarget(
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 取り込み済みのファイルの <c>album</c> / <c>title</c> / <c>track</c> を、置き場所を変えずに書き換える
+    /// (統合設定の再適用で、ファイル名だけ手で直した回のタグを揃える。#141)。同じフォルダの <c>.partial</c> に
+    /// コピー → <see cref="ITagWriter.WritePlacement"/> → 元の名前へ置き換えて確定する。確定までは元のファイルに
+    /// 触れないので、途中で止まっても元は壊れない。
+    /// </summary>
+    public Task RewritePlacementAsync(string path, NormalizedTags tags, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var partialPath = PartialPathFor(path);
+        if (fileSystem.File.Exists(partialPath))
+            fileSystem.File.Delete(partialPath);
+
+        fileSystem.File.Copy(path, partialPath, overwrite: false);
+        try
+        {
+            tagWriter.WritePlacement(partialPath, tags);
+
+            // 確定は上書きのリネーム 1 回で行う。元を消してから置くと、その間に止まったときに元も新しいものも無くなる。
+            // File.Move(overwrite) は Windows では MoveFileEx(MOVEFILE_REPLACE_EXISTING)で、同じフォルダの中なら
+            // 置き換えを含めた 1 回のリネームとして(SMB でもサーバー側の 1 回のリネーム要求として)扱われる、と考えて
+            // これを選んだ。失敗すれば元はそのまま残る(Jellyfin が開いている等)。File.Replace(ReplaceFile)も元を
+            // 残す置き換えだが、属性の引き継ぎやバックアップを含む複数段の処理で、SMB の相手によっては失敗が報告されて
+            // いるため使わない。NAS の実機での挙動は未確認(#141)。
+            fileSystem.File.Move(partialPath, path, overwrite: true);
+        }
+        catch
+        {
+            TryDelete(partialPath);
+            throw;
+        }
+
+        return Task.CompletedTask;
+    }
+
     // PartIndex のある回は -N を付して区別する(-1, -2, …)。PartIndex は重複マーカー (N) か、
     // 無ければ統合番組の回のパート(由来フォルダ順)。EpisodeAssembler の source.PartIndex ?? program.PartIndex。
     private static string BaseNameFor(Episode episode, NormalizedTags tags)
