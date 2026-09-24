@@ -306,6 +306,11 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                     trigger, imported, failed, refresh, notify, failNotify);
             }
 
+            // 出力先の同名衝突を別名で避けた取込は Warning で残す。同日・別時刻の正当なケースでも起きるので
+            // トーストにはせず、near-dup を疑うときに gui.log から辿れるようにする(ADR-0015)。
+            foreach (var item in report.Items.Where(i => i.Outcome == IngestOutcome.Imported && i.Message is not null))
+                _log.LogWarning("{Message}: {Output}", item.Message, item.OutputPath);
+
             // 走査ごとに status スナップショットを更新(in-process 制御)。0 件走査でも
             // 「最後にいつ走ったか」を反映する。書き手はこの直列コンシューマ 1 つだけ。
             _status = _status with

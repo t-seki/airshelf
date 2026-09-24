@@ -9,7 +9,8 @@ namespace Radirec.Core.Ingestion;
 
 /// <summary>
 /// 取り込みの制御フロー本体。列挙 → 安定判定 → パース → 正規化 → 同一性キー →
-/// 冪等判定 → dry-run 境界 → アトミック非破壊コピー → タグ付与 → 台帳記録(最後)。
+/// 冪等判定 → 配置先の算出(同名衝突は音声部分で同じ内容か判定。ADR-0015)→ dry-run 境界 →
+/// アトミック非破壊コピー → タグ付与 → 台帳記録(最後)。
 /// </summary>
 public sealed class IngestService(
     IRecordingSource source,
@@ -210,40 +211,56 @@ public sealed class IngestService(
 
         var tags = TagMapper.Map(episode, genre);
 
-        if (dryRun)
-        {
-            var plannedPath = target.PlanPath(file, episode, tags);
-            return Result(IngestOutcome.Planned, file, episode, plannedPath, episode.UsedFallback);
-        }
-
         try
         {
-            var outputPath = await target.WriteAsync(file, episode, tags, cancellationToken);
+            var plan = target.Plan(file, episode, tags);
 
-            ledger.Record(new LedgerEntry
+            // 出力先に同じ内容のファイルが既にある(台帳喪失・size/mtime の変わったコピーで上の 3 関門を
+            // すり抜けた回)。書かずに取込済みとし、台帳にも記録して自己修復する(ADR-0015)。
+            if (plan.AlreadyPresent)
             {
-                IdentityKey = episode.Identity.Value,
-                Station = episode.Station,
-                Program = episode.Program,
-                BroadcastDate = episode.BroadcastDate,
-                BroadcastTime = episode.BroadcastTime,
-                PartIndex = episode.PartIndex ?? 0,
-                SourcePath = file.FilePath,
-                OutputPath = outputPath,
-                RuleVersion = NormalizationRuleVersion.Current,
-                UsedFallback = episode.UsedFallback,
-                ImportedAtUtc = clock.GetUtcNow(),
-                Fingerprint = FileFingerprint.Of(file),
-            });
+                if (!dryRun)
+                    ledger.Record(Entry(episode, file, plan.Path));
+                return Result(IngestOutcome.SkippedAlreadyImported, file, episode, plan.Path);
+            }
 
-            return Result(IngestOutcome.Imported, file, episode, outputPath, episode.UsedFallback);
+            // 内容の違う同名ファイルを避けて別名にした。正当な同日・別時刻(ADR-0002)でも起きるので
+            // 通知はせず、結果に警告として残す(常駐はログへ Warning で書く)。
+            var warning = plan.CollidedWith is { } other
+                ? $"出力先に内容の違う同名ファイル({Path.GetFileName(other)})があるため別名で配置します"
+                : null;
+
+            if (dryRun)
+                return Result(IngestOutcome.Planned, file, episode, plan.Path, episode.UsedFallback, warning);
+
+            var outputPath = await target.WriteAsync(file, plan, tags, cancellationToken);
+
+            ledger.Record(Entry(episode, file, outputPath));
+
+            return Result(IngestOutcome.Imported, file, episode, outputPath, episode.UsedFallback, warning);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // 1 ファイルの書き込み/タグ/台帳失敗で走査全体を止めない。当該ファイルのみ失敗扱い。
+            // 1 ファイルの配置判定/書き込み/タグ/台帳失敗で走査全体を止めない。当該ファイルのみ失敗扱い。
             return Result(IngestOutcome.Failed, file, episode, message: ex.Message);
         }
     }
+
+    private LedgerEntry Entry(Episode episode, RecordingFile file, string outputPath) => new()
+    {
+        IdentityKey = episode.Identity.Value,
+        Station = episode.Station,
+        Program = episode.Program,
+        BroadcastDate = episode.BroadcastDate,
+        BroadcastTime = episode.BroadcastTime,
+        PartIndex = episode.PartIndex ?? 0,
+        SourcePath = file.FilePath,
+        OutputPath = outputPath,
+        RuleVersion = NormalizationRuleVersion.Current,
+        UsedFallback = episode.UsedFallback,
+        ImportedAtUtc = clock.GetUtcNow(),
+        Fingerprint = FileFingerprint.Of(file),
+    };
 
     private string? SafeReadArtist(string filePath)
     {

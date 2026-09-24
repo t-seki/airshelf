@@ -36,6 +36,11 @@ public sealed record IngestItemResult
     public Episode? Episode { get; init; }
     public string? OutputPath { get; init; }
     public bool UsedFallback { get; init; }
+
+    /// <summary>
+    /// 失敗(<see cref="IngestOutcome.Failed"/>)の理由。取込/予定では警告(出力先の同名衝突を別名で避けた等。
+    /// ADR-0015)。何も無ければ null。
+    /// </summary>
     public string? Message { get; init; }
 
     /// <summary>処理時に捉えたファイルのフィンガープリント(失敗通知の de-dup 用。ADR-0011)。

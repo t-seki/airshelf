@@ -88,7 +88,12 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
 
     private static string Detail(IngestItemResult item) => item.Outcome switch
     {
-        IngestOutcome.Imported or IngestOutcome.Planned => item.OutputPath ?? string.Empty,
+        // 取込/予定の警告(出力先の同名衝突を別名で避けた等。ADR-0015)は出力パスに添える。
+        IngestOutcome.Imported or IngestOutcome.Planned => item.Message is { } warning
+            ? $"{item.OutputPath}(警告: {warning})"
+            : item.OutputPath ?? string.Empty,
+        // 出力先に同じ内容が既にあって書かなかった回は、その既存ファイルを示す(台帳ヒットの回は null)。
+        IngestOutcome.SkippedAlreadyImported => item.OutputPath ?? string.Empty,
         IngestOutcome.Failed => item.Message ?? string.Empty,
         _ => string.Empty,
     };
