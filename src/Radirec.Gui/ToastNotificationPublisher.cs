@@ -52,6 +52,7 @@ public sealed class ToastNotificationPublisher(ToastPresenter presenter)
             MergedAlbum = notice.MergedAlbum,
             Folders = notice.Folders,
         }).ToList(),
+        SiblingFolderNoticeCount = summary.SiblingFolderNoticeCount,
     };
 
     private static IngestFailurePayload ToPayload(IngestFailureSignal signal) => new()

@@ -39,12 +39,19 @@ public sealed record SiblingFolderNotice
 public sealed class SiblingFolderDetector(IProgramResolver programResolver, RajirekoImporter rajireko)
 {
     /// <param name="ledgerBeforeScan">走査の前の台帳の全記録。</param>
+    /// <param name="restored">
+    /// この走査で自己修復(ADR-0015)して台帳に書き戻した回。フォルダは既知として扱う(兄弟を探す対象に含め、
+    /// そのフォルダ自体は「初めて取り込んだ」にしない)。
+    /// </param>
     /// <param name="imported">この走査で取り込んだ回(正規名の放送局と取込元のパス)。</param>
     public IReadOnlyList<SiblingFolderNotice> Detect(
         IEnumerable<LedgerEntry> ledgerBeforeScan,
+        IEnumerable<(string Station, string SourcePath)> restored,
         IEnumerable<(string Station, string SourcePath)> imported)
     {
         var known = ledgerBeforeScan
+            .Select(e => (e.Station, e.SourcePath))
+            .Concat(restored)
             .Select(e => FolderOf(e.Station, e.SourcePath))
             .OfType<ProgramFolder>()
             .ToList();

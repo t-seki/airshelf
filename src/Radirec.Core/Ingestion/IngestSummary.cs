@@ -32,10 +32,26 @@ public sealed record IngestSummary
     public required IReadOnlyList<IngestSummaryAlbum> Albums { get; init; }
 
     /// <summary>
-    /// この走査で初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127)。
-    /// 1 フォルダにつき初回の取り込みでだけ現れるので、件数は小さい(打ち切らない)。
+    /// 運ぶ兄弟フォルダの知らせ(<see cref="SiblingFolderNotices"/>)の上限。超過分は落とし、件数だけを
+    /// <see cref="SiblingFolderNoticeCount"/> に残す。
+    /// <para>
+    /// <see cref="MaxAlbums"/> と同じく**表示のための値ではなく、payload を有界にする安全弁**。台帳が空・作り直した直後や、
+    /// 監視ルートを増やした直後の初回キャッチアップでは、統合設定の無い分割フォルダがまとめて「初めて」になりうる。
+    /// 提示側(<c>IngestToastFormatter</c>)が出すのは先頭の 1 件と件数だけなので、この値が 1 以上なら表示は変わらない。
+    /// 全件は取り込みの結果(<see cref="IngestReport.SiblingFolderNotices"/>。打ち切らない)にあり、トレイはそこから
+    /// <c>gui.log</c> に全件を書く。
+    /// </para>
+    /// </summary>
+    public const int MaxSiblingFolderNotices = 20;
+
+    /// <summary>
+    /// この走査で初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127。最大
+    /// <see cref="MaxSiblingFolderNotices"/> 件)。
     /// </summary>
     public IReadOnlyList<SiblingFolderNotice> SiblingFolderNotices { get; init; } = [];
+
+    /// <summary>兄弟フォルダの知らせの総数(キャップ前の実数)。</summary>
+    public int SiblingFolderNoticeCount { get; init; }
 
     /// <summary>新規取込した放送回群から要約を組み立てる(番組単位グループ + キャップ)。出現順を保つ。</summary>
     public static IngestSummary From(
@@ -87,7 +103,8 @@ public sealed record IngestSummary
                     FirstEpisode = g.First,
                 })
                 .ToList(),
-            SiblingFolderNotices = siblingFolderNotices ?? [],
+            SiblingFolderNotices = (siblingFolderNotices ?? []).Take(MaxSiblingFolderNotices).ToList(),
+            SiblingFolderNoticeCount = siblingFolderNotices?.Count ?? 0,
         };
     }
 }

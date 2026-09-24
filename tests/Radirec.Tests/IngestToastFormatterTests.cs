@@ -193,6 +193,28 @@ public sealed class IngestToastFormatterTests
     }
 
     [Fact]
+    public void 知らせの件数は打ち切られた一覧ではなく総数から出す()
+    {
+        var texts = IngestToastFormatter.BuildTexts(
+            Payload(1, false, Album("局", "番組", Ep("2026-01-01", "10:00"))) with
+            {
+                SiblingFolderNotices = [Unintegrated("X(1)", "X(2)")],
+                SiblingFolderNoticeCount = 30,
+            });
+
+        Assert.Equal("分割番組らしいフォルダ『X(1)』『X(2)』に統合設定がありません（ほか29件）", Body(texts)[^1]);
+    }
+
+    [Fact]
+    public void 知らせがあり番組が無ければ知らせの行だけ()
+    {
+        var texts = IngestToastFormatter.BuildTexts(
+            Payload(0, true) with { SiblingFolderNotices = [Unintegrated("X(1)", "X(2)")] });
+
+        Assert.Equal(["分割番組らしいフォルダ『X(1)』『X(2)』に統合設定がありません"], Body(texts));
+    }
+
+    [Fact]
     public void 知らせが無ければ本文は今までどおり()
     {
         var payload = Payload(2, false,

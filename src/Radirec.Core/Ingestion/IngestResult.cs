@@ -89,8 +89,9 @@ public sealed record IngestReport
     public string? FailureNotificationError { get; init; }
 
     /// <summary>
-    /// 初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127。取込要約シグナルにも同じものを載せる)。
-    /// 取込0件・dry-run では空。
+    /// 初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127)。
+    /// 取込0件・dry-run では空。**打ち切らない**(トレイはここから <c>gui.log</c> に全件を書く)。取込要約シグナルに載せる分は
+    /// <see cref="IngestSummary.MaxSiblingFolderNotices"/> 件まで。
     /// </summary>
     public IReadOnlyList<SiblingFolderNotice> SiblingFolderNotices { get; init; } = [];
 

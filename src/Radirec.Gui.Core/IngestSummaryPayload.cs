@@ -13,6 +13,9 @@ public sealed record IngestSummaryPayload
 
     /// <summary>初めて取り込んだフォルダのうち、統合設定が無く兄弟フォルダのあるもの(#127)。</summary>
     public IReadOnlyList<SiblingFolderNoticePayload> SiblingFolderNotices { get; init; } = [];
+
+    /// <summary>兄弟フォルダの知らせの総数(<see cref="SiblingFolderNotices"/> は上限で打ち切られうる。件数はこちらを出す)。</summary>
+    public int SiblingFolderNoticeCount { get; init; }
 }
 
 /// <summary>統合設定の無い兄弟フォルダの知らせ 1 件(Core の <c>SiblingFolderNotice</c> を写したもの)。</summary>

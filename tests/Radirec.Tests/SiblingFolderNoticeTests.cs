@@ -51,8 +51,14 @@ public sealed class SiblingFolderNoticeTests
 
     private sealed class FakeOutputTarget : IOutputTarget
     {
-        public OutputPlan Plan(RecordingFile s, Episode e, NormalizedTags t) =>
-            new() { Path = $"/out/{e.Program}/{s.FileName}" };
+        // 出力先に同じ内容が既にある(台帳を失った後の自己修復。ADR-0015)とする回(取込元のパス)。
+        public HashSet<string> AlreadyPresent { get; } = [];
+
+        public OutputPlan Plan(RecordingFile s, Episode e, NormalizedTags t) => new()
+        {
+            Path = $"/out/{e.Program}/{s.FileName}",
+            AlreadyPresent = AlreadyPresent.Contains(s.FilePath),
+        };
 
         public Task<string> WriteAsync(RecordingFile s, OutputPlan plan, NormalizedTags t, CancellationToken ct = default)
             => Task.FromResult(plan.Path);
@@ -79,6 +85,7 @@ public sealed class SiblingFolderNoticeTests
 
     private readonly MemoryLedger _ledger = new();
     private readonly FakePublisher _publisher = new();
+    private readonly FakeOutputTarget _target = new();
 
     private static ProgramMasterConfig Programs(params (string Station, string Album, string[] Folders)[] merged) => new()
     {
@@ -100,7 +107,7 @@ public sealed class SiblingFolderNoticeTests
             new FakeTagReader(),
             new EpisodeAssembler(new StationResolver(new StationMasterConfig()), new ProgramResolver(programs)),
             new SiblingFolderDetector(new ProgramResolver(programs), new RajirekoImporter()),
-            new FakeOutputTarget(),
+            _target,
             _ledger,
             new FixedClock(Now),
             genre: "ラジオ",
@@ -256,6 +263,53 @@ public sealed class SiblingFolderNoticeTests
     }
 
     [Fact]
+    public async Task SelfHealedSibling_InSameScan_IsFoundAsSibling()
+    {
+        // 台帳を失った後の走査で、X(1) は出力先に同じ内容があるので自己修復(台帳にだけ書く)、X(2) は初めて取り込む。
+        // 自己修復したフォルダも兄弟を探す対象に入れる。
+        var healed = Rec(Tbs, "X(1)", "20260920130000");
+        _target.AlreadyPresent.Add(healed.FilePath);
+
+        var report = await RunAsync(null, healed, Rec(Tbs, "X(2)", "20260920150000"));
+
+        Assert.Equal(1, report.Count(IngestOutcome.SkippedAlreadyImported));
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        var notice = Assert.Single(report.SiblingFolderNotices);
+        Assert.Equal("X(2)", notice.Folder);
+        Assert.Equal(["X(1)", "X(2)"], notice.Folders);
+    }
+
+    [Fact]
+    public async Task SelfHealedFolder_IsNotFirstImport()
+    {
+        // 自己修復したフォルダ自体は「初めて取り込んだ」にしない(以前に取り込んだ回が出力先にある)。
+        // 同じ走査で X(2) の古い回を自己修復し、新しい回を取り込む。
+        await RunAsync(null, Rec(Tbs, "X(1)", "20260913130000"));
+        var healed = Rec(Tbs, "X(2)", "20260913150000");
+        _target.AlreadyPresent.Add(healed.FilePath);
+
+        var report = await RunAsync(null, healed, Rec(Tbs, "X(2)", "20260920150000"));
+
+        Assert.Equal(1, report.Count(IngestOutcome.SkippedAlreadyImported));
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.Empty(report.SiblingFolderNotices);
+    }
+
+    [Fact]
+    public void Summary_CapsNotices_AndKeepsTotalCount()
+    {
+        // 台帳を作り直した直後などのキャッチアップで知らせがまとめて出ても、シグナルは有界にする。件数は実数を残す。
+        var notices = Enumerable.Range(1, IngestSummary.MaxSiblingFolderNotices + 5)
+            .Select(i => new SiblingFolderNotice { Station = Tbs, Folder = $"X{i}(2)", Folders = [$"X{i}(1)", $"X{i}(2)"] })
+            .ToList();
+
+        var summary = IngestSummary.From([], notices);
+
+        Assert.Equal(IngestSummary.MaxSiblingFolderNotices, summary.SiblingFolderNotices.Count);
+        Assert.Equal(IngestSummary.MaxSiblingFolderNotices + 5, summary.SiblingFolderNoticeCount);
+    }
+
+    [Fact]
     public async Task DryRun_IsNotNoticed()
     {
         await RunAsync(null, Rec(Tbs, "X(1)", "20260920130000"));
@@ -288,9 +342,11 @@ public sealed class SiblingFolderNoticeTests
         var detector = new SiblingFolderDetector(new ProgramResolver(new ProgramMasterConfig()), new RajirekoImporter());
         var ledger = new[] { Entry(Tbs, "/radio/TBS/X(1)/X(1)_20200101.mp3") };
 
-        Assert.Empty(detector.Detect(ledger, [(Tbs, "/radio/TBSラジオ/X(2)/[TBSラジオ]X(2)(TimeFree)_20260920150000.m4a")]));
+        Assert.Empty(detector.Detect(
+            ledger, [], [(Tbs, "/radio/TBSラジオ/X(2)/[TBSラジオ]X(2)(TimeFree)_20260920150000.m4a")]));
         Assert.Empty(detector.Detect(
             [Entry(Tbs, "/radio/TBSラジオ/X(1)/[TBSラジオ]X(1)(TimeFree)_20260920130000.m4a")],
+            [],
             [(Tbs, "/radio/TBS/X(2)/X(2)_20200101.mp3")]));
     }
 

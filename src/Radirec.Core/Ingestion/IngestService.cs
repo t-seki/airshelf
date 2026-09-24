@@ -78,7 +78,7 @@ public sealed class IngestService(
 
         try
         {
-            return (siblingDetector.Detect(ledgerBeforeScan.Entries, imported), null);
+            return (siblingDetector.Detect(ledgerBeforeScan.Entries, ledgerBeforeScan.Restored, imported), null);
         }
         catch (Exception ex)
         {
@@ -90,14 +90,22 @@ public sealed class IngestService(
     /// 走査の前の台帳(兄弟フォルダの「初めて取り込んだ」の判定に使う。#127)。走査で最初に台帳へ書く直前に 1 度だけ
     /// 読む(取込だけでなく、出力先に同じ内容があった回の自己修復でも書くため)。台帳へ書かない走査では読まない。
     /// 読めなくても取り込みは止めない(判定を諦めて理由を残す)。
+    /// この走査で自己修復した回(<see cref="Restored"/>)も持つ。走査前の台帳にも取込にも入らないが、フォルダは既知なので
+    /// 兄弟を探す対象に含める。
     /// </summary>
     private sealed class LedgerSnapshot(ILedger ledger)
     {
         private bool _captured;
+        private readonly List<(string Station, string SourcePath)> _restored = [];
 
         public IReadOnlyList<LedgerEntry> Entries { get; private set; } = [];
 
+        /// <summary>この走査で自己修復(ADR-0015)して台帳に書き戻した回。</summary>
+        public IReadOnlyList<(string Station, string SourcePath)> Restored => _restored;
+
         public string? Error { get; private set; }
+
+        public void AddRestored(string station, string sourcePath) => _restored.Add((station, sourcePath));
 
         public void CaptureOnce()
         {
@@ -273,6 +281,7 @@ public sealed class IngestService(
                 {
                     ledgerBeforeScan.CaptureOnce();
                     ledger.Record(Entry(episode, file, plan.Path));
+                    ledgerBeforeScan.AddRestored(episode.Station, file.FilePath);
                 }
                 return Result(IngestOutcome.SkippedAlreadyImported, file, episode, plan.Path);
             }
