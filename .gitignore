@@ -46,6 +46,9 @@ records/
 !tests/Radirec.Tests/Fixtures/*.m4a
 !tests/Radirec.Tests/Fixtures/*.mp3
 
+# --- Claude Code(/supervise の worktree) ---
+.claude/worktrees/
+
 # --- OS ---
 .DS_Store
 Thumbs.db

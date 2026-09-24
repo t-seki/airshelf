@@ -167,6 +167,34 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core
 - **ワークフロー**: main からブランチ → 実装 → コミット → PR → コードレビュー(`/code-review`)→ 指摘対応 → マージ。
 - 個人固有値(パス・NAS・局マスタ)は **config のみ**。コードにハードコードしない(将来の配布のため)。
 
+## Supervisor
+
+`/supervise`(dotfiles の共通 skill)が読む repo 固有の手順。
+
+### worktree の準備
+
+なし。git 管理外の個人設定(`config/programs.json` / `config/stations.json`)は、ビルドにもテストにも使われない。
+
+### マージ前の検証
+
+なし。CI(`.github/workflows/ci.yml`、GitHub-hosted Linux)が PR ごとに
+`dotnet build Radirec.slnx -c Release -warnaserror` と `dotnet test` を走らせ、手元で同じコマンドを
+打つのと同じ検証になる([ビルドとテスト](#ビルドとテスト))。`Radirec.Gui` は WSL/Linux で起動できないので、
+GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる**。
+
+### マージの承認
+
+自動。ただし**次のパスを触る PR は承認制**:
+
+- `src/Radirec.Gui/` — WSL で起動できず、CI では画面を確かめられない。実機で見てから入れる
+- `src/Radirec.Core/Ledger/` — 台帳スキーマとマイグレーション。壊れると既存の台帳に影響する
+- `.github/workflows/` — `release.yml` は母艦の self-hosted runner で動く
+
+### マージ後の確認(デプロイ)
+
+なし。配布はタグ駆動(`release.yml`、[リリース](#リリースタグ--github-release))で、main へのマージだけでは
+本番(トレイ常駐の Windows 環境)に入らない。**リリースのタグ付けは Supervisor の手順に含めず、人が判断する**。
+
 ## ドキュメント保守 — 当時の記録に事実誤りが見つかったとき(#113 で確立)
 
 ADR や requirements の「決定当時の記録」に、後から見て事実として誤っている記述が見つかることがある。
