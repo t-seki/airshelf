@@ -66,4 +66,39 @@ public static class ConfigPaths
         config.StationsFile = Rebase(dir, config.StationsFile);
         config.ProgramsFile = Rebase(dir, config.ProgramsFile);
     }
+
+    /// <summary>
+    /// 設定ファイル <paramref name="file"/> の場所を、今読み込んでいる設定から求める(トレイの「設定ファイルを開く」#143)。
+    /// <c>radirec.json</c> は <paramref name="configFilePath"/> そのもの、<c>stations.json</c> / <c>programs.json</c> は
+    /// <see cref="RebaseAgainst"/> 済みの <paramref name="stationsFile"/> / <paramref name="programsFile"/>
+    /// (<c>StationsFile</c> / <c>ProgramsFile</c> で既定と違う場所を指していればその場所)。
+    /// </summary>
+    /// <returns>
+    /// 場所を決められないときは null。設定を読めていない(パスが null)か、パスが空(<see cref="ConfigLoader.LoadOptional{T}"/>
+    /// が何も読まない = そのファイルを使っていない)とき。
+    /// </returns>
+    public static string? Locate(ConfigFile file, string configFilePath, string? stationsFile, string? programsFile)
+    {
+        var path = file switch
+        {
+            ConfigFile.Radirec => configFilePath,
+            ConfigFile.Stations => stationsFile,
+            ConfigFile.Programs => programsFile,
+            _ => throw new ArgumentOutOfRangeException(nameof(file), file, null),
+        };
+        return string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path);
+    }
+}
+
+/// <summary>利用者が編集する設定ファイルの種類(見本から作るときの種類と、開く場所の計算に使う)。</summary>
+public enum ConfigFile
+{
+    /// <summary>環境設定 <c>radirec.json</c>。</summary>
+    Radirec,
+
+    /// <summary>番組 alias・統合設定 <c>programs.json</c>(<c>ProgramsFile</c>)。</summary>
+    Programs,
+
+    /// <summary>放送局マスタ <c>stations.json</c>(<c>StationsFile</c>)。</summary>
+    Stations,
 }

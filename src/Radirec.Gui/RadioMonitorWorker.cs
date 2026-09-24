@@ -98,6 +98,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             StartedUtc = TimeProvider.System.GetUtcNow(),
             RadioRoot = config.RadioRoot,
             Watching = false, // StartWatcher 後に更新する
+            StationsFile = config.StationsFile,
+            ProgramsFile = config.ProgramsFile,
         };
     }
 
@@ -395,7 +397,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             _ingest = newIngest;
             _resources = newResources;
             _config = newConfig;
-            StartWatcher();       // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
+            // トレイの「設定ファイルを開く」(#143)が開く場所も、差し替えた設定に合わせる。
+            _status = _status with { StationsFile = newConfig.StationsFile, ProgramsFile = newConfig.ProgramsFile };
+            StartWatcher();      // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
             StartPeriodicTimer(); // 新 ScanIntervalSeconds で定期タイマーを張り直す。
         }
         catch (Exception ex)
