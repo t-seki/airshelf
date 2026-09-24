@@ -49,7 +49,10 @@ public static class ReapplyDialogFormatter
         return new ReapplyDialogText("取り込み済みの回は今の設定と揃っています", Join(sections));
     }
 
-    /// <summary>dry-run の結果に変える回があるときの確認ダイアログ([適用] / [キャンセル])の文言。</summary>
+    /// <summary>
+    /// dry-run の結果に変える回があるときの確認ダイアログの文言。ボタンは [適用] / [キャンセル] で、
+    /// <paramref name="canAppend"/> のときは [統合設定を追記して開く] も加えた 3 つ(#144)。
+    /// </summary>
     /// <param name="canAppend">[統合設定を追記して開く] を出すか(兄弟フォルダの段に案内を 1 行添える。#144)。</param>
     public static ReapplyDialogText BuildConfirmation(ReapplyReport plan, bool canAppend = false)
     {
@@ -122,8 +125,15 @@ public static class ReapplyDialogFormatter
     public const string AppendButton = "統合設定を追記して開く";
 
     /// <summary>追記した後に出すバルーン(その回の再適用は行わないので、保存してから選び直してもらう)。</summary>
-    public static string AppendedBalloon(string fileName)
-        => $"{fileName} に統合設定の提案を追記しました。確かめて保存したら、もう一度「統合設定の再適用…」を選んでください";
+    /// <param name="seeded">programs.json が無かったので、追記の前に見本から作ったか。</param>
+    public static string AppendedBalloon(string fileName, bool seeded = false)
+        => (seeded ? $"{fileName} が無かったので見本から作り、" : $"{fileName} に")
+           + "統合設定の提案を追記しました。確かめて保存したら、もう一度「統合設定の再適用…」を選んでください";
+
+    /// <summary>programs.json が無く、見本からも作れなかった(追記も開くこともできない)。</summary>
+    public static ReapplyDialogText BuildSeedFailed(string fileName) => new(
+        $"{fileName} に追記できませんでした",
+        $"{fileName} が無く、見本から作ることもできませんでした(理由は gui.log({LogLocation})にあります)。");
 
     /// <summary>
     /// 追記の確認([追記] / [キャンセル])。何を追記するかを組ごとに 1 行で示す(追記する中身そのものはダイアログの

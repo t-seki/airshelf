@@ -300,6 +300,36 @@ public sealed class ProgramsFileAppenderTests : IDisposable
     }
 
     [Fact]
+    public void バックアップを置けなければ本体を書き換えず_一時ファイルも残さない()
+    {
+        var path = WriteProgramsFile(Minimal);
+        var plan = ProgramsFileAppender.Plan(path, [Group], Today);
+        // バックアップの名前の場所に置けない(同名のフォルダがある)。一時ファイルに書いた後、置く段階で失敗する
+        Directory.CreateDirectory(path + ".bak-20260925-210509");
+
+        // Linux は IOException、Windows は UnauthorizedAccessException になりうる
+        Assert.ThrowsAny<Exception>(() => ProgramsFileAppender.Apply(plan, Now));
+
+        Assert.Equal(Minimal, File.ReadAllText(path));
+        Assert.Single(Directory.GetFiles(_dir)); // 壊れたバックアップも一時ファイルも残らない
+    }
+
+    [Fact]
+    public void 見本から作った直後のprogramsjsonにも追記できる()
+    {
+        // programs.json が無いとき、トレイは起動時と同じ見本から作ってから追記へ進む
+        var path = Path.Combine(_dir, "programs.json");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Samples", "programs.sample.json"), path);
+        var before = Load(File.ReadAllText(path)).Programs.Count;
+
+        ProgramsFileAppender.Apply(ProgramsFileAppender.Plan(path, [Group], Today), Now);
+
+        var after = Load(File.ReadAllText(path));
+        Assert.Equal(before + 1, after.Programs.Count);
+        Assert.Equal("てるのりのワルノリ", after.Programs[^1].Canonical.Album);
+    }
+
+    [Fact]
     public void 確認している間にファイルが変わったら書かない()
     {
         var path = WriteProgramsFile(Minimal);

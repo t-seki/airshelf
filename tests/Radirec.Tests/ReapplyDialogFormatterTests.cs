@@ -239,6 +239,18 @@ public sealed class ReapplyDialogFormatterTests
     }
 
     [Fact]
+    public void 見本から作ってから追記したときはバルーンでそれも知らせる()
+    {
+        Assert.StartsWith("programs.json が無かったので見本から作り、統合設定の提案を追記しました。",
+            ReapplyDialogFormatter.AppendedBalloon("programs.json", seeded: true));
+        Assert.StartsWith("programs.json に統合設定の提案を追記しました。", ReapplyDialogFormatter.AppendedBalloon("programs.json"));
+
+        var failed = ReapplyDialogFormatter.BuildSeedFailed("programs.json");
+        Assert.Contains("見本から作ることもできませんでした", failed.Body);
+        Assert.DoesNotContain("開きます", failed.Body); // 作れなければ開けないので、開くとは言わない
+    }
+
+    [Fact]
     public void 追記する中身は上限の行数で畳む()
     {
         var shortSnippet = "a\nb\n";

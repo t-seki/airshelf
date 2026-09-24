@@ -219,6 +219,9 @@ internal sealed class ControlTrayMenu
     }
 
     // 統合設定の再適用(#126 / ADR-0016)。設定リロード → dry-run → 確認([適用] / [キャンセル])→ 実行 → 完了表示。
+    // 統合設定の無い兄弟フォルダがあれば、確認(「揃っています」の表示も)に [統合設定を追記して開く] も出す(#144)。
+    // それを選ぶと提案を programs.json に追記して開き、その回の再適用は行わずに終わる(追記の確認で [キャンセル] したら
+    // 元の確認に戻る)。
     // リロード・dry-run・実行は worker の直列ループの上で行う(在中スキャンの完了を待つ)。UI スレッドは await で待ち、
     // その間メニューは生きている(制御の項目だけ伏せる)。
     // 再適用の確認(設定リロード + dry-run)がこれより長くかかるときだけ「確かめています」のバルーンを出す。
@@ -299,7 +302,8 @@ internal sealed class ControlTrayMenu
         Close,  // [キャンセル] / [OK] / 閉じた
     }
 
-    // [適用] / [キャンセル] の確認。ファイルを動かす操作なので既定はキャンセル(設定リロードの確認と同じ)。
+    // [適用] / [キャンセル] の確認。canAppend のときは [適用] / [統合設定を追記して開く] / [キャンセル] の 3 つ(#144)。
+    // 追記を選んだら呼び出し元は再適用をせず追記へ進む。ファイルを動かす操作なので既定はキャンセル(設定リロードの確認と同じ)。
     // MessageBox はボタンの文言を変えられないので TaskDialog を使う。
     private static ReapplyChoice ConfirmReapply(ReapplyDialogText text, bool canAppend)
     {
@@ -344,6 +348,7 @@ internal sealed class ControlTrayMenu
 
     // 統合設定の無い兄弟フォルダの提案を programs.json に追記して開く(#144)。追記する中身を見せて [追記] / [キャンセル]
     // → バックアップを作って追記 → エディタで開く → 保存してから再適用を選び直すようバルーンで案内する。
+    // programs.json が無ければ、先に起動時と同じ見本から作ってから同じ流れに進む(作れなければエラーで終わる)。
     // 追記できない(壊れている・"Programs" の配列が無い・確認の間に変わった等)ときは何も書かずにエラーを出し、ファイルだけ開く。
     // ファイルの読み書きはワーカースレッドで行う(ProgramsFile が NAS を指していても UI スレッドを塞がない)。
     // 戻り値: 追記の確認で [キャンセル] したときだけ false(呼び出し元は再適用の確認ダイアログに戻る)。
@@ -354,6 +359,19 @@ internal sealed class ControlTrayMenu
 
         var name = Path.GetFileName(path);
         var groups = plan.UnintegratedSiblings.Select(s => s.Group).ToList();
+
+        // programs.json が無ければ、起動時(「設定ファイルを開く」も)と同じ見本から作ってから追記する。
+        // 作れなければ追記も開くこともできないので、エラーを出して終わる(理由は gui.log)。
+        var (existed, ready) = await Task.Run(() =>
+        {
+            var exists = File.Exists(path);
+            return (exists, exists || ConfigSeeder.SeedFileIfAbsent(ConfigFile.Programs, path));
+        });
+        if (!ready)
+        {
+            ShowReapplyDialog(ReapplyDialogFormatter.BuildSeedFailed(name), TaskDialogIcon.Error);
+            return true;
+        }
 
         ProgramsAppendPlan append;
         try
@@ -394,7 +412,7 @@ internal sealed class ControlTrayMenu
         }
 
         TrayLog.Info($"{name} に統合設定の提案を {append.Proposals.Count} 組追記しました({path}。バックアップ: {backup}):\n{append.Snippet}");
-        await OpenProgramsFileAsync(path, ReapplyDialogFormatter.AppendedBalloon(name));
+        await OpenProgramsFileAsync(path, ReapplyDialogFormatter.AppendedBalloon(name, seeded: !existed));
         return true;
     }
 

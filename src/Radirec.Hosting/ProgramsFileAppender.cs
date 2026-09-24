@@ -32,8 +32,9 @@ public sealed record ProgramsAppendPlan(
 /// <para>
 /// 兄弟が既に統合番組に入っている組は、既存のエントリに触れず、足すフォルダをコメントで案内するだけにする。
 /// 書く前後の中身は <see cref="ConfigLoader"/> と同じ規則で読めることを確かめ、読めなければ何も書かない。
-/// 書く直前に同じフォルダへ <c>programs.json.bak-YYYYMMDD-HHmmss</c> を作り(既にあれば上書きせず別名)、
-/// 本体は一時ファイル経由で置き換える(<see cref="ReplacingFileWriter"/>)。
+/// 書く直前に同じフォルダへ <c>programs.json.bak-YYYYMMDD-HHmmss</c> を作り(既にあれば上書きせず別名。
+/// <see cref="NewFileWriter"/> で一時ファイル経由)、本体も一時ファイル経由で置き換える(<see cref="ReplacingFileWriter"/>)。
+/// programs.json が無いときは呼び出し元(トレイ)が先に見本から作る(起動時と同じ見本)。
 /// </para>
 /// </remarks>
 public static class ProgramsFileAppender
@@ -93,20 +94,25 @@ public static class ProgramsFileAppender
             throw new ProgramsAppendException(
                 $"確認している間に {Path.GetFileName(plan.Path)} が変わったため、追記しませんでした(もう一度選び直してください)");
 
-        var backup = BackupPath(plan.Path, now);
-        File.Copy(plan.Path, backup, overwrite: false);
+        // バックアップが作れなければ(投げたら)本体は書き換えない。
+        var backup = WriteBackup(plan.Path, plan.Original, now);
         ReplacingFileWriter.Replace(plan.Path, s => s.Write(plan.Updated));
         return backup;
     }
 
     // programs.json.bak-YYYYMMDD-HHmmss。同じ秒のバックアップが既にあれば -2, -3 … を付ける(前のバックアップを上書きしない)。
-    private static string BackupPath(string path, DateTime now)
+    // 中身は書く直前に確かめた元の中身。NewFileWriter で一時ファイルに書き切ってから置くので、NAS への書き込みが途中で
+    // 切れても、壊れたバックアップが正式な名前で残らない(「バックアップで置き換えれば戻る」を保つ)。
+    private static string WriteBackup(string path, byte[] original, DateTime now)
     {
         var stem = $"{path}.bak-{now:yyyyMMdd-HHmmss}";
         var candidate = stem;
-        for (var n = 2; File.Exists(candidate); n++)
-            candidate = $"{stem}-{n}";
-        return candidate;
+        for (var n = 2; ; n++)
+        {
+            if (NewFileWriter.CreateIfAbsent(candidate, s => s.Write(original)))
+                return candidate;
+            candidate = $"{stem}-{n}"; // 既にある(または置く直前に誰かが作った)。別名にする
+        }
     }
 
     /// <summary>
