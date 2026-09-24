@@ -193,6 +193,10 @@ internal sealed class ControlTrayMenu
     // 統合設定の再適用(#126 / ADR-0016)。設定リロード → dry-run → 確認([適用] / [キャンセル])→ 実行 → 完了表示。
     // リロード・dry-run・実行は worker の直列ループの上で行う(在中スキャンの完了を待つ)。UI スレッドは await で待ち、
     // その間メニューは生きている(制御の項目だけ伏せる)。
+    // 再適用の確認(設定リロード + dry-run)がこれより長くかかるときだけ「確かめています」のバルーンを出す。
+    // ふだんはすぐ終わるので出さず、取り込み中の走査を待つときや NAS が遅いときだけ知らせる(実機確認 v0.11.0-rc1)。
+    private static readonly TimeSpan ReapplyBalloonDelay = TimeSpan.FromMilliseconds(1500);
+
     private async void OnReapply(object? sender, EventArgs e)
     {
         if (_control is null || _reapplyBusy)
@@ -201,8 +205,11 @@ internal sealed class ControlTrayMenu
         _reapplyBusy = true;
         try
         {
-            _tray.ShowBalloonTip(3000, "Radirec", "設定を読み込み、再適用の内容を確かめています(取り込み中なら完了後)", ToolTipIcon.Info);
-            var planned = await _control.PlanReapplyAsync();
+            // すぐ終わるなら確認ダイアログとほぼ同時にバルーンが出て冗長なので、少し待っても終わらないときだけ知らせる。
+            var planTask = _control.PlanReapplyAsync();
+            if (await Task.WhenAny(planTask, Task.Delay(ReapplyBalloonDelay)) != planTask)
+                _tray.ShowBalloonTip(3000, "Radirec", "設定を読み込み、再適用の内容を確かめています(取り込み中なら完了後)", ToolTipIcon.Info);
+            var planned = await planTask; // 例外で終わっていればここで投げ、下の catch に届く
             if (planned.Report is not { } plan)
             {
                 ShowReapplyDialog(new ReapplyDialogText("統合設定の再適用を中止しました", planned.Error ?? "理由不明"), TaskDialogIcon.Error);
