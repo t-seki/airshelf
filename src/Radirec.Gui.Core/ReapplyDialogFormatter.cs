@@ -158,7 +158,22 @@ public static class ReapplyDialogFormatter
         $"{fileName} に追記できませんでした",
         $"{reason}\n\n{fileName} には何も書き込んでいません。{fileName} を開きます。");
 
-    // 追記の確認に並べる組の上限(中身は「詳細」に全部ある)。
+    /// <summary>追記の確認の「詳細」に見せる、追記する中身の行数の上限(ダイアログはスクロールしないため)。</summary>
+    public const int MaxSnippetLines = 30;
+
+    /// <summary>
+    /// 追記の確認の「詳細」に見せる中身。<see cref="MaxSnippetLines"/> を超えた分は畳む(全部は追記した後に開くファイルで見られる)。
+    /// </summary>
+    public static string SnippetPreview(string snippet)
+    {
+        var lines = snippet.TrimEnd('\n').Split('\n');
+        if (lines.Length <= MaxSnippetLines)
+            return string.Join("\n", lines);
+        return string.Join("\n", lines.Take(MaxSnippetLines))
+            + $"\n…ほか {lines.Length - MaxSnippetLines} 行(追記した後に開くファイルで確かめてください)";
+    }
+
+    // 追記の確認に並べる組の上限(超えた分も追記する)。
     private const int MaxAppendLines = 8;
 
     // ---- gui.log の明細 ----

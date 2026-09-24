@@ -312,12 +312,12 @@ internal sealed class ControlTrayMenu
             Heading = text.Heading,
             Text = text.Body,
             Icon = TaskDialogIcon.Warning,
-            DefaultButton = cancel,
         };
         page.Buttons.Add(apply);
         if (canAppend)
             page.Buttons.Add(append);
         page.Buttons.Add(cancel);
+        page.DefaultButton = cancel;
 
         var chosen = TaskDialog.ShowDialog(page);
         return chosen == apply ? ReapplyChoice.Apply : chosen == append ? ReapplyChoice.Append : ReapplyChoice.Close;
@@ -327,6 +327,7 @@ internal sealed class ControlTrayMenu
     private static ReapplyChoice ShowAligned(ReapplyDialogText text, bool canAppend)
     {
         var append = new TaskDialogButton(ReapplyDialogFormatter.AppendButton);
+        var ok = TaskDialogButton.OK;
         var page = new TaskDialogPage
         {
             Caption = "統合設定の再適用",
@@ -336,7 +337,8 @@ internal sealed class ControlTrayMenu
         };
         if (canAppend)
             page.Buttons.Add(append);
-        page.Buttons.Add(TaskDialogButton.OK);
+        page.Buttons.Add(ok);
+        page.DefaultButton = ok; // Enter で追記に進まないように(ボタンを足す前と同じく、Enter は閉じる)
         return TaskDialog.ShowDialog(page) == append ? ReapplyChoice.Append : ReapplyChoice.Close;
     }
 
@@ -413,7 +415,8 @@ internal sealed class ControlTrayMenu
             _tray.ShowBalloonTip(5000, "Radirec", message, ToolTipIcon.Info);
     }
 
-    // 追記の確認([追記] / [キャンセル])。追記する中身は「詳細」に開いた状態で見せる。既定はキャンセル(ファイルを書き換えるため)。
+    // 追記の確認([追記] / [キャンセル])。追記する中身は「詳細」に開いた状態で見せる(長ければ先頭だけ。ダイアログは
+    // スクロールしないので、画面からはみ出して [追記] に届かなくならないように)。既定はキャンセル(ファイルを書き換えるため)。
     private static bool ConfirmAppend(ReapplyDialogText text, string snippet)
     {
         var append = new TaskDialogButton("追記");
@@ -426,7 +429,7 @@ internal sealed class ControlTrayMenu
             Icon = TaskDialogIcon.Information,
             Buttons = { append, cancel },
             DefaultButton = cancel,
-            Expander = new TaskDialogExpander(snippet)
+            Expander = new TaskDialogExpander(ReapplyDialogFormatter.SnippetPreview(snippet))
             {
                 Expanded = true,
                 CollapsedButtonText = "詳細(追記する中身)",

@@ -209,7 +209,7 @@ public sealed class ProgramsFileAppenderTests : IDisposable
         Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, updated[..3]);
         var text = Encoding.UTF8.GetString(updated[3..]);
         Assert.Equal(
-            json.Replace("\"A\" } }\r\n  ]", "\"A\" } },\r\n" + Block.Replace("\n", "\r\n") + "  ]"),
+            json.Replace("\"A\" } }\r\n  ]", "\"A\" } },\r\n" + Block.ReplaceLineEndings("\r\n") + "  ]"),
             text);
         Assert.DoesNotContain("\n", text.Replace("\r\n", ""));
     }
@@ -223,13 +223,16 @@ public sealed class ProgramsFileAppenderTests : IDisposable
         var updated = ProgramsFileAppender.Insert(sample, [NewEntry, JoinEntry], Today);
 
         // 挿入したもの(最後の要素の直後のカンマ・追記の塊)を取り除くと、元とバイト単位で同じ。
+        // 改行は見本に合わせる(Windows の checkout では CRLF になりうる)。
         var text = Encoding.UTF8.GetString(updated);
+        var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         var blockStart = text.IndexOf("    // --- 統合設定の提案(", StringComparison.Ordinal);
-        var blockEnd = text.IndexOf("ここまで ---\n", StringComparison.Ordinal) + "ここまで ---\n".Length;
+        var blockEnd = text.IndexOf("ここまで ---" + nl, StringComparison.Ordinal) + ("ここまで ---" + nl).Length;
         var withoutBlock = text[..blockStart] + text[blockEnd..];
-        var comma = withoutBlock.IndexOf("\"パンサー向井のふらっと\" }\n    },", StringComparison.Ordinal);
+        var lastElement = "\"パンサー向井のふらっと\" }" + nl + "    }";
+        var comma = withoutBlock.IndexOf(lastElement + ",", StringComparison.Ordinal);
         Assert.True(comma > 0, withoutBlock);
-        var restored = withoutBlock.Remove(comma + "\"パンサー向井のふらっと\" }\n    }".Length, 1);
+        var restored = withoutBlock.Remove(comma + lastElement.Length, 1);
         Assert.Equal(sample, Encoding.UTF8.GetBytes(restored));
 
         var after = Load(text);

@@ -239,6 +239,19 @@ public sealed class ReapplyDialogFormatterTests
     }
 
     [Fact]
+    public void 追記する中身は上限の行数で畳む()
+    {
+        var shortSnippet = "a\nb\n";
+        var longSnippet = string.Concat(Enumerable.Range(1, ReapplyDialogFormatter.MaxSnippetLines + 5).Select(i => $"line{i}\n"));
+
+        Assert.Equal("a\nb", ReapplyDialogFormatter.SnippetPreview(shortSnippet));
+        var preview = ReapplyDialogFormatter.SnippetPreview(longSnippet);
+        Assert.Contains($"line{ReapplyDialogFormatter.MaxSnippetLines}\n", preview);
+        Assert.DoesNotContain($"line{ReapplyDialogFormatter.MaxSnippetLines + 1}", preview);
+        Assert.EndsWith("…ほか 5 行(追記した後に開くファイルで確かめてください)", preview);
+    }
+
+    [Fact]
     public void 追記できなかったときは理由と何も書いていないことを示す()
     {
         var text = ReapplyDialogFormatter.BuildAppendFailed("programs.json", "programs.json を読めません(JSON が壊れています)");
