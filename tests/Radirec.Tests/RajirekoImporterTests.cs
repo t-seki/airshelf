@@ -157,7 +157,9 @@ public sealed class RajirekoImporterTests
     [InlineData("[局]番組_20200823.mp3", false)]           // radikool 命名(8桁)は掴まない → RadikoolImporter へ
     [InlineData("番組_20221112000000.mp3", false)]         // [局]無しの裸14桁mp3は保険で対象外(radikool 変換の疑い)
     [InlineData("[局番組(TimeFree)_20231005000000.mp3", false)] // 開き括弧のみ(閉じ ']' 無し)は対象外(Failed にしない)
-    [InlineData("[TBSラジオ]番組(TimeFree)_20231005000000(2).mp3", false)] // 末尾 (N) マーカーは対象外(#86 で取り込まないと決めた)
+    // 末尾 (N) マーカーは対象外。統合番組のパートと同じ PartIndex を取り合い、別の録音が黙って欠落しうるため
+    // #85 で撤回した。#86 で取り込まないと決めた。
+    [InlineData("[TBSラジオ]番組(TimeFree)_20231005000000(2).mp3", false)]
     public void CanHandle_DiscriminatesByExtensionAndTimestamp(string fileName, bool expected)
     {
         var file = Make(fileName);
