@@ -36,7 +36,7 @@ public sealed record IngestSummary
     /// <see cref="SiblingFolderNoticeCount"/> に残す。
     /// <para>
     /// <see cref="MaxAlbums"/> と同じく**表示のための値ではなく、payload を有界にする安全弁**。台帳が空・作り直した直後や、
-    /// 監視ルートを増やした直後の初回キャッチアップでは、統合設定の無い分割フォルダがまとめて「初めて」になりうる。
+    /// 監視ルートを増やした直後の初回キャッチアップでは、統合設定の無い兄弟フォルダがまとめて「初めて」になりうる。
     /// 提示側(<c>IngestToastFormatter</c>)が出すのは先頭の 1 件と件数だけなので、この値が 1 以上なら表示は変わらない。
     /// 全件は取り込みの結果(<see cref="IngestReport.SiblingFolderNotices"/>。打ち切らない)にあり、トレイはそこから
     /// <c>gui.log</c> に全件を書く。
