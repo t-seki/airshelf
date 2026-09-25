@@ -10,7 +10,7 @@
 
 ## ステータス
 
-**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M4-A(radikool 移行)実装済み**。
+**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M4-A(radikool 移行)実装済み**(M4-A の移行用の `ingest --root` は [ADR-0020](docs/adr/0020-cli-as-agent-front-via-control-channel.md) で CLI から削除済み)。
 常駐は **トレイ常駐 per-user モデル**(`Radirec.Gui`)で、取り込みワーカーをトレイプロセスが内包し、
 取込通知は in-process トースト、制御はトレイメニュー、状態と取込履歴・番組の設定(編集と再適用)・設定ファイル・更新の確認は管理画面(トレイの「Radirec を開く」)、更新は Velopack のアプリ内自己更新で行う
 ([ADR-0012](docs/adr/0012-retire-service-for-tray-resident-per-user.md) /

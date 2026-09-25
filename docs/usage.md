@@ -3,7 +3,7 @@
 らじれこで録音した M4A を、Jellyfin 音楽ライブラリ向けに整理・取り込みする CLI の使い方。
 
 > 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M4-A**(radikool MP3 の
-> 一括移行)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
+> 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
 > ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装です。
 >
 > この §1–§5 は主に **dev/batch の CLI(`radirec.exe`)** の使い方。常駐運用は §6 を参照。
@@ -17,12 +17,15 @@
 
 ## 2. セットアップ
 
-サンプル設定をコピーして、自分の環境に合わせて編集します。
+設定は常に **`%LOCALAPPDATA%\RadirecData\`**(データルート)に置きます。CLI も常駐トレイもここを読み、
+別の場所を指すオプションはありません([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
+常駐トレイを一度起動すると、無いファイルは見本から作られます。手で置くなら、見本をそこへコピーして
+自分の環境に合わせて編集します。
 
 ```
-config/radirec.sample.json   → radirec.json       (環境設定)
-config/stations.sample.json  → config/stations.json (放送局マスタ)
-config/programs.sample.json  → config/programs.json (番組 alias)
+config/radirec.sample.json   → %LOCALAPPDATA%\RadirecData\radirec.json   (環境設定)
+config/stations.sample.json  → %LOCALAPPDATA%\RadirecData\stations.json  (放送局マスタ)
+config/programs.sample.json  → %LOCALAPPDATA%\RadirecData\programs.json  (番組 alias)
 ```
 
 `radirec.json` の主な項目:
