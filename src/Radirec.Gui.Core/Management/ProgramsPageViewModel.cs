@@ -100,6 +100,15 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <summary>W-276。</summary>
     public const string ReloadDiscards = "読み込み直すと、この画面での変更は消えます";
 
+    /// <summary>W-226。要対応の「統合する」「分けておく」から下書きを作ったとき、編集フォームの上に出す。</summary>
+    public const string DraftFromAttention = "要対応の兄弟フォルダから下書きを作りました。アルバム名を確かめてください";
+
+    /// <summary>W-226 の「分けておく」の形(分けておく兄弟フォルダにはアルバム名が無い)。</summary>
+    public const string KeepDraftFromAttention = "要対応の兄弟フォルダから下書きを作りました。フォルダの組を確かめてください";
+
+    /// <summary>W-138。番組ページに保存していない作業があるので、要対応の「分けておく」で programs.json を書けない。</summary>
+    public const string KeepApartBlocked = "番組ページに保存していない変更があるため、分けておけません";
+
     /// <summary>確認がこれより長くかかるときだけ W-240 を出す(すぐ終わるなら出さない。トレイの再適用と同じ 1.5 秒)。</summary>
     public static readonly TimeSpan CheckingDelay = TimeSpan.FromMilliseconds(1500);
 
@@ -134,6 +143,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     private string _formAlbum = "";
     private string _formNote = "";
     private IReadOnlyList<string> _formErrors = [];
+    private string? _formNotice;
 
     // 確認
     private ReapplyReport? _plan;
@@ -336,6 +346,19 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     /// <summary>W-224 / W-225 を 1 行ずつ。無ければ null。</summary>
     public string? FormErrorText => FormErrors.Count == 0 ? null : string.Join("\n", FormErrors);
+
+    /// <summary>W-226(要対応から下書きを作ったとき)。それ以外は null。</summary>
+    public string? FormNotice
+    {
+        get => _formNotice;
+        private set
+        {
+            if (SetProperty(ref _formNotice, value))
+                OnPropertyChanged(nameof(IsFormNoticeVisible));
+        }
+    }
+
+    public bool IsFormNoticeVisible => FormNotice is not null;
 
     // ---- 確認 ----
 
@@ -628,6 +651,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         FormAlbum = "";
         FormNote = "";
         FormErrors = [];
+        FormNotice = null;
         Mode = ProgramsPageMode.ProgramForm;
     }
 
@@ -642,6 +666,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         FormAlbum = row.Album;
         FormNote = row.Note;
         FormErrors = [];
+        FormNotice = null;
         Mode = ProgramsPageMode.ProgramForm;
     }
 
@@ -665,6 +690,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         FormAlbum = "";
         FormNote = "";
         FormErrors = [];
+        FormNotice = null;
         Mode = ProgramsPageMode.KeepForm;
     }
 
@@ -679,6 +705,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         FormAlbum = "";
         FormNote = row.Note;
         FormErrors = [];
+        FormNotice = null;
         Mode = ProgramsPageMode.KeepForm;
     }
 
@@ -697,6 +724,156 @@ public sealed class ProgramsPageViewModel : ObservableObject
     {
         if (_snapshot is { } snapshot)
             SetSnapshot(snapshot);
+    }
+
+    // ---- 要対応の「統合する」「分けておく」(#155・ADR-0018)----
+
+    /// <summary>
+    /// 保存していない作業があるか(一覧で変更した・編集フォームや確認の途中)。あるときは、要対応の「分けておく」で
+    /// programs.json を書かない(書くと、この画面の下書きを保存するときに W-275 で保存できなくなるため)。
+    /// </summary>
+    public bool HasUnsavedWork => _loaded && (HasChanges || !(IsListMode || IsResultMode));
+
+    /// <summary>
+    /// 要対応の「統合する」(W-126)。兄弟フォルダの組から下書きを作り、編集フォームに入れて出す(ファイルには書かない。
+    /// 「決定」→「確認」→「保存して適用」は利用者が押す)。
+    /// <list type="bullet">
+    /// <item>統合番組がまだ無い組:新しいエントリ(局・組のフォルダをパートの順に・アルバム名は印を除いたフォルダ名。#144 の提案と同じ)</item>
+    /// <item>組の一部がすでに統合番組に入っている(W-124):その統合番組を編集し、入っていないフォルダを <c>Folders</c> の末尾に足す
+    /// (並べ直さない。すでに取り込んだ回のパート番号を動かさないため)</item>
+    /// </list>
+    /// 「統合設定が無い」は、この画面の下書き(保存していない変更を含む)で決め直す。
+    /// </summary>
+    /// <returns>下書きを出したか。一覧を出せない(読めない・使わない設定)・一覧以外の画面の途中・下書きではもう統合済みなら false。</returns>
+    public bool DraftIntegration(SiblingFolderGroup group)
+    {
+        if (!IsListMode || !IsReady)
+            return false;
+
+        var draft = new ProgramMasterConfig { Programs = Programs.Select(r => r.Current).ToList() };
+        if (SiblingProgramProposals.Build([group], new ProgramResolver(draft)).FirstOrDefault() is not { } proposal)
+            return false;
+
+        var joined = proposal.JoinsExisting ? FindMergedRow(proposal, group) : null;
+        if (joined is not null)
+        {
+            _editingProgram = joined;
+            FormHeading = "アルバム名と統合を編集"; // W-220
+            FormStation = joined.Station;
+            FormFolders = string.Join("\n", joined.Current.Match.Folders.Concat(proposal.Folders));
+            FormAlbum = joined.Album;
+            FormNote = joined.Note;
+        }
+        else
+        {
+            _editingProgram = null;
+            FormHeading = "アルバム名と統合を追加"; // W-220
+            FormStation = proposal.Station;
+            FormFolders = string.Join("\n", proposal.Folders);
+            FormAlbum = proposal.Album;
+            FormNote = "";
+        }
+        FormErrors = [];
+        FormNotice = DraftFromAttention; // W-226
+        Mode = ProgramsPageMode.ProgramForm;
+        return true;
+    }
+
+    /// <summary>
+    /// 要対応の「分けておく」(W-127)を、編集フォームの下書きとして出す(programs.json にコメントがあり、その場では書かないとき。
+    /// 保存の前にコメントが消えることを確かめる W-260 を通すため)。
+    /// </summary>
+    /// <returns>下書きを出したか。一覧を出せない・一覧以外の画面の途中なら false。</returns>
+    public bool DraftKeepApart(SiblingFolderGroup group)
+    {
+        if (!IsListMode || !IsReady)
+            return false;
+
+        var (entry, replaced) = ProgramsDraft.KeepApart(KeepSeparate.Select(r => r.Current), group);
+        _editingKeep = replaced.Count == 0 ? null : KeepSeparate.FirstOrDefault(r => ReferenceEquals(r.Current, replaced[0]));
+        FormHeading = _editingKeep is null ? "分けておく兄弟フォルダを追加" : "分けておく兄弟フォルダを編集"; // W-229 / W-228
+        FormStation = entry.Match.Station;
+        FormFolders = string.Join("\n", entry.Match.Folders);
+        FormAlbum = "";
+        FormNote = entry.Note ?? "";
+        FormErrors = [];
+        FormNotice = KeepDraftFromAttention; // W-226
+        Mode = ProgramsPageMode.KeepForm;
+        return true;
+    }
+
+    /// <summary>
+    /// 要対応の「分けておく」(W-127)。programs.json を読み直し、<c>KeepSeparate</c> に組を足して(組にフォルダが加わったなら
+    /// 記録した組を置き換えて)その場で保存する(<see cref="ProgramsFileWriter"/>。バックアップあり・読んだ後に変わっていたら書かない)。
+    /// 再適用も設定リロードも行わない(<c>KeepSeparate</c> は取り込みの結果を変えない)。この画面は、次に出したときに読み直す。
+    /// </summary>
+    public async Task<KeepApartResult> KeepApartAsync(SiblingFolderGroup group)
+    {
+        if (HasUnsavedWork)
+            return KeepApartResult.Failed(KeepApartBlocked); // W-138
+
+        string? path;
+        try
+        {
+            path = _locateProgramsFile?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"管理画面: programs.json の場所を決められませんでした(分けておく): {ex}");
+            return KeepApartResult.Failed(KeepApartFailed(LocateFailed(ex.Message)));
+        }
+        // 要対応は programs.json を使う設定のときだけ兄弟フォルダを出すので、ここには来ないはず。
+        if (string.IsNullOrWhiteSpace(path))
+            return KeepApartResult.Failed(KeepApartFailed(_locateProgramsFile is null ? Unavailable : Unused));
+
+        var name = Path.GetFileName(path);
+        try
+        {
+            var snapshot = await Task.Run(() => ProgramsFileWriter.Read(path));
+            // コメントはファイル全体の書き直しで消える(.bak には残る)。黙って消さず、番組ページの下書きへ回して W-260 で確かめる。
+            if (snapshot.CommentCount > 0)
+                return KeepApartResult.NeedsDraft;
+
+            var config = snapshot.Config;
+            var (entry, replaced) = ProgramsDraft.KeepApart(config.KeepSeparate, group);
+            var index = replaced.Count == 0 ? config.KeepSeparate.Count : config.KeepSeparate.IndexOf(replaced[0]);
+            config.KeepSeparate.RemoveAll(k => replaced.Contains(k));
+            config.KeepSeparate.Insert(Math.Min(index, config.KeepSeparate.Count), entry);
+
+            var backup = await Task.Run(() => ProgramsFileWriter.Write(snapshot, config, _now()));
+            _logInfo($"管理画面: {path} に分けておく組を書きました({entry.Match.Station}: {string.Join(" / ", entry.Match.Folders)}。"
+                     + $"バックアップ: {backup ?? "なし(新しく作った)"})");
+            return KeepApartResult.Written;
+        }
+        catch (ProgramsFileChangedException ex)
+        {
+            _logWarn($"管理画面: {path} に分けておく組を書きませんでした: {ex.Message}");
+            return KeepApartResult.Failed(KeepApartFailed($"{name} は読み込んだ後に変更されています(エディタで直した等)。")); // W-275
+        }
+        catch (ProgramsFileException ex)
+        {
+            _logWarn($"管理画面: {path} を読めませんでした(分けておく): {ex}");
+            return KeepApartResult.Failed(KeepApartFailed(ex.Message));
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"管理画面: {path} に分けておく組を書けませんでした: {ex}");
+            return KeepApartResult.Failed(KeepApartFailed($"書き込みに失敗しました: {ex.Message}(元のままです)")); // W-277
+        }
+    }
+
+    /// <summary>W-139。「分けておく」で programs.json を書けなかった。</summary>
+    public static string KeepApartFailed(string reason) => $"分けておく組を書けませんでした: {reason}";
+
+    // W-124 の組が入っている統合番組のエントリ(下書きの一覧から。局が同じで、組のフォルダを含み、アルバム名が提案と同じもの)。
+    private ProgramEntryRow? FindMergedRow(SiblingProgramProposal proposal, SiblingFolderGroup group)
+    {
+        var stationKey = TextNormalizer.ToMatchKey(group.Station);
+        var folderKeys = group.Folders.Select(TextNormalizer.ToMatchKey).ToHashSet();
+        return Programs.FirstOrDefault(row =>
+            TextNormalizer.ToMatchKey(row.Station) == stationKey
+            && row.Album == proposal.Album
+            && row.Current.Match.Folders.Any(f => folderKeys.Contains(TextNormalizer.ToMatchKey(f))));
     }
 
     private void CommitForm()

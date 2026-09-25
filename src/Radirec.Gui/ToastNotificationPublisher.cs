@@ -46,13 +46,6 @@ public sealed class ToastNotificationPublisher(ToastPresenter presenter)
                 PartIndex = album.FirstEpisode.PartIndex,
             },
         }).ToList(),
-        SiblingFolderNotices = summary.SiblingFolderNotices.Select(notice => new SiblingFolderNoticePayload
-        {
-            Folder = notice.Folder,
-            MergedAlbum = notice.MergedAlbum,
-            Folders = notice.Folders,
-        }).ToList(),
-        SiblingFolderNoticeCount = summary.SiblingFolderNoticeCount,
     };
 
     private static IngestFailurePayload ToPayload(IngestFailureSignal signal) => new()

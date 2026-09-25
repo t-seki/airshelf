@@ -8,7 +8,8 @@ public sealed class ProgramMasterConfig
 
     /// <summary>
     /// 分けておく兄弟フォルダ(CONTEXT.md)。統合番組にまとめないと利用者が決めたフォルダの組(ADR-0017 / ADR-0018)。
-    /// 取り込みと再適用の解決には使わない(読むのは要対応の計算だけ)。空なら programs.json に書かない。
+    /// 取り込みと再適用の解決には使わない(読むのは、要対応と再適用の確認に出す「統合設定の無い兄弟フォルダ」の計算だけ)。
+    /// 空なら programs.json に書かない。
     /// </summary>
     public List<KeptApartSiblings> KeepSeparate { get; set; } = [];
 }

@@ -16,7 +16,7 @@ public sealed record SiblingFolderGroup(string Station, string BaseName, IReadOn
 /// <summary>
 /// パートに分かれて録音された番組(<c>X(1)</c> / <c>X(2)</c>、<c>X Part1</c>、<c>X 8時9時</c> など)の
 /// 兄弟フォルダを見つける。統合設定(<c>programs.json</c>)が要りそうな番組を知らせるために使う
-/// (再適用の dry-run の結果・取込通知。ADR-0016 / #127)。フォルダ名のパターンから自動で統合はしない。
+/// (再適用の dry-run の結果と、管理画面の要対応。ADR-0016 / ADR-0018)。フォルダ名のパターンから自動で統合はしない。
 /// </summary>
 /// <remarks>
 /// 名前は NFKC(全角の括弧・数字・英字を半角へ)にしてから、末尾の印を 1 つだけ除く:

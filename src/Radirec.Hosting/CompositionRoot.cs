@@ -86,8 +86,6 @@ public static class CompositionRoot
             new RecordingSkipPolicy(config.SkipPatterns),
             tagReader,
             assembler,
-            // 兄弟フォルダの判定は取り込みと同じ番組の解決を使う(#127)。
-            new SiblingFolderDetector(programResolver, rajireko),
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), new TagLibAudioContentComparer(), config.OutputRoot),
             ledger,
             TimeProvider.System,
@@ -168,7 +166,8 @@ public static class CompositionRoot
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), comparer, config.OutputRoot),
             new TagLibTagReader(),
             comparer,
-            refresher);
+            refresher,
+            programs.KeepSeparate);
 
         return (service, Combine(ledgerDisposable, refresherDisposable));
     }

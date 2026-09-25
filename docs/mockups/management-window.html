@@ -245,11 +245,17 @@
 
     <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startfail" data-w="W-120">要対応 7 件</span></h3>
     <div data-if="run:noconfig" class="msg warn an" data-w="W-137">設定を読めないため、要対応を出せません</div>
+    <div data-if="run:noconfig" class="mocknote">台帳か programs.json・stations.json を読めず計算できなかったときは、
+      <span class="an" data-w="W-137">要対応を出せませんでした: {理由}</span> を出す(縮退していなくても)。</div>
     <div data-if="attn:empty run:watching,polling,noscan,crashed,startfail" class="sub an" data-w="W-121">要対応はありません</div>
 
     <div data-if="attn:items run:watching,polling,noscan,crashed,startfail">
       <div class="attn">
         <h4 data-w="W-122">統合設定の無い兄弟フォルダ</h4>
+        <div class="mocknote">番組ページに保存していない変更があるときは、この下に
+          <span class="an" data-w="W-138">番組ページに保存していない変更があるため、分けておけません</span> を出し、「分けておく」を押せなくする。
+          「分けておく」で書けなかったときは、要対応の見出しの下に
+          <span class="an" data-w="W-139">分けておく組を書けませんでした: {理由}</span> を出す。</div>
         <div class="item">
           <div><span data-w="W-123">TBSラジオ: 安住紳一郎の日曜天国(1)(設定なし) / 安住紳一郎の日曜天国(2)(設定なし)</span></div>
           <div class="row" style="flex-wrap: nowrap;">
@@ -857,7 +863,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       <div class="t">取込失敗 1件</div>
       <div>[ニッポン放送]オードリーのオールナイトニッポン(TimeFree)_20270229010000.m4a（放送日時が不正です …）</div></div>
     <div class="mocknote">新規取込のトーストは、設定ページでオフにすると出ない。失敗のトーストは常に出る。
-      新規取込のトーストの最後の行に出ていた兄弟フォルダの知らせ(<span class="gone">分割番組らしいフォルダ…に統合設定がありません</span>)は出さなくなる(要対応へ)。</div>
+      新規取込のトーストの最後の行に出ていた兄弟フォルダの知らせ(<span class="gone">分割番組らしいフォルダ…に統合設定がありません</span>)は出さなくなった(要対応へ。#155)。</div>
   </div>
 </div>
 

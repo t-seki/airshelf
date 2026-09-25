@@ -78,10 +78,26 @@ public sealed record ReapplyAlbumSummary(
     int Moves, int LedgerAndTags, int LedgerOnly, int DuplicatesLeft, int Excluded, int Failed);
 
 /// <summary>
-/// 統合設定の無いフォルダを含む兄弟フォルダの組(再適用の確認で、分割されたままの番組に気づけるようにする)。
+/// 統合設定の無いフォルダを含む兄弟フォルダの組(再適用の確認と、管理画面の要対応で、分割されたままの番組に気づけるようにする。
+/// 計算は <see cref="UnintegratedSiblings"/>)。
 /// </summary>
 /// <param name="FoldersWithoutSetting">組のうち、<c>programs.json</c> の <c>Match.Folders</c> に無いフォルダ。</param>
-public sealed record UnintegratedSiblingGroup(SiblingFolderGroup Group, IReadOnlyList<string> FoldersWithoutSetting);
+public sealed record UnintegratedSiblingGroup(SiblingFolderGroup Group, IReadOnlyList<string> FoldersWithoutSetting)
+{
+    /// <summary>
+    /// 組の一部がすでに入っている統合番組のアルバム名(パートの順で最初のフォルダが入っているもの)。どれも統合されていなければ null。
+    /// </summary>
+    public string? MergedAlbum { get; init; }
+
+    /// <summary>
+    /// 分けておく組(<c>KeepSeparate</c>)に記録した組に、あとから加わったフォルダ(W-125。組が変わったので判断し直す)。
+    /// 分けておく組に記録していなければ空。
+    /// </summary>
+    public IReadOnlyList<string> FoldersNewToKeptApart { get; init; } = [];
+
+    /// <summary>分けておく組に記録した組に、新しいフォルダが加わったために出ているか。</summary>
+    public bool IsKeptApartGrown => FoldersNewToKeptApart.Count > 0;
+}
 
 /// <summary>再適用 1 回の結果。</summary>
 public sealed record ReapplyReport

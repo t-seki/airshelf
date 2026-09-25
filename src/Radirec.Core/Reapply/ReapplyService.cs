@@ -1,4 +1,5 @@
 using System.IO.Abstractions;
+using Radirec.Core.Configuration;
 using Radirec.Core.Ingestion;
 using Radirec.Core.Jellyfin;
 using Radirec.Core.Ledger;
@@ -31,9 +32,11 @@ public sealed class ReapplyService(
     LocalFolderTarget target,
     IPlacementTagReader tagReader,
     IAudioContentComparer contentComparer,
-    ILibraryRefresher refresher)
+    ILibraryRefresher refresher,
+    IEnumerable<KeptApartSiblings>? keepSeparate = null)
 {
-    private readonly EpisodeAssembler _assembler = new(stationResolver, programResolver);
+    // 台帳の回を今の設定で解決し直す(要対応と共有する。ファイルには触れない)。
+    private readonly LedgerEpisodeResolver _episodes = new(fileSystem.Path, importer, stationResolver, programResolver);
 
     // 出力先の判定は本番(Windows)ではパスの大文字小文字を区別しない。
     private static readonly StringComparer PathComparer =
@@ -63,27 +66,20 @@ public sealed class ReapplyService(
             cancellationToken.ThrowIfCancellationRequested();
 
             // らじれこの回だけ。radikool は番組名がファイル名由来で、凍結したアーカイブなので対象外(ADR-0016)。
-            var file = SourceFileOf(entry.SourcePath);
-            if (!importer.CanHandle(file))
+            if (_episodes.Resolve(entry) is not { } resolved)
                 continue;
 
-            Episode episode;
-            try
+            if (resolved.Episode is not { } episode)
             {
-                episode = _assembler.Assemble(importer.Parse(file));
-            }
-            catch (SourceParseException ex)
-            {
-                items.Add(Item(entry, ReapplyAction.Excluded, entry.Program, entry.OutputPath, ex.Message));
+                items.Add(Item(entry, ReapplyAction.Excluded, entry.Program, entry.OutputPath, resolved.ParseError));
                 continue;
             }
 
+            var file = resolved.Source;
             knownFolders.Add(new ProgramFolder(episode.Station, file.ProgramFolder));
 
             // 記録どおり(アルバム名・パート・放送局が今の設定と同じ)の回は触らない。2 回目の再適用が何もしないのはこのため。
-            if (episode.Station == entry.Station
-                && episode.Program == entry.Program
-                && (episode.PartIndex ?? 0) == entry.PartIndex)
+            if (resolved.IsAsRecorded)
                 continue;
 
             var tags = TagMapper.Map(episode);
@@ -116,7 +112,8 @@ public sealed class ReapplyService(
         {
             Items = items,
             DryRun = dryRun,
-            UnintegratedSiblings = UnintegratedSiblings(knownFolders),
+            // 知っているフォルダ = 台帳にあるらじれこの回のフォルダ。要対応と同じ計算(分けておく組は出さない)。
+            UnintegratedSiblings = Reapply.UnintegratedSiblings.Find(knownFolders, programResolver, keepSeparate ?? []),
         };
 
         // ファイル(置き場所かタグ)を書き換えた回があれば、Jellyfin の通常スキャンを起動する。
@@ -287,30 +284,6 @@ public sealed class ReapplyService(
                 // 空フォルダが残るだけ(次の再適用では対象にならないので手で消す)。移動の成否は変えない。
             }
         }
-    }
-
-    // 統合設定の無いフォルダを含む兄弟フォルダの組。知っているフォルダ = 台帳にある らじれこの回のフォルダ。
-    // 「統合設定が無い」はフォルダ単位(programs.json の Match.Folders に無い)で判定する(#127 と同じ基準)。
-    private IReadOnlyList<UnintegratedSiblingGroup> UnintegratedSiblings(IEnumerable<ProgramFolder> knownFolders)
-        => SiblingFolders.Find(knownFolders)
-            .Select(g => new UnintegratedSiblingGroup(
-                g, g.Folders.Where(f => programResolver.Resolve(g.Station, f).UsedFallback).ToList()))
-            .Where(g => g.FoldersWithoutSetting.Count > 0)
-            .ToList();
-
-    // 台帳の source_path から、取り込みと同じ形の RecordingFile を組む(ファイルが無くても名前だけで判定できる)。
-    private RecordingFile SourceFileOf(string sourcePath)
-    {
-        var programDir = fileSystem.Path.GetDirectoryName(sourcePath);
-        var stationDir = string.IsNullOrEmpty(programDir) ? null : fileSystem.Path.GetDirectoryName(programDir);
-        return new RecordingFile
-        {
-            FilePath = sourcePath,
-            FileName = fileSystem.Path.GetFileName(sourcePath),
-            ProgramFolder = string.IsNullOrEmpty(programDir) ? string.Empty : fileSystem.Path.GetFileName(programDir),
-            StationFolder = string.IsNullOrEmpty(stationDir) ? string.Empty : fileSystem.Path.GetFileName(stationDir),
-            Extension = fileSystem.Path.GetExtension(sourcePath).ToLowerInvariant(),
-        };
     }
 
     private static ReapplyItem Item(

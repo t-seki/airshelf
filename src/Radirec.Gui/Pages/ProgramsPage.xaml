@@ -224,6 +224,9 @@
                 <StackPanel MaxWidth="720" HorizontalAlignment="Left" MinWidth="480">
                     <!-- W-220 / W-228 / W-229 -->
                     <TextBlock Style="{StaticResource SectionHeading}" Text="{Binding FormHeading}" />
+                    <!-- W-226(要対応の「統合する」「分けておく」から来た) -->
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,6" Text="{Binding FormNotice}"
+                               Visibility="{Binding IsFormNoticeVisible, Converter={StaticResource Visible}}" />
 
                     <TextBlock Style="{StaticResource Label}" Text="放送局" />
                     <TextBox Text="{Binding FormStation, UpdateSourceTrigger=PropertyChanged}" />
