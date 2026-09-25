@@ -71,6 +71,7 @@ internal static class Program
         string? configPath = null;          // 設定ページで開く(#143 / #152)。読めなかったときも開ける(直すため)。
         RadirecConfig? startupConfig = null; // 同上。ワーカーが無いときの programs/stations の場所の出どころ。
         string? configError = null;          // radirec.json を読めなかった理由(設定ページの縮退パネル W-402。#152)。
+        string? startError = null;           // 設定は読めたがワーカーを起動できなかった理由(設定ページの先頭のパネル W-407。#168)。
         var toastSetting = IngestToastSetting.Fixed(true); // 新規取込のトースト(#152)。下で設定ファイルから読む。
         UpdateService? updateService = null;       // 自己更新(S6)。設定が読めたときだけ。
         UpdateChecker? updateChecker = null;       // 更新の確認。トレイの自動の確認と管理画面で共有する(#157)。
@@ -134,6 +135,8 @@ internal static class Program
                     host = null;
                     control = null;
                     degradedReason = ServiceStatusText.DegradedStartFailed; // W-104
+                    // 例外の全文は上で gui.log に書いた。画面にはメッセージだけを出す(programs.json の JSON の誤り等が読める)。
+                    startError = ex.Message;
                 }
             }
             else
@@ -184,7 +187,7 @@ internal static class Program
             // 番組ページ(#154)は、設定ページと同じ radirec.json の場所と起動時に読めた設定から programs.json の場所を求める。
             var windowHost = new ManagementWindowHost(
                 trayIcon, control, degradedReason, ledgerPath,
-                new SettingsPageContext(configPath, startupConfig, configError, toastSetting),
+                new SettingsPageContext(configPath, startupConfig, configError, toastSetting, startError),
                 DecideUpdateSupport(updateService, configLoaded: startupConfig is not null),
                 updateChecker is null ? null : updateService, updateChecker);
             managementHost = windowHost;

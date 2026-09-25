@@ -17,8 +17,11 @@ public sealed record ServiceStatusView(string Status, string LastScan, bool CanC
 /// </summary>
 public static class ServiceStatusText
 {
-    /// <summary>設定は読めたが、取り込みワーカーを起動できなかったときの理由(W-104 の括弧の中)。</summary>
-    public const string DegradedStartFailed = "取り込みの起動に失敗しました(gui.log 参照)";
+    /// <summary>
+    /// 設定は読めたが、取り込みワーカーを起動できなかったときの理由(W-104 の括弧の中)。原因と、直して戻る導線は
+    /// 管理画面の設定ページの先頭に出す(W-406〜W-409。#168)。
+    /// </summary>
+    public const string DegradedStartFailed = "取り込みの起動に失敗しました(設定ページ参照)";
 
     /// <summary><c>radirec.json</c> を読めなかったときの理由(W-105 の括弧の中)。</summary>
     public const string DegradedConfigUnreadable = "設定を読み込めませんでした";

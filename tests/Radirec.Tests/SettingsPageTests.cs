@@ -217,8 +217,8 @@ public sealed class SettingsPageTests : IDisposable
 
     private SettingsPageViewModel Page(
         FakeControl? control, FakeActions actions, RadirecConfig? config = null, string? error = null,
-        IngestToastSetting? toast = null) =>
-        new(control, ConfigPath, config, error, toast ?? IngestToastSetting.Fixed(true), actions, _warnings.Add);
+        IngestToastSetting? toast = null, string? startError = null) =>
+        new(control, ConfigPath, config, error, toast ?? IngestToastSetting.Fixed(true), actions, _warnings.Add, startError);
 
     [Fact]
     public void 縮退時は縮退パネルを出す()
@@ -242,6 +242,78 @@ public sealed class SettingsPageTests : IDisposable
         page.RestartCommand.Execute(null);
 
         Assert.Equal(1, actions.Restarts);
+    }
+
+    // ---------- 起動の失敗のパネル(W-104 のとき。#168) ----------
+
+    [Fact]
+    public async Task 取り込みを起動できないときは_先頭のパネルで原因を出し_ファイルを開いて再起動できる()
+    {
+        var actions = new FakeActions();
+        const string reason = "programs.json を読めません(JSON が壊れています): '}' is invalid";
+        var page = Page(control: null, actions, Config(), startError: reason);
+
+        Assert.True(page.IsStartFailed);
+        Assert.True(page.IsNormal);                       // ページを置き換えない(通常の設定ページも出す)
+        Assert.False(page.IsDegraded);
+        Assert.Equal(reason, page.StartFailedReason);     // W-407
+
+        // W-409:原因になりうるファイルを、起動時に読めた設定の場所で開ける。
+        Assert.True(page.OpenProgramsCommand.CanExecute(null));
+        await page.OpenProgramsCommand.ExecuteAsync(null);
+        await page.OpenStationsFromPanelCommand.ExecuteAsync(null);
+        Assert.Equal([(ConfigFile.Programs, ProgramsPath), (ConfigFile.Stations, StationsPath)], actions.Opened);
+
+        page.RestartCommand.Execute(null);
+        Assert.Equal(1, actions.Restarts);
+    }
+
+    [Fact]
+    public async Task programsjsonを見本から作っても中身は読まない()
+    {
+        var actions = new FakeActions { OpenResult = new(true, "programs.json が無かったので見本から作りました") };
+        var page = Page(control: null, actions, Config(), startError: "x");
+
+        await page.OpenProgramsCommand.ExecuteAsync(null);
+
+        Assert.Equal("programs.json が無かったので見本から作りました", page.StartFailedPanel.Message); // W-308
+        Assert.False(page.StartFailedPanel.IsMessageWarning);
+        Assert.Null(page.Programs.Content); // 中身は番組ページで見る(W-313)
+    }
+
+    [Fact]
+    public async Task パネルでstationsjsonを開いた結果は_パネルにだけ出る()
+    {
+        var actions = new FakeActions { OpenResult = new(false, "stations.json を開けませんでした(gui.log 参照)") };
+        var page = Page(control: null, actions, Config(), startError: "x");
+
+        await page.OpenStationsFromPanelCommand.ExecuteAsync(null);
+
+        Assert.Equal("stations.json を開けませんでした(gui.log 参照)", page.StartFailedPanel.Message);
+        Assert.True(page.StartFailedPanel.IsMessageWarning);
+        Assert.Null(page.Stations.Message); // 下の stations.json の段には出さない(2 か所に出ない)
+    }
+
+    [Fact]
+    public void 起動できたときと縮退時は起動の失敗のパネルを出さない()
+    {
+        var running = Page(new FakeControl(), new FakeActions(), Config());
+        Assert.False(running.IsStartFailed);
+        Assert.Equal("", running.StartFailedReason);
+
+        // radirec.json を読めない(W-105)なら縮退パネルが代わりに出る。
+        var degraded = Page(control: null, new FakeActions(), config: null, error: "設定の読み込みに失敗しました: x", startError: "y");
+        Assert.False(degraded.IsStartFailed);
+        Assert.False(degraded.OpenProgramsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void programsjsonを使わない設定ならprogramsjsonは開けない()
+    {
+        var page = Page(control: null, new FakeActions(), new RadirecConfig { StationsFile = StationsPath, ProgramsFile = "" }, startError: "x");
+
+        Assert.False(page.OpenProgramsCommand.CanExecute(null));
+        Assert.True(page.OpenStationsCommand.CanExecute(null));
     }
 
     [Fact]

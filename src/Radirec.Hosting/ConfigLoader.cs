@@ -30,12 +30,29 @@ public static class ConfigLoader
     public static T Parse<T>(string json) where T : new()
         => JsonSerializer.Deserialize<T>(json, Options) ?? new T();
 
+    /// <summary>
+    /// 任意の設定ファイル(stations.json / programs.json)を読む。無ければ既定値。
+    /// </summary>
+    /// <exception cref="JsonException">
+    /// JSON として読めない・未知のプロパティがある。メッセージの先頭にファイル名を付ける(取り込みを起動できなかったとき
+    /// 〈W-104〉や設定リロードを拒否したときに、どのファイルが原因かを画面で分かるように。#168)。
+    /// </exception>
     public static T LoadOptional<T>(string path) where T : new()
     {
         if (!File.Exists(path))
             return new T();
 
         var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<T>(json, Options) ?? new T();
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, Options) ?? new T();
+        }
+        catch (JsonException ex)
+        {
+            // 文言は番組ページの W-216(ProgramsFileWriter.Read)と揃える。
+            throw new JsonException(
+                $"{Path.GetFileName(path)} を読めません(JSON が壊れています): {ex.Message}",
+                ex.Path, ex.LineNumber, ex.BytePositionInLine, ex);
+        }
     }
 }
