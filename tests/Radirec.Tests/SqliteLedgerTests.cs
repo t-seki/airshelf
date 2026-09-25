@@ -12,10 +12,10 @@ public sealed class SqliteLedgerTests : IDisposable
 
     public void Dispose()
     {
-        // Windows: プールに残る接続が ledger.db のハンドルを保持し Directory.Delete を阻む。
-        // 旧スキーマ seed 用の生 SqliteConnection 由来も含め、削除前に全プールを解放する
-        //(SqliteLedger 本体は Pooling=false だが、seed 接続はプールされうる)。
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        // 旧スキーマ seed 用の生 SqliteConnection も Pooling=False にしてあり(SqliteLedger 本体と同じ)、
+        // プールに残って ledger.db のハンドルを握る接続は無い。そのため ClearAllPools は呼ばなくてよい。
+        // プールする接続を作ると、並列に走るほかのテストクラスの Dispose の ClearAllPools が、使用中の
+        // 接続のハンドルを破棄しうる(ExecuteNonQuery で ObjectDisposedException。#175)。
         if (Directory.Exists(_dir))
             Directory.Delete(_dir, recursive: true);
     }
@@ -384,7 +384,7 @@ public sealed class SqliteLedgerTests : IDisposable
     // 最古スキーマ(broadcast_time / part_index 列なし)の台帳に 1 行入れて作る
     private void CreateOldestSchemaDb(IdentityKey key, string source)
     {
-        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}");
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath};Pooling=False");
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText =
@@ -401,7 +401,7 @@ public sealed class SqliteLedgerTests : IDisposable
     // content フィンガープリント列を後付けする移行(#79 / ADR-0014)前の本番台帳を模す。
     private void CreatePartIndexSchemaDb(IdentityKey key, string source, string time)
     {
-        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}");
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath};Pooling=False");
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText =
@@ -419,7 +419,7 @@ public sealed class SqliteLedgerTests : IDisposable
     // 現行スキーマ(broadcast_time あり・part_index なし = 本番台帳)に 1 行入れて作る
     private void CreateBroadcastTimeSchemaDb(IdentityKey key, string source, string time)
     {
-        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath}");
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={DbPath};Pooling=False");
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText =
