@@ -5,8 +5,8 @@ namespace Radirec.Hosting.Control;
 
 /// <summary>
 /// 制御チャネルの受け口(ADR-0020 / #179)。トレイのプロセスが起動し、CLI(<see cref="ControlPipeClient"/>)からの
-/// 状態取得・設定リロードを <see cref="IServiceControl"/> へつなぐ。取り込みが止まっている(縮退。<paramref name="control"/> が null)
-/// ときも起動し、状態取得には「止まっている」と理由を、設定リロードには縮退を返す(トレイの再起動はしない)。
+/// 状態取得・設定リロード・走査の実行(#180)を <see cref="IServiceControl"/> へつなぐ。取り込みが止まっている(縮退。<paramref name="control"/> が null)
+/// ときも起動し、状態取得には「止まっている」と理由を、設定リロード・走査の実行には縮退を返す(トレイの再起動はしない)。
 /// <para>
 /// 接続ごとに要求 1 つ・応答 1 つ(どちらも JSON 1 行)。受けた接続はすぐ別のタスクへ渡し、次の接続を待つ(遅い要求で
 /// 後の接続を止めない。#43 の教訓)。同じユーザーだけに <see cref="PipeOptions.CurrentUserOnly"/> で絞る。
@@ -121,7 +121,8 @@ public sealed class ControlPipeServer(
                 readTimeout.CancelAfter(RequestReadTimeout);
                 var line = await reader.ReadLineAsync(readTimeout.Token).ConfigureAwait(false);
 
-                var response = Respond(line);
+                // 走査の実行は走査が終わるまで応答しない(相手はその間、待ち続ける)。停止するときは待つのをやめて応答せずに切る。
+                var response = await RespondAsync(line, stoppingToken).ConfigureAwait(false);
                 await writer.WriteLineAsync(JsonSerializer.Serialize(response, ControlProtocol.JsonOptions).AsMemory(), stoppingToken)
                     .ConfigureAwait(false);
 
@@ -148,7 +149,7 @@ public sealed class ControlPipeServer(
     }
 
     /// <summary>要求の 1 行から応答を作る(パイプに触れない)。</summary>
-    private ControlResponse Respond(string? line)
+    private async Task<ControlResponse> RespondAsync(string? line, CancellationToken stoppingToken)
     {
         ControlRequest? request = null;
         if (line is not null)
@@ -176,6 +177,10 @@ public sealed class ControlPipeServer(
             ControlProtocol.ReloadCommand => StoppedReason() is { } reason
                 ? Reply(ControlResponseKind.Degraded, error: reason)
                 : Reply(ControlResponseKind.Ok, reload: control!.RequestReload()),
+            ControlProtocol.ScanCommand => StoppedReason() is { } reason
+                ? Reply(ControlResponseKind.Degraded, error: reason)
+                : Reply(ControlResponseKind.Ok,
+                    scanRun: await control!.RunScanAsync().WaitAsync(stoppingToken).ConfigureAwait(false)),
             _ => Reply(ControlResponseKind.BadRequest, error: $"知らないコマンドです: {request.Command}"),
         };
     }
@@ -207,7 +212,8 @@ public sealed class ControlPipeServer(
     }
 
     private ControlResponse Reply(
-        ControlResponseKind kind, string? error = null, ControlStatus? status = null, ReloadResult? reload = null) => new()
+        ControlResponseKind kind, string? error = null, ControlStatus? status = null, ReloadResult? reload = null,
+        ScanRunResult? scanRun = null) => new()
     {
         ProtocolVersion = ControlProtocol.Version,
         TrayVersion = trayVersion,
@@ -215,6 +221,7 @@ public sealed class ControlPipeServer(
         Error = error,
         Status = status,
         Reload = reload,
+        ScanRun = scanRun,
     };
 
     /// <summary>接続を待つのをやめ、処理中の要求が終わるのを待つ。</summary>

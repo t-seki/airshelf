@@ -27,6 +27,8 @@ public sealed class ManagementViewModelTests
             RescanRequests++;
         }
 
+        public Task<ScanRunResult> RunScanAsync() => throw new NotSupportedException();
+
         public ServiceStatusSnapshot GetStatus() => ThrowOnStatus is { } ex ? throw ex : Status;
 
         public ReloadResult RequestReload() => throw new NotSupportedException();

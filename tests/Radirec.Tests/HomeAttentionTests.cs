@@ -38,6 +38,7 @@ public sealed class HomeAttentionTests : IDisposable
     {
         public ServiceStatusSnapshot Status { get; set; } = Snapshot(completed: DateTimeOffset.UnixEpoch);
         public void RequestRescan() { }
+        public Task<ScanRunResult> RunScanAsync() => throw new NotSupportedException();
         public ServiceStatusSnapshot GetStatus() => Status;
         public ReloadResult RequestReload() => ReloadResult.Ok();
         public Task<ReapplyResult> PlanReapplyAsync() => throw new NotSupportedException();

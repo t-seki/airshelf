@@ -1,6 +1,7 @@
 using Radirec.Cli.Core.Output;
 using Radirec.Core.Ingestion;
 using Radirec.Core.Reapply;
+using Radirec.Hosting.Control;
 
 namespace Radirec.Cli.Core;
 
@@ -12,6 +13,10 @@ public static class ExitCodeRules
     /// 回の失敗(利用者が明細を調べる)を、更新の失敗(待って再試行すればよい)より優先する。
     /// </summary>
     public static int For(IngestReport report) =>
+        Combine(report.Count(IngestOutcome.Failed) > 0, report.LibraryRefresh);
+
+    /// <summary>常駐に頼んだ走査の実行(#180)と <c>ingest --dry-run</c>:<see cref="For(IngestReport)"/> と同じ規則。</summary>
+    public static int For(ScanRunReport report) =>
         Combine(report.Count(IngestOutcome.Failed) > 0, report.LibraryRefresh);
 
     /// <summary>再適用:取り込みと同じ規則(失敗した回 → 4、Jellyfin の更新の失敗 → 5)。対象外の回は失敗に数えない。</summary>

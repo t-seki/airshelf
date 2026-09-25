@@ -33,6 +33,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
         public ReapplyReport? AppliedPlan { get; private set; }
 
         public void RequestRescan() => Calls.Add("rescan");
+        public Task<ScanRunResult> RunScanAsync() => throw new NotSupportedException();
         public ServiceStatusSnapshot GetStatus() => Status;
         public ReloadResult RequestReload() => ReloadResult.Ok();
 
