@@ -1,6 +1,6 @@
 # programs.json の書き手を管理画面にし、書くときはファイル全体を書き直す
 
-Status: accepted(#5 の GUI 設計、2026-09-25。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、#144 / #148 の追記と関連)
+Status: accepted(#5 の GUI 設計、2026-09-25。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、#144 / #148 の追記と関連)。**[ADR-0020](0020-cli-as-agent-front-via-control-channel.md)(2026-09-25)で、エディタ・AI エージェントの直接編集の位置づけを変更 — 下の注記を参照**
 
 > **[ADR-0020](0020-cli-as-agent-front-via-control-channel.md) で一部を改めた**:エディタや AI エージェントが `programs.json` を直接編集して
 > から `radirec reapply` を叩くのも、正式な使い方として認める(「エディタで直すのは逃げ道」ではなくなった)。管理画面が主な書き手であること、

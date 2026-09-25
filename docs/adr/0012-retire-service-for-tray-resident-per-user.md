@@ -1,6 +1,6 @@
 # Windows サービスを廃し、トレイ常駐 per-user モデルへ移行する
 
-Status: accepted(常駐モデルの構造転換。ADR-0003/0005/0006/0007/0008/0009/0010/0011 を supersede/amend。C2〔2 ツリー統合〕をこの移行で先行実施(参照の実体は `Gui→Hosting→Core`。下記 Consequences の自己訂正を参照)。**実装済み — エピック #62、2026-07-19 完了**)
+Status: accepted(常駐モデルの構造転換。ADR-0003/0005/0006/0007/0008/0009/0010/0011 を supersede/amend。C2〔2 ツリー統合〕をこの移行で先行実施(参照の実体は `Gui→Hosting→Core`。下記 Consequences の自己訂正を参照)。**実装済み — エピック #62、2026-07-19 完了**)。**[ADR-0020](0020-cli-as-agent-front-via-control-channel.md)(2026-09-25)で、CLI の位置づけと named pipe の退役を変更 — 下の注記を参照**
 
 > **⚠ 本文に、実装と食い違う記述が 1 箇所ある**(#113。本文は決定当時の記録なので直さない):
 > Consequences の ADR-0010 supersede 項が「`rescan` は `radirec ingest --once` に吸収」と書いているが、
