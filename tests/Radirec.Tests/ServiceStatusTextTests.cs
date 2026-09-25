@@ -69,7 +69,7 @@ public sealed class ServiceStatusTextTests
     {
         var view = ServiceStatusText.Stopped(ServiceStatusText.DegradedStartFailed);
 
-        Assert.Equal("状態: 取り込み停止中(取り込みの起動に失敗しました(gui.log 参照))", view.Status);
+        Assert.Equal("状態: 取り込み停止中(取り込みの起動に失敗しました(設定ページ参照))", view.Status);
         Assert.Equal("最終スキャン: —", view.LastScan);
         Assert.False(view.CanControl);
     }

@@ -230,7 +230,7 @@ public sealed class ManagementViewModelTests
     {
         var home = Create(control: null, LedgerWith(2), degradedReason: ServiceStatusText.DegradedStartFailed).Home;
 
-        Assert.Equal("状態: 取り込み停止中(取り込みの起動に失敗しました(gui.log 参照))", home.StatusText);
+        Assert.Equal("状態: 取り込み停止中(取り込みの起動に失敗しました(設定ページ参照))", home.StatusText);
         Assert.Equal("最終スキャン: —", home.LastScanText);
         Assert.False(home.CanRescan);
         Assert.Equal(HomeViewModel.RescanUnavailable, home.RescanNote);

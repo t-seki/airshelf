@@ -8,5 +8,9 @@ namespace Radirec.Gui;
 /// <param name="StartupConfig">起動時に読めた設定。読めなかったら null(縮退パネルを出す)。</param>
 /// <param name="ConfigError">radirec.json を読めなかった理由(W-402)。読めたら null。</param>
 /// <param name="ToastSetting">新規取込のトーストの設定(W-302)。</param>
+/// <param name="StartError">
+/// 設定は読めたが取り込みワーカーを起動できなかった(W-104)ときの例外のメッセージ(W-407。#168)。起動できたなら null。
+/// </param>
 internal sealed record SettingsPageContext(
-    string? ConfigPath, RadirecConfig? StartupConfig, string? ConfigError, IngestToastSetting ToastSetting);
+    string? ConfigPath, RadirecConfig? StartupConfig, string? ConfigError, IngestToastSetting ToastSetting,
+    string? StartError = null);

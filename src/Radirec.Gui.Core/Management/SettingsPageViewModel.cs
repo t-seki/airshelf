@@ -81,6 +81,8 @@ public sealed class SettingsFileRow : ObservableObject
 ///     radirec.json には「再読み込み」(設定リロード。W-309 / W-310)も付ける。stations.json の「再読み込み」
 ///     (再適用の確認へ進む流れ)は #164 で足す</item>
 ///   <item>radirec.json を読めない(縮退)ときは、代わりに縮退パネル(W-401〜W-405)</item>
+///   <item>radirec.json は読めたが取り込みを起動できなかった(W-104)ときは、ページの先頭に起動の失敗のパネル(W-406〜W-409。#168)。
+///     原因になりうる programs.json・stations.json を開いて直し、「再読み込みして再起動」で戻れるようにする</item>
 /// </list>
 /// 中身はページを開くたびに読み直す(<see cref="RefreshAsync"/>)。ファイルを保存しただけでは取り込みに反映しないので、
 /// ここに見えているのは「ディスクにある今の中身」で、反映には「再読み込み」が要る(W-304)。
@@ -136,6 +138,13 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// <summary>W-405。</summary>
     public const string DegradedOtherFiles = "設定を読み込めていないため、場所が分かりません";
 
+    /// <summary>W-406。</summary>
+    public const string StartFailedHeading = "取り込みを起動できません";
+
+    /// <summary>W-408。</summary>
+    public const string StartFailedNote =
+        "取り込みは止まっています。原因の設定ファイル(programs.json・stations.json など)を直して保存してから「再読み込みして再起動」を押してください。";
+
     // 伏せる秘密のキー(radirec.json)。値が空でない文字列のときだけ伏せる(空なら「未設定」と分かるようにそのまま)。
     [GeneratedRegex(@"(""(?:JellyfinApiKey|UpdateToken)""\s*:\s*)""((?:[^""\\]|\\.)*)""", RegexOptions.IgnoreCase)]
     private static partial Regex SecretPattern();
@@ -158,6 +167,9 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// <param name="toastSetting">新規取込のトーストの設定(W-302)。</param>
     /// <param name="actions">シェルに頼むこと(開く・読む・確認・再起動)。</param>
     /// <param name="logWarn">gui.log への記録。</param>
+    /// <param name="startError">
+    /// radirec.json は読めたが、取り込みワーカーを起動できなかった(W-104)ときの例外のメッセージ(W-407)。起動できたなら null。
+    /// </param>
     public SettingsPageViewModel(
         IServiceControl? control,
         string? configPath,
@@ -165,7 +177,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         string? configError,
         IngestToastSetting toastSetting,
         ISettingsPageActions actions,
-        Action<string> logWarn)
+        Action<string> logWarn,
+        string? startError = null)
     {
         _control = control;
         _configPath = configPath;
@@ -177,12 +190,17 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         IsDegraded = startupConfig is null;
         DegradedReason = configError ?? "";
         ConfigPath = configPath ?? "";
+        // 縮退(radirec.json を読めない)なら縮退パネルが代わりに出るので、起動の失敗のパネルは出さない。
+        IsStartFailed = !IsDegraded && startError is not null;
+        StartFailedReason = IsStartFailed ? startError! : "";
 
         Radirec = new SettingsFileRow(ConfigFile.Radirec, "radirec.json") { Path = configPath };
         Stations = new SettingsFileRow(ConfigFile.Stations, "stations.json");
+        Programs = new SettingsFileRow(ConfigFile.Programs, "programs.json");
 
         OpenRadirecCommand = new AsyncRelayCommand(() => OpenAsync(Radirec), () => Radirec.HasPath);
         OpenStationsCommand = new AsyncRelayCommand(() => OpenAsync(Stations), () => Stations.HasPath);
+        OpenProgramsCommand = new AsyncRelayCommand(() => OpenAsync(Programs), () => Programs.HasPath);
         ReloadCommand = new AsyncRelayCommand(ReloadAsync, () => CanReload);
         RestartCommand = new RelayCommand(Restart);
 
@@ -201,9 +219,20 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// <summary>radirec.json のフルパス(縮退パネルに出す)。</summary>
     public string ConfigPath { get; }
 
+    /// <summary>radirec.json は読めたが、取り込みを起動できなかった(W-104)。ページの先頭に W-406〜W-409 のパネルを出す。</summary>
+    public bool IsStartFailed { get; }
+
+    /// <summary>W-407(起動に失敗した例外のメッセージをそのまま)。</summary>
+    public string StartFailedReason { get; }
+
     public SettingsFileRow Radirec { get; }
 
     public SettingsFileRow Stations { get; }
+
+    /// <summary>
+    /// programs.json。中身は出さず(番組ページで編集する。W-313)、起動の失敗のパネルの「programs.json を開く」(W-409)にだけ使う。
+    /// </summary>
+    public SettingsFileRow Programs { get; }
 
     /// <summary>W-313 / W-212。</summary>
     public string? ProgramsNote { get => _programsNote; private set => SetProperty(ref _programsNote, value); }
@@ -253,9 +282,12 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
     public IAsyncRelayCommand OpenRadirecCommand { get; }
     public IAsyncRelayCommand OpenStationsCommand { get; }
+
+    /// <summary>W-409「programs.json を開く」(起動の失敗のパネル)。</summary>
+    public IAsyncRelayCommand OpenProgramsCommand { get; }
     public IAsyncRelayCommand ReloadCommand { get; }
 
-    /// <summary>W-404「再読み込みして再起動」(縮退パネル)。</summary>
+    /// <summary>W-404 / W-409「再読み込みして再起動」(縮退パネル・起動の失敗のパネル)。</summary>
     public IRelayCommand RestartCommand { get; }
 
     /// <summary>
@@ -308,6 +340,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         if (_configPath is null || IsDegraded)
         {
             Stations.Path = null;
+            Programs.Path = null;
             ProgramsNote = null;
             return;
         }
@@ -315,10 +348,11 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         var stationsFile = status?.StationsFile ?? _startupConfig?.StationsFile;
         var programsFile = status?.ProgramsFile ?? _startupConfig?.ProgramsFile;
         Stations.Path = ConfigPaths.Locate(ConfigFile.Stations, _configPath, stationsFile, programsFile);
-        var programs = ConfigPaths.Locate(ConfigFile.Programs, _configPath, stationsFile, programsFile);
-        ProgramsNote = programs is null ? ProgramsNoteUnused : ProgramsNoteUsed;
+        Programs.Path = ConfigPaths.Locate(ConfigFile.Programs, _configPath, stationsFile, programsFile);
+        ProgramsNote = Programs.Path is null ? ProgramsNoteUnused : ProgramsNoteUsed;
 
         OpenStationsCommand.NotifyCanExecuteChanged();
+        OpenProgramsCommand.NotifyCanExecuteChanged();
     }
 
     private async Task LoadContentAsync(SettingsFileRow row, bool mask)
@@ -360,8 +394,9 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         {
             var result = await _actions.OpenAsync(row.File, path);
             SetMessage(row, result.Message, warning: !result.Ok);
-            if (result.Ok && result.Message is not null && !IsDegraded)
-                await LoadContentAsync(row, mask: row.File == ConfigFile.Radirec); // 見本から作ったので中身が変わった
+            // 見本から作ったので中身が変わった(programs.json は中身を出さないので読まない)。
+            if (result.Ok && result.Message is not null && !IsDegraded && row.File != ConfigFile.Programs)
+                await LoadContentAsync(row, mask: row.File == ConfigFile.Radirec);
         }
         catch (Exception ex)
         {
