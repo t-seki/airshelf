@@ -162,7 +162,7 @@ internal static class Program
                 };
 
             // 管理画面(#151)。トレイの「Radirec を開く」とアイコンのダブルクリックで開く。縮退時も開ける。
-            var windowHost = new ManagementWindowHost(trayIcon, control, degradedReason, ledgerPath);
+            var windowHost = new ManagementWindowHost(trayIcon, control, degradedReason, ledgerPath, configPath, startupConfig);
             managementHost = windowHost;
             trayIcon.DoubleClick += (_, _) => windowHost.Show();
 

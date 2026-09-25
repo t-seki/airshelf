@@ -1,9 +1,10 @@
+using Radirec.Core.Configuration;
 using Radirec.Core.Reapply;
 
 namespace Radirec.Hosting.Control;
 
 /// <summary>
-/// トレイメニューが常駐 worker へ触れる**狭い仲介面**(ADR-0010 / 0012)。実装は <c>RadioMonitorWorker</c>。
+/// トレイメニューと管理画面が常駐 worker へ触れる**狭い仲介面**(ADR-0010 / 0012)。実装は <c>RadioMonitorWorker</c>。
 /// 呼び出し側は worker の内部実装ではなくこの interface だけに依存し、結合を最小化する。
 /// DI singleton として worker と同一インスタンスを共有する。
 /// <para>
@@ -40,8 +41,17 @@ public interface IServiceControl
     Task<ReapplyResult> PlanReapplyAsync();
 
     /// <summary>
+    /// 保存前の番組の設定で再適用を確かめる(管理画面の番組ページの「確認」。#154)。ファイルから設定リロードはせず、
+    /// 今の設定(radirec.json)とディスクの <c>stations.json</c>、渡した <paramref name="programs"/> で dry-run する。
+    /// 直列ループの上で行う(取り込み中は終わるのを待つ)。直近の設定リロードの反映に失敗していれば中止する。
+    /// </summary>
+    Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs);
+
+    /// <summary>
     /// 確認した再適用を実行する(直列ループの上で)。<paramref name="plan"/> は直前の
-    /// <see cref="PlanReapplyAsync"/> が返した結果で、その後に設定が変わっていれば実行せず失敗を返す。
+    /// <see cref="PlanReapplyAsync()"/> / <see cref="PlanReapplyAsync(ProgramMasterConfig)"/> が返した結果で、
+    /// その後に設定・状態が変わっていれば実行せず、<see cref="ReapplyResult.IsStale"/> の失敗を返す。
+    /// 確かめたときの番組・放送局の設定で実行する(ディスクを読み直さない)。
     /// </summary>
     Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan);
 }

@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
-using Radirec.Core.Reapply;
 using Radirec.Gui.Core;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
@@ -10,14 +9,14 @@ using Radirec.Hosting.Control;
 namespace Radirec.Gui;
 
 /// <summary>
-/// トレイの制御メニュー(ADR-0012)。rescan / status / reload / 統合設定の再適用(#126)を、同一プロセスでホストする
-/// 取り込みワーカーの <see cref="IServiceControl"/> を**直接 in-process 呼び出し**で叩く(named pipe は退役)。
+/// トレイの制御メニュー(ADR-0012)。rescan / status を、同一プロセスでホストする取り込みワーカーの
+/// <see cref="IServiceControl"/> を**直接 in-process 呼び出し**で叩く(named pipe は退役)。
 /// status はメニューを開いた瞬間(<see cref="ToolStripDropDown.Opening"/>)にスナップショットを読んで表示を
 /// 更新する。取り込みワーカー未起動(設定未読込 = <see cref="IServiceControl"/> が null)のときは
-/// 制御の項目(rescan / reload / 再適用)をすべてグレーアウトし「取り込み停止中」を表示する縮退にする。
-/// 再適用の確認〜完了表示の途中も、ダイアログが入れ子にならないよう制御の項目をすべてグレーアウトする。
-/// 再適用の確認ダイアログに統合設定の無い兄弟フォルダがあれば、その提案を programs.json に追記して開ける(#144)。
-/// 「設定ファイルを開く」(#143)は制御の項目ではなく、取り込みの状態(停止中・再適用の途中)に依らず常に選べる
+/// 「今すぐ再スキャン」をグレーアウトし「取り込み停止中」を表示する縮退にする。
+/// 設定リロードと統合設定の再適用は、管理画面の番組ページ(#154)へ移ったので、トレイには置かない
+/// (再適用の確認ダイアログから programs.json に追記する流れ〈#144〉も一緒に退役した。要対応〈#155〉が引き継ぐ)。
+/// 「設定ファイルを開く」(#143)は制御の項目ではなく、取り込みの状態(停止中)に依らず常に選べる
 /// (停止の原因の設定を直してから再起動・リロードするために要る。開くだけでワーカーには触れない)。その下の
 /// programs.json / stations.json だけは、場所が決まらないとき(設定を読み込めていない、または radirec.json の
 /// ProgramsFile / StationsFile が空でそのファイルを使わない)にグレーアウトし、理由をツールチップに出す。
@@ -35,13 +34,10 @@ internal sealed class ControlTrayMenu
     private readonly string? _configPath;           // 読み込んだ(読もうとした)radirec.json。null なら「設定ファイルを開く」を出さない
     private readonly RadirecConfig? _startupConfig; // 起動時に読めた設定。ワーカーが無いときの開く場所の出どころ(#143)
     private readonly ToolStripMenuItem _rescan;
-    private readonly ToolStripMenuItem _reload;
-    private readonly ToolStripMenuItem _reapply;
     private readonly ToolStripMenuItem? _openConfig; // 「設定ファイルを開く」のサブメニュー(#143)
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
     private readonly ToolStripMenuItem? _applyUpdate; // 更新保留時のみ表示(S6)
-    private bool _reapplyBusy; // 再適用の確認〜完了表示の間は制御の項目を伏せる(UI スレッドだけが読み書きする)
 
     /// <param name="openManagement">管理画面を開く(#151)。「Radirec を開く」で呼ぶ。</param>
     /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
@@ -66,11 +62,8 @@ internal sealed class ControlTrayMenu
         _startupConfig = startupConfig;
 
         _rescan = new ToolStripMenuItem("今すぐ再スキャン", image: null, OnRescan);
-        _reload = new ToolStripMenuItem("設定リロード…", image: null, OnReload);
-        _reapply = new ToolStripMenuItem("統合設定の再適用…", image: null, OnReapply);
 
-        // 設定ファイルを開く(#143)。開いて直す → 保存 → 「設定リロード…」か「統合設定の再適用…」の流れなので、その隣に置く。
-        // 項目の有効/無効とツールチップ(開く場所)は Opening で更新する(RefreshConfigFileItems)。
+        // 設定ファイルを開く(#143)。項目の有効/無効とツールチップ(開く場所)は Opening で更新する(RefreshConfigFileItems)。
         if (_configPath is not null)
         {
             _openConfig = new ToolStripMenuItem("設定ファイルを開く");
@@ -100,8 +93,6 @@ internal sealed class ControlTrayMenu
         Menu.Items.Add(new ToolStripSeparator());
         Menu.Items.Add(open); // モックの並び(W-601 / 区切り / W-602 / W-603)
         Menu.Items.Add(_rescan);
-        Menu.Items.Add(_reload);
-        Menu.Items.Add(_reapply);
         if (_openConfig is not null)
             Menu.Items.Add(_openConfig);
         Menu.Items.Add(new ToolStripSeparator());
@@ -130,7 +121,7 @@ internal sealed class ControlTrayMenu
     private void OnOpening(object? sender, CancelEventArgs e)
     {
         RefreshUpdateItem(); // 直近のチェックで見つかった保留更新を反映(S6)
-        RefreshConfigFileItems(); // 取り込みの状態(停止中・再適用の途中)に依らず更新する(#143)
+        RefreshConfigFileItems(); // 取り込みの状態(停止中)に依らず更新する(#143)
 
         // 取り込みワーカー未起動(設定未読込 or 起動失敗)なら理由を、あれば in-process のスナップショットを
         // 直接・即時に読んで出す(W-101〜W-108。文言は管理画面のホームと共有する)。ワーカーが異常終了しても
@@ -141,299 +132,15 @@ internal sealed class ControlTrayMenu
         _statusLine.Text = view.Status;
         _lastScanLine.Text = view.LastScan;
 
-        // 取り込みが止まっていれば制御の項目(rescan / reload / 再適用)を伏せる。再適用の確認〜完了の途中も、
-        // 2 本目の再適用も、再スキャン・設定リロード(確認の MessageBox が再適用のダイアログと入れ子になる・
-        // 確認した設定を途中で差し替える)も始めない。
-        var enabled = view.CanControl && !_reapplyBusy;
-        _rescan.Enabled = enabled;
-        _reload.Enabled = enabled;
-        _reapply.Enabled = enabled;
+        // 取り込みが止まっていれば「今すぐ再スキャン」を伏せる。
+        _rescan.Enabled = view.CanControl;
     }
 
     private void OnRescan(object? sender, EventArgs e)
     {
-        if (_reapplyBusy) // 項目は伏せてあるが、念のため(再適用の途中は受けない)
-            return;
-
         // 要求チャネルへ coalesce される冪等操作。即座に返る(スキャン完了は待たない)。
         _control?.RequestRescan();
         _tray.ShowBalloonTip(3000, "Radirec", "手動再スキャンを要求しました", ToolTipIcon.Info);
-    }
-
-    private void OnReload(object? sender, EventArgs e)
-    {
-        if (_control is null || _reapplyBusy) // 再適用の途中は受けない(項目も伏せてある)
-            return;
-
-        var confirm = MessageBox.Show(
-            "設定を再読み込みします。取り込みは一時停止し、再構築されます。よろしいですか?",
-            "設定リロード",
-            MessageBoxButtons.OKCancel,
-            MessageBoxIcon.Warning,
-            MessageBoxDefaultButton.Button2);
-        if (confirm != DialogResult.OK)
-            return;
-
-        // 読込+構文検証だけ同期実行して受理/拒否が即返る(実グラフ差し替えは在中スキャン完了後)。
-        var outcome = _control.RequestReload();
-        if (outcome.Accepted)
-            _tray.ShowBalloonTip(3000, "Radirec", "設定リロードを受理しました(反映は取込完了後)", ToolTipIcon.Info);
-        else
-            _tray.ShowBalloonTip(5000, "Radirec", $"設定リロードは拒否されました: {outcome.Error}", ToolTipIcon.Warning);
-    }
-
-    // 統合設定の再適用(#126 / ADR-0016)。設定リロード → dry-run → 確認([適用] / [キャンセル])→ 実行 → 完了表示。
-    // 統合設定の無い兄弟フォルダがあれば、確認(「揃っています」の表示も)に [統合設定を追記して開く] も出す(#144)。
-    // それを選ぶと提案を programs.json に追記して開き、その回の再適用は行わずに終わる(追記の確認で [キャンセル] したら
-    // 元の確認に戻る)。
-    // リロード・dry-run・実行は worker の直列ループの上で行う(在中スキャンの完了を待つ)。UI スレッドは await で待ち、
-    // その間メニューは生きている(制御の項目だけ伏せる)。
-    // 再適用の確認(設定リロード + dry-run)がこれより長くかかるときだけ「確かめています」のバルーンを出す。
-    // ふだんはすぐ終わるので出さず、取り込み中の走査を待つときや NAS が遅いときだけ知らせる(実機確認 v0.11.0-rc1)。
-    private static readonly TimeSpan ReapplyBalloonDelay = TimeSpan.FromMilliseconds(1500);
-
-    private async void OnReapply(object? sender, EventArgs e)
-    {
-        if (_control is null || _reapplyBusy)
-            return;
-
-        _reapplyBusy = true;
-        try
-        {
-            // すぐ終わるなら確認ダイアログとほぼ同時にバルーンが出て冗長なので、少し待っても終わらないときだけ知らせる。
-            var planTask = _control.PlanReapplyAsync();
-            if (await Task.WhenAny(planTask, Task.Delay(ReapplyBalloonDelay)) != planTask)
-                _tray.ShowBalloonTip(3000, "Radirec", "設定を読み込み、再適用の内容を確かめています(取り込み中なら完了後)", ToolTipIcon.Info);
-            var planned = await planTask; // 例外で終わっていればここで投げ、下の catch に届く
-            if (planned.Report is not { } plan)
-            {
-                ShowReapplyDialog(new ReapplyDialogText("統合設定の再適用を中止しました", planned.Error ?? "理由不明"), TaskDialogIcon.Error);
-                return;
-            }
-
-            // 統合設定の無い兄弟フォルダがあれば、提案を programs.json に追記して開くボタンも出す(#144)。
-            // programs.json を使わない設定(ProgramsFile が空)なら追記先が無いので出さない。
-            var canAppend = plan.UnintegratedSiblings.Count > 0 && LocateConfigFile(ConfigFile.Programs) is not null;
-            while (true)
-            {
-                // 変える回が無ければ確認せずに終わる(CLI と同じ判定)。
-                var choice = plan.IsAligned
-                    ? ShowAligned(ReapplyDialogFormatter.BuildAligned(plan, canAppend), canAppend)
-                    : ConfirmReapply(ReapplyDialogFormatter.BuildConfirmation(plan, canAppend), canAppend);
-
-                // 追記を選んだら、その回の再適用は行わない(利用者が programs.json を確かめて保存してから選び直す)。
-                // 追記の確認でキャンセルしたときだけ、元のダイアログに戻る。
-                if (choice == ReapplyChoice.Append)
-                {
-                    if (await AppendSiblingProposalsAsync(plan))
-                        return;
-                    continue;
-                }
-
-                if (choice != ReapplyChoice.Apply)
-                    return;
-                break;
-            }
-
-            _tray.ShowBalloonTip(3000, "Radirec", "統合設定の再適用を実行しています", ToolTipIcon.Info);
-            var applied = await _control.ApplyReapplyAsync(plan);
-            if (applied.Report is not { } result)
-            {
-                ShowReapplyDialog(new ReapplyDialogText("統合設定の再適用を中止しました", applied.Error ?? "理由不明"), TaskDialogIcon.Error);
-                return;
-            }
-
-            var icon = result.Count(ReapplyAction.Failed) > 0 ? TaskDialogIcon.Warning : TaskDialogIcon.Information;
-            ShowReapplyDialog(ReapplyDialogFormatter.BuildCompletion(result), icon);
-        }
-        catch (Exception ex)
-        {
-            // async void の例外はメッセージループへ抜けてトレイごと落とすので、ここで止める。
-            TrayLog.Warn($"統合設定の再適用で例外: {ex}");
-            _tray.ShowBalloonTip(4000, "Radirec", "統合設定の再適用に失敗しました(gui.log 参照)", ToolTipIcon.Warning);
-        }
-        finally
-        {
-            _reapplyBusy = false;
-        }
-    }
-
-    // 再適用の確認ダイアログで選ばれたもの。
-    private enum ReapplyChoice
-    {
-        Apply,  // [適用]
-        Append, // [統合設定を追記して開く](#144)
-        Close,  // [キャンセル] / [OK] / 閉じた
-    }
-
-    // [適用] / [キャンセル] の確認。canAppend のときは [適用] / [統合設定を追記して開く] / [キャンセル] の 3 つ(#144)。
-    // 追記を選んだら呼び出し元は再適用をせず追記へ進む。ファイルを動かす操作なので既定はキャンセル(設定リロードの確認と同じ)。
-    // MessageBox はボタンの文言を変えられないので TaskDialog を使う。
-    private static ReapplyChoice ConfirmReapply(ReapplyDialogText text, bool canAppend)
-    {
-        var apply = new TaskDialogButton("適用");
-        var append = new TaskDialogButton(ReapplyDialogFormatter.AppendButton);
-        var cancel = TaskDialogButton.Cancel;
-        var page = new TaskDialogPage
-        {
-            Caption = "統合設定の再適用",
-            Heading = text.Heading,
-            Text = text.Body,
-            Icon = TaskDialogIcon.Warning,
-        };
-        page.Buttons.Add(apply);
-        if (canAppend)
-            page.Buttons.Add(append);
-        page.Buttons.Add(cancel);
-        page.DefaultButton = cancel;
-
-        var chosen = TaskDialog.ShowDialog(page);
-        return chosen == apply ? ReapplyChoice.Apply : chosen == append ? ReapplyChoice.Append : ReapplyChoice.Close;
-    }
-
-    // 揃っているときの表示([OK] だけ。統合設定の無い兄弟フォルダがあれば [統合設定を追記して開く] も)。
-    private static ReapplyChoice ShowAligned(ReapplyDialogText text, bool canAppend)
-    {
-        var append = new TaskDialogButton(ReapplyDialogFormatter.AppendButton);
-        var ok = TaskDialogButton.OK;
-        var page = new TaskDialogPage
-        {
-            Caption = "統合設定の再適用",
-            Heading = text.Heading,
-            Text = text.Body,
-            Icon = TaskDialogIcon.Information,
-        };
-        if (canAppend)
-            page.Buttons.Add(append);
-        page.Buttons.Add(ok);
-        page.DefaultButton = ok; // Enter で追記に進まないように(ボタンを足す前と同じく、Enter は閉じる)
-        return TaskDialog.ShowDialog(page) == append ? ReapplyChoice.Append : ReapplyChoice.Close;
-    }
-
-    // 統合設定の無い兄弟フォルダの提案を programs.json に追記して開く(#144)。追記する中身を見せて [追記] / [キャンセル]
-    // → バックアップを作って追記 → エディタで開く → 保存してから再適用を選び直すようバルーンで案内する。
-    // programs.json が無ければ、先に起動時と同じ見本から作ってから同じ流れに進む(作れなければエラーで終わる)。
-    // 追記できない(壊れている・"Programs" の配列が無い・確認の間に変わった等)ときは何も書かずにエラーを出し、ファイルだけ開く。
-    // ファイルの読み書きはワーカースレッドで行う(ProgramsFile が NAS を指していても UI スレッドを塞がない)。
-    // 戻り値: 追記の確認で [キャンセル] したときだけ false(呼び出し元は再適用の確認ダイアログに戻る)。
-    private async Task<bool> AppendSiblingProposalsAsync(ReapplyReport plan)
-    {
-        if (LocateConfigFile(ConfigFile.Programs) is not { } path)
-            return true; // ボタンは出していない(programs.json を使わない設定)
-
-        var name = Path.GetFileName(path);
-        var groups = plan.UnintegratedSiblings.Select(s => s.Group).ToList();
-
-        // programs.json が無ければ、起動時(「設定ファイルを開く」も)と同じ見本から作ってから追記する。
-        // 作れなければ追記も開くこともできないので、エラーを出して終わる(理由は gui.log)。
-        var (existed, ready) = await Task.Run(() =>
-        {
-            var exists = File.Exists(path);
-            return (exists, exists || ConfigSeeder.SeedFileIfAbsent(ConfigFile.Programs, path));
-        });
-        if (!ready)
-        {
-            ShowReapplyDialog(ReapplyDialogFormatter.BuildSeedFailed(name), TaskDialogIcon.Error);
-            return true;
-        }
-
-        ProgramsAppendPlan append;
-        try
-        {
-            append = await Task.Run(() => ProgramsFileAppender.Plan(path, groups, DateOnly.FromDateTime(DateTime.Now)));
-        }
-        catch (ProgramsAppendException ex)
-        {
-            await ShowAppendFailedAndOpenAsync(path, ex.Message, ex, seeded: !existed);
-            return true;
-        }
-
-        if (append.Proposals.Count == 0)
-        {
-            ShowReapplyDialog(ReapplyDialogFormatter.BuildNothingToAppend(name), TaskDialogIcon.Information);
-            await OpenProgramsFileAsync(path, null);
-            return true;
-        }
-
-        if (!ConfirmAppend(ReapplyDialogFormatter.BuildAppendConfirmation(append.Proposals, name), append.Snippet))
-            return false;
-
-        string backup;
-        try
-        {
-            backup = await Task.Run(() => ProgramsFileAppender.Apply(append, DateTime.Now));
-        }
-        catch (ProgramsAppendException ex)
-        {
-            await ShowAppendFailedAndOpenAsync(path, ex.Message, ex, seeded: !existed);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            // バックアップか置き換えで失敗した。置き換えは一時ファイル経由なので programs.json は元のまま。
-            await ShowAppendFailedAndOpenAsync(path, $"書き込みに失敗しました: {ex.Message}", ex, seeded: !existed);
-            return true;
-        }
-
-        TrayLog.Info($"{name} に統合設定の提案を {append.Proposals.Count} 組追記しました({path}。バックアップ: {backup}):\n{append.Snippet}");
-        await OpenProgramsFileAsync(path, ReapplyDialogFormatter.AppendedBalloon(name, seeded: !existed));
-        return true;
-    }
-
-    // seeded: 追記の前に見本から programs.json を作ったか(このときは「何も書き込んでいない」と言わない)。
-    private async Task ShowAppendFailedAndOpenAsync(string path, string reason, Exception ex, bool seeded)
-    {
-        TrayLog.Warn($"{Path.GetFileName(path)} に統合設定の提案を追記できませんでした({path}): {ex}");
-        ShowReapplyDialog(ReapplyDialogFormatter.BuildAppendFailed(Path.GetFileName(path), reason, seeded), TaskDialogIcon.Error);
-        await OpenProgramsFileAsync(path, null);
-    }
-
-    // programs.json を開く。開けたら balloon(null なら開いたときの知らせ)を、開けなければその理由をバルーンで出す。
-    private async Task OpenProgramsFileAsync(string path, string? balloon)
-    {
-        var opened = await ConfigFileOpener.OpenAsync(ConfigFile.Programs, path);
-        if (!opened.Ok)
-            _tray.ShowBalloonTip(4000, "Radirec", opened.Message ?? $"{Path.GetFileName(path)} を開けませんでした", ToolTipIcon.Warning);
-        else if ((balloon ?? opened.Message) is { } message)
-            _tray.ShowBalloonTip(5000, "Radirec", message, ToolTipIcon.Info);
-    }
-
-    // 追記の確認([追記] / [キャンセル])。追記する中身は「詳細」に開いた状態で見せる(長ければ先頭だけ。ダイアログは
-    // スクロールしないので、画面からはみ出して [追記] に届かなくならないように)。既定はキャンセル(ファイルを書き換えるため)。
-    private static bool ConfirmAppend(ReapplyDialogText text, string snippet)
-    {
-        var append = new TaskDialogButton("追記");
-        var cancel = TaskDialogButton.Cancel;
-        var page = new TaskDialogPage
-        {
-            Caption = "統合設定の再適用",
-            Heading = text.Heading,
-            Text = text.Body,
-            Icon = TaskDialogIcon.Information,
-            Buttons = { append, cancel },
-            DefaultButton = cancel,
-            Expander = new TaskDialogExpander(ReapplyDialogFormatter.SnippetPreview(snippet))
-            {
-                Expanded = true,
-                CollapsedButtonText = "詳細(追記する中身)",
-                ExpandedButtonText = "詳細を隠す",
-                Position = TaskDialogExpanderPosition.AfterText,
-            },
-        };
-        return TaskDialog.ShowDialog(page) == append;
-    }
-
-    private static void ShowReapplyDialog(ReapplyDialogText text, TaskDialogIcon icon)
-    {
-        var page = new TaskDialogPage
-        {
-            Caption = "統合設定の再適用",
-            Heading = text.Heading,
-            Text = text.Body,
-            Icon = icon,
-            Buttons = { TaskDialogButton.OK },
-        };
-        TaskDialog.ShowDialog(page);
     }
 
     // 「設定ファイルを開く」の項目の並び(#143)。見出しは既定のファイル名(StationsFile 等で名前を変えていても。場所はツールチップ)。

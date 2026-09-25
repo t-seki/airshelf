@@ -32,8 +32,10 @@ public sealed class HomeViewModel : ObservableObject
     private readonly Func<IReadOnlyList<IngestHistoryRow>>? _loadHistory;
     private readonly Action<string> _logWarn;
     private readonly TimeZoneInfo? _zone;
+    private readonly ProgramsApplyGate? _applyGate;
 
     private string _statusText = "";
+    private bool _canControl;                 // 取り込みが動いている(制御できる)
     private string _lastScanText = "";
     private bool _canRescan;
     private string? _rescanNote;
@@ -50,22 +52,27 @@ public sealed class HomeViewModel : ObservableObject
     /// <param name="logWarn">gui.log への記録。</param>
     /// <param name="showAll">「すべて表示」(W-142)。取込履歴ページへ移る。</param>
     /// <param name="zone">時刻を表示する時間帯(既定はローカル。テスト用)。</param>
+    /// <param name="applyGate">番組の保存と適用の途中か(#154)。途中は再スキャンを押せない(W-110)。</param>
     public HomeViewModel(
         IServiceControl? control,
         string? degradedReason,
         Func<IReadOnlyList<IngestHistoryRow>>? loadHistory,
         Action<string> logWarn,
         Action showAll,
-        TimeZoneInfo? zone = null)
+        TimeZoneInfo? zone = null,
+        ProgramsApplyGate? applyGate = null)
     {
         _control = control;
         _degradedReason = degradedReason;
         _loadHistory = loadHistory;
         _logWarn = logWarn;
         _zone = zone;
+        _applyGate = applyGate;
 
         RescanCommand = new RelayCommand(Rescan, () => CanRescan);
         ShowAllCommand = new RelayCommand(showAll);
+        if (_applyGate is not null)
+            _applyGate.Changed += (_, _) => UpdateCanRescan();
 
         var status = ReadStatus();
         Apply(status);
@@ -78,7 +85,9 @@ public sealed class HomeViewModel : ObservableObject
     /// <summary>W-106〜W-108。</summary>
     public string LastScanText { get => _lastScanText; private set => SetProperty(ref _lastScanText, value); }
 
-    /// <summary>「今すぐ再スキャン」(W-110)を押せるか。取り込みが止まっていれば押せない。</summary>
+    /// <summary>
+    /// 「今すぐ再スキャン」(W-110)を押せるか。取り込みが止まっていれば押せない。番組の保存と適用の途中も押せない(#154)。
+    /// </summary>
     public bool CanRescan
     {
         get => _canRescan;
@@ -163,7 +172,8 @@ public sealed class HomeViewModel : ObservableObject
             : ServiceStatusText.From(status, _zone);
         StatusText = view.Status;
         LastScanText = view.LastScan;
-        CanRescan = view.CanControl;
+        _canControl = view.CanControl;
+        UpdateCanRescan();
 
         // W-111 は、押したときから最終スキャンの完了時刻が変わる(= 次のスキャンが終わる)まで出す。
         if (_rescanPending && (!view.CanControl || status?.LastScanCompletedUtc != _rescanBaseline))
@@ -176,6 +186,8 @@ public sealed class HomeViewModel : ObservableObject
             : _rescanPending ? RescanRequested
             : null;
     }
+
+    private void UpdateCanRescan() => CanRescan = _canControl && _applyGate?.IsBusy != true;
 
     private void Rescan()
     {

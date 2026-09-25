@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using Radirec.Core.Configuration;
 using Radirec.Core.Ingestion;
 using Radirec.Core.Reapply;
 using Radirec.Gui.Core;
@@ -163,8 +164,19 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             // reload を先に置く(Set)。ジョブはその後に積むので、ループがジョブを取り出した時点で reload も
             // 見えており、ジョブの処理の直前の Take で反映される(ExecuteAsync)。
             _pendingReload.Set(newConfig!);
-            return EnqueueReapply(new ReapplyJob(Plan: null));
+            return EnqueueReapply(new ReapplyJob(Plan: null, Draft: null));
         }
+    }
+
+    /// <summary>
+    /// 保存前の番組の設定での確認(管理画面の番組ページ。#154)。設定リロードはせず、今の設定で dry-run のジョブを投入する。
+    /// </summary>
+    public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs)
+    {
+        if (!_running)
+            return Task.FromResult(ReapplyResult.Failed("取り込みが停止中のため受理できません"));
+
+        return EnqueueReapply(new ReapplyJob(Plan: null, Draft: programs));
     }
 
     /// <summary>確認した再適用の実行(#126)。直列ループの上で、確認のときと設定が同じ場合だけ実行する。</summary>
@@ -173,7 +185,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         if (!_running)
             return Task.FromResult(ReapplyResult.Failed("取り込みが停止中のため受理できません"));
 
-        return EnqueueReapply(new ReapplyJob(plan));
+        return EnqueueReapply(new ReapplyJob(plan, Draft: null));
     }
 
     private Task<ReapplyResult> EnqueueReapply(ReapplyJob job)
@@ -251,7 +263,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     {
         try
         {
-            job.Completion.TrySetResult(await ReapplyAsync(job.Plan, cancellationToken));
+            job.Completion.TrySetResult(await ReapplyAsync(job, cancellationToken));
         }
         catch (OperationCanceledException)
         {
@@ -266,11 +278,12 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     }
 
     // plan が null なら確認(dry-run)、あれば実行。
-    private Task<ReapplyResult> ReapplyAsync(ReapplyReport? plan, CancellationToken cancellationToken)
-        => plan is null ? PlanAsync(cancellationToken) : ApplyAsync(plan, cancellationToken);
+    private Task<ReapplyResult> ReapplyAsync(ReapplyJob job, CancellationToken cancellationToken)
+        => job.Plan is { } plan ? ApplyAsync(plan, cancellationToken) : PlanAsync(job.Draft, cancellationToken);
 
     // 確認:今の config(reload 反映後)で番組/放送局の設定を読み、dry-run する。読んだ設定は実行に持ち越す。
-    private async Task<ReapplyResult> PlanAsync(CancellationToken cancellationToken)
+    // draft があれば(管理画面の番組ページ。#154)、番組の設定はディスクの programs.json ではなくそれを使う。
+    private async Task<ReapplyResult> PlanAsync(ProgramMasterConfig? draft, CancellationToken cancellationToken)
     {
         _lastReapplyPlan = null;
 
@@ -286,7 +299,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         ReapplySettings settings;
         try
         {
-            settings = CompositionRoot.LoadReapplySettings(config);
+            settings = draft is null
+                ? CompositionRoot.LoadReapplySettings(config)
+                : new ReapplySettings(ConfigLoader.LoadOptional<StationMasterConfig>(config.StationsFile), draft);
         }
         catch (Exception ex)
         {
@@ -308,16 +323,16 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     // ずれていれば、見せていない変更をしないよう中止する。
     private async Task<ReapplyResult> ApplyAsync(ReapplyReport plan, CancellationToken cancellationToken)
     {
-        const string Retry = "もう一度「統合設定の再適用…」からやり直してください";
+        const string Retry = "もう一度確認からやり直してください";
 
         if (_lastReapplyPlan is not { } last || !ReferenceEquals(last.Plan, plan))
-            return ReapplyResult.Failed($"確認した内容が古くなったため中止しました。{Retry}");
+            return ReapplyResult.Stale($"確認した内容が古くなったため中止しました。{Retry}");
 
         // 実行に使えるのは直前の確認だけ。ここで忘れる(同じ確認で 2 回実行しない・中止した確認を再利用しない)。
         _lastReapplyPlan = null;
 
         if (!ReferenceEquals(last.Config, _config))
-            return ReapplyResult.Failed($"確認のあとに設定が変わったため中止しました。{Retry}");
+            return ReapplyResult.Stale($"確認のあとに設定が変わったため中止しました。{Retry}");
 
         var (replanned, replanError) = await RunServiceAsync(last.Config, last.Settings, dryRun: true, cancellationToken);
         if (replanned is null)
@@ -326,7 +341,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         {
             _log.LogWarning("統合設定の再適用: 確認のあとに状態が変わったため中止しました(実行直前の予定が確認と違います)");
             LogReport(replanned);
-            return ReapplyResult.Failed($"確認のあとに状態が変わったため中止しました(取り込みや設定の変更で予定が変わりました)。{Retry}");
+            return ReapplyResult.Stale($"確認のあとに状態が変わったため中止しました(取り込みや設定の変更で予定が変わりました)。{Retry}");
         }
 
         var (result, error) = await RunServiceAsync(last.Config, last.Settings, dryRun: false, cancellationToken);
@@ -570,7 +585,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     }
 
     /// <summary>再適用の実行 1 つ。<see cref="Plan"/> が null なら確認(dry-run)、あれば実行。</summary>
-    private sealed record ReapplyJob(ReapplyReport? Plan)
+    // Plan があれば実行、無ければ確認。確認で Draft があれば、番組の設定はディスクではなくそれを使う(#154)。
+    private sealed record ReapplyJob(ReapplyReport? Plan, ProgramMasterConfig? Draft)
     {
         // 待っているのは UI スレッド。ループのスレッドで続きを走らせない。
         public TaskCompletionSource<ReapplyResult> Completion { get; } =

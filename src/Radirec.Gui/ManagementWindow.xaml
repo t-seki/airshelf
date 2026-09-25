@@ -1,12 +1,13 @@
 <!--
   管理画面(requirements §10.3・#151)。ViewModel は Radirec.Gui.Core の ManagementViewModel。
   文言は docs/mockups/management-window.md に従い、各所に W-ID を書いておく(モックと突き合わせるため)。
-  ホームと取込履歴以外のページ(番組 / 設定 / バージョン情報)は、まだ見出しだけ(#152〜#157 が足す)。
+  番組ページは Pages/ProgramsPage.xaml(#154)。設定 / バージョン情報は、まだ見出しだけ(#152・#157 が足す)。
 -->
 <Window x:Class="Radirec.Gui.ManagementWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:m="clr-namespace:Radirec.Gui.Core.Management;assembly=Radirec.Gui.Core"
+        xmlns:pages="clr-namespace:Radirec.Gui.Pages"
         Title="{x:Static m:ManagementViewModel.Title}"
         Width="1040" Height="700" MinWidth="720" MinHeight="480"
         WindowStartupLocation="CenterScreen">
@@ -217,10 +218,12 @@
             </DockPanel>
             </Grid>
 
-            <!-- ========== 番組 / 設定 / バージョン情報(中身は #152〜#157) ========== -->
-            <StackPanel Margin="18,14" Visibility="{Binding IsProgramsPage, Converter={StaticResource Visible}}">
-                <TextBlock Style="{StaticResource PageHeading}" Text="番組" />
-            </StackPanel>
+            <!-- ========== 番組(#154) ========== -->
+            <Grid Visibility="{Binding IsProgramsPage, Converter={StaticResource Visible}}">
+                <pages:ProgramsPage DataContext="{Binding Programs}" />
+            </Grid>
+
+            <!-- ========== 設定 / バージョン情報(中身は #152・#157) ========== -->
             <StackPanel Margin="18,14" Visibility="{Binding IsSettingsPage, Converter={StaticResource Visible}}">
                 <TextBlock Style="{StaticResource PageHeading}" Text="設定" />
             </StackPanel>

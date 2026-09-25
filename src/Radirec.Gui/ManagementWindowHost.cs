@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using System.Windows.Forms;
 using Radirec.Gui.Core;
 using Radirec.Gui.Core.Management;
+using Radirec.Hosting;
 using Radirec.Hosting.Control;
 using WindowState = System.Windows.WindowState;
 
@@ -21,18 +22,26 @@ internal sealed class ManagementWindowHost
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
     private readonly string? _ledgerPath;
+    private readonly string? _configPath;
+    private readonly RadirecConfig? _startupConfig;
     private ManagementWindow? _window;
     private bool _closingAfterError;
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="degradedReason">control が null の理由(W-104 / W-105)。</param>
     /// <param name="ledgerPath">台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。</param>
-    public ManagementWindowHost(NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath)
+    /// <param name="configPath">radirec.json の絶対パス。番組ページ(#154)の programs.json の場所の計算に使う。</param>
+    /// <param name="startupConfig">起動時に読めた設定。ワーカーが無いときの programs.json の場所の出どころ。読めなければ null。</param>
+    public ManagementWindowHost(
+        NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath,
+        string? configPath = null, RadirecConfig? startupConfig = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
         _ledgerPath = ledgerPath;
+        _configPath = configPath;
+        _startupConfig = startupConfig;
     }
 
     /// <summary>管理画面を開く。開いていれば前面に出す(最小化していれば元の大きさに戻してから)。</summary>
@@ -51,7 +60,9 @@ internal sealed class ManagementWindowHost
 
             var ledgerPath = _ledgerPath;
             Func<IReadOnlyList<IngestHistoryRow>>? loadHistory = ledgerPath is null ? null : () => IngestHistory.Load(ledgerPath);
-            var viewModel = new ManagementViewModel(_control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn);
+            var viewModel = new ManagementViewModel(
+                _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn,
+                locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info);
 
             var window = new ManagementWindow(viewModel);
             window.Closed += (_, _) =>
@@ -97,6 +108,27 @@ internal sealed class ManagementWindowHost
             _closingAfterError = false;
         }
         _tray.ShowBalloonTip(5000, "Radirec", ClosedAfterErrorBalloon, ToolTipIcon.Warning);
+    }
+
+    // 番組ページ(#154)の programs.json の場所。ワーカーがあれば status(設定リロードの反映に追従する)、無ければ起動時に
+    // 読めた設定から(トレイの「設定ファイルを開く」と同じ。#143)。設定を読めていなければ null(W-211)。
+    // 返す値が null なら programs.json を使わない設定(ProgramsFile が空。W-212)。
+    private Func<string?>? ProgramsFileLocator()
+    {
+        if (_configPath is not { } configPath || (_control is null && _startupConfig is null))
+            return null;
+
+        var control = _control;
+        var startup = _startupConfig;
+        return () =>
+        {
+            if (control is not null)
+            {
+                var status = control.GetStatus();
+                return ConfigPaths.Locate(ConfigFile.Programs, configPath, status.StationsFile, status.ProgramsFile);
+            }
+            return ConfigPaths.Locate(ConfigFile.Programs, configPath, startup?.StationsFile, startup?.ProgramsFile);
+        };
     }
 
     private static void TryClose(ManagementWindow? window)
