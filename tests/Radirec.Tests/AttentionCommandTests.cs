@@ -4,6 +4,8 @@ using Radirec.Cli.Core.Commands;
 using Radirec.Cli.Core.Output;
 using Radirec.Core.Attention;
 using Radirec.Core.Ledger;
+using Radirec.Core.Normalization;
+using Radirec.Core.Reapply;
 using Radirec.Gui.Core.Management;
 using Radirec.Hosting;
 using Spectre.Console;
@@ -26,8 +28,8 @@ public sealed class AttentionCommandTests : IDisposable
 
     private static readonly DateTimeOffset FailedAt = new(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
 
-    // 3 種とも 1 件以上ある状態:兄弟フォルダ Y(1) / Y(2)(設定なし)、失敗 2 件(時刻・理由の無い古い記録を含む)、
-    // X(1) / X(2) を X へ統合した設定と食い違った回。
+    // 3 種とも 1 件以上ある状態:兄弟フォルダ Y(1) / Y(2)(設定なし)、理由と時刻のある失敗 1 件、
+    // X(1) / X(2) を X へ統合した設定と食い違った回。理由・時刻の無い失敗などは、表を直接出すテスト(Render)で確かめる。
     private void AllThreeKinds()
     {
         Ingested("X(1)", "X(2)", "Y(1)", "Y(2)");
@@ -125,6 +127,47 @@ public sealed class AttentionCommandTests : IDisposable
     }
 
     [Fact]
+    public void 表の注記と失敗の行は管理画面の文言と同じ()
+    {
+        var at = new DateTimeOffset(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
+        var items = new AttentionItems
+        {
+            UnintegratedSiblings =
+            [
+                // 組の一部がすでに統合番組 X に入っている(W-124)
+                new UnintegratedSiblingGroup(new SiblingFolderGroup("TBSラジオ", "X", ["X(1)", "X(2)", "X(3)"]), ["X(3)"])
+                {
+                    MergedAlbum = "X",
+                },
+                // 分けておく組に新しいフォルダが加わった(W-125)
+                new UnintegratedSiblingGroup(new SiblingFolderGroup("TBSラジオ", "Y", ["Y(1)", "Y(2)", "Y(3)"]), ["Y(1)", "Y(2)", "Y(3)"])
+                {
+                    FoldersNewToKeptApart = ["Y(3)"],
+                },
+            ],
+            UnresolvedFailures =
+            [
+                new IngestFailureRecord(@"I:\radio\TBSラジオ\新しい.m4a", "新しい.m4a を読めません", at),
+                new IngestFailureRecord(@"I:\radio\TBSラジオ\古い.m4a", Reason: null, FailedAtUtc: null), // #172 の移行前の記録
+            ],
+        };
+
+        var output = RenderToString(items);
+
+        Assert.Contains(AttentionText.Count(4), output);
+        Assert.Contains(AttentionText.OutsideMerged("X", ["X(3)"]), output);
+        Assert.Contains(AttentionText.KeptApartGrown(["Y(3)"]), output);
+        Assert.Contains(AttentionText.FailuresHint, output);
+        Assert.Contains(AttentionText.FailedAt(at, TimeZoneInfo.Local), output);
+        Assert.Contains(AttentionText.NoReason, output);
+
+        // 日時の記録が無い失敗には「失敗:」の行を出さない(管理画面の W-129 と同じ)。
+        Assert.Equal(1, output.Split('\n').Count(l => l.TrimStart().StartsWith("失敗:", StringComparison.Ordinal)));
+        // ファイル名は Windows の区切りでも切る
+        Assert.Contains("  古い.m4a", output);
+    }
+
+    [Fact]
     public void 再適用が要る番組の行は管理画面と同じ表記()
     {
         var renamed = new SettingsDriftGroup("TBSラジオ", "X(1)", "X", 3);
@@ -215,6 +258,20 @@ public sealed class AttentionCommandTests : IDisposable
 
     private static async Task<(int ExitCode, string Output)> Run(string[] args, ICliConfigSource source)
     {
+        var (console, writer) = PlainConsole();
+        var exitCode = await RadirecCli.RunAsync(args, "9.9.9-test", console, source);
+        return (exitCode, writer.ToString());
+    }
+
+    private static string RenderToString(AttentionItems items)
+    {
+        var (console, writer) = PlainConsole();
+        AttentionCommand.Render(console, items);
+        return writer.ToString();
+    }
+
+    private static (IAnsiConsole Console, StringWriter Writer) PlainConsole()
+    {
         var writer = new StringWriter();
         var console = AnsiConsole.Create(new AnsiConsoleSettings
         {
@@ -224,8 +281,7 @@ public sealed class AttentionCommandTests : IDisposable
             Out = new AnsiConsoleOutput(writer),
         });
         console.Profile.Width = 200; // 行を折り返さない
-        var exitCode = await RadirecCli.RunAsync(args, "9.9.9-test", console, source);
-        return (exitCode, writer.ToString());
+        return (console, writer);
     }
 
     private sealed class StubConfigSource(RadirecConfig config) : ICliConfigSource
@@ -251,8 +307,8 @@ public sealed class AttentionCommandTests : IDisposable
     private sealed class FixedAttention(AttentionItems items) : IAttentionActions
     {
         public AttentionItems Compute() => items;
-        public void Integrate(Radirec.Core.Normalization.SiblingFolderGroup group) { }
-        public Task<string?> KeepApartAsync(Radirec.Core.Normalization.SiblingFolderGroup group) => Task.FromResult<string?>(null);
+        public void Integrate(SiblingFolderGroup group) { }
+        public Task<string?> KeepApartAsync(SiblingFolderGroup group) => Task.FromResult<string?>(null);
         public string? KeepApartBlockedReason => null;
     }
 }

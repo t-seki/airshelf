@@ -39,7 +39,7 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
         if (settings.Json)
             CliJson.Write(console, CliJson.Result(Name, ExitCodes.Success, result));
         else
-            Render(items, result.Count);
+            Render(console, items);
         return ExitCodes.Success;
     }
 
@@ -49,9 +49,13 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
     public static AttentionItems Load(RadirecConfig config) =>
         AttentionLoader.Load(config.LedgerPath, config.StationsFile, config.ProgramsFile, config.KnownRecordingKinds);
 
-    // 管理画面のホームの要対応と同じ見出し・同じ行の表記(docs/mockups/management-window.md の W-120〜W-135)。
-    private void Render(AttentionItems items, int count)
+    /// <summary>
+    /// 表の形で出す。管理画面のホームの要対応と同じ見出し・同じ行の表記(docs/mockups/management-window.md の W-120〜W-135)。
+    /// フィクスチャで作りにくい行(理由・日時の記録が無い失敗など)も、テストが要対応を直接渡して確かめられるように公開する。
+    /// </summary>
+    public static void Render(IAnsiConsole console, AttentionItems items)
     {
+        var count = AttentionJson.From(items).Count;
         if (count == 0)
         {
             console.MarkupLine("[grey]要対応はありません[/]");
