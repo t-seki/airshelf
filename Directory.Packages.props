@@ -5,6 +5,8 @@
   <ItemGroup>
     <!-- GUI 受け手(トースト。非パッケージ Win32 で従来 WinRT トーストを出す。ADR-0009) -->
     <PackageVersion Include="CommunityToolkit.WinUI.Notifications" Version="7.1.2" />
+    <!-- 管理画面の ViewModel(ObservableObject / RelayCommand。requirements §10.3・#151)。Gui.Core が使う。 -->
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <!-- test -->
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using Radirec.Core.Reapply;
@@ -20,13 +21,14 @@ namespace Radirec.Gui;
 /// (停止の原因の設定を直してから再起動・リロードするために要る。開くだけでワーカーには触れない)。その下の
 /// programs.json / stations.json だけは、場所が決まらないとき(設定を読み込めていない、または radirec.json の
 /// ProgramsFile / StationsFile が空でそのファイルを使わない)にグレーアウトし、理由をツールチップに出す。
+/// 「Radirec を開く」(#151)は管理画面を開く既定の項目(太字。アイコンのダブルクリックでも開く)で、縮退時も選べる。
+/// 取込履歴は管理画面の取込履歴ページへ移ったので、トレイには置かない。
 /// </summary>
 internal sealed class ControlTrayMenu
 {
     private readonly NotifyIcon _tray;
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
-    private readonly string? _ledgerPath;
     private readonly UpdateService? _update;
     private readonly UpdateCoordinator? _updateCoordinator;
     private readonly Func<Task>? _drainWorker; // 更新適用前にワーカーを graceful 停止(S6 レビュー #0)
@@ -39,26 +41,24 @@ internal sealed class ControlTrayMenu
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
     private readonly ToolStripMenuItem? _applyUpdate; // 更新保留時のみ表示(S6)
-    private IngestHistoryWindow? _historyWindow;
     private bool _reapplyBusy; // 再適用の確認〜完了表示の間は制御の項目を伏せる(UI スレッドだけが読み書きする)
 
+    /// <param name="openManagement">管理画面を開く(#151)。「Radirec を開く」で呼ぶ。</param>
     /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
     /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
-    /// <param name="ledgerPath">台帳の絶対パス(取込履歴 S4 用)。設定未読込なら null で履歴項目を出さない。</param>
     /// <param name="update">自己更新サービス(S6)。null / 未インストール(dev)なら更新項目を出さない。</param>
     /// <param name="updateCoordinator">手動チェック用(S6)。</param>
     /// <param name="drainWorker">更新適用直前にワーカーを graceful 停止するコールバック(S6)。</param>
     /// <param name="configPath">radirec.json の絶対パス(#143)。読めなかったときも渡す(直すために開く)。</param>
     /// <param name="startupConfig">起動時に読めた設定(#143)。読めなかったときは null。</param>
     public ControlTrayMenu(
-        NotifyIcon tray, IServiceControl? control, string? degradedReason = null, string? ledgerPath = null,
+        NotifyIcon tray, Action openManagement, IServiceControl? control, string? degradedReason = null,
         UpdateService? update = null, UpdateCoordinator? updateCoordinator = null, Func<Task>? drainWorker = null,
         string? configPath = null, RadirecConfig? startupConfig = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
-        _ledgerPath = ledgerPath;
         _update = update?.IsInstalled == true ? update : null; // dev/portable では更新 UI を出さない
         _updateCoordinator = updateCoordinator;
         _drainWorker = drainWorker;
@@ -90,8 +90,15 @@ internal sealed class ControlTrayMenu
         };
 
         Menu = new ContextMenuStrip();
+
+        // 管理画面を開く(#151・W-602)。既定の項目なので太字にする(アイコンのダブルクリックでも開く。Program.cs)。
+        // 縮退時も選べる(管理画面は縮退の状態を見せる)。
+        var open = new ToolStripMenuItem("Radirec を開く", image: null, (_, _) => openManagement());
+        open.Font = new Font(open.Font, FontStyle.Bold);
+
         Menu.Items.Add(versionLine);
         Menu.Items.Add(new ToolStripSeparator());
+        Menu.Items.Add(open); // モックの並び(W-601 / 区切り / W-602 / W-603)
         Menu.Items.Add(_rescan);
         Menu.Items.Add(_reload);
         Menu.Items.Add(_reapply);
@@ -100,10 +107,6 @@ internal sealed class ControlTrayMenu
         Menu.Items.Add(new ToolStripSeparator());
         Menu.Items.Add(_statusLine);
         Menu.Items.Add(_lastScanLine);
-        Menu.Items.Add(new ToolStripSeparator());
-        // 取込履歴(S4 / #66)。設定が読めていれば台帳を参照できる(ワーカー起動失敗の縮退でも過去分は見える)。
-        if (_ledgerPath is not null)
-            Menu.Items.Add("取込履歴…", image: null, OnHistory);
         // 更新(S6 / #68)。Velopack インストール時のみ。適用項目は保留中だけ表示する。
         if (_update is not null)
         {
@@ -112,7 +115,7 @@ internal sealed class ControlTrayMenu
             _applyUpdate = new ToolStripMenuItem("更新を適用して再起動", image: null, OnApplyUpdate) { Visible = false };
             Menu.Items.Add(_applyUpdate);
         }
-        AddSeparatorIfNeeded(); // 直前が separator(履歴も更新も無い縮退時)なら足さない(二重線防止)
+        Menu.Items.Add(new ToolStripSeparator()); // 直前は最終スキャンの行か更新の項目(区切り線にはならない)
         // 縮退(設定未読込 / ワーカー起動失敗)時は、設定修正後にプロセスごと再起動して復帰できる導線を出す
         // (control==null は復旧経路が無く、再起動しないと取り込みが始まらないため)。
         if (_control is null)
@@ -124,66 +127,27 @@ internal sealed class ControlTrayMenu
 
     public ContextMenuStrip Menu { get; }
 
-    // 末尾が既に区切り線なら足さない(オプション項目が無い縮退時の二重線を防ぐ)。
-    private void AddSeparatorIfNeeded()
-    {
-        if (Menu.Items.Count > 0 && Menu.Items[^1] is not ToolStripSeparator)
-            Menu.Items.Add(new ToolStripSeparator());
-    }
-
     private void OnOpening(object? sender, CancelEventArgs e)
     {
         RefreshUpdateItem(); // 直近のチェックで見つかった保留更新を反映(S6)
-        RefreshConfigFileItems(); // 取り込みの状態に依らず更新する(下の早期 return より前に置く。#143)
+        RefreshConfigFileItems(); // 取り込みの状態(停止中・再適用の途中)に依らず更新する(#143)
 
-        if (_control is null)
-        {
-            // 取り込みワーカー未起動(設定未読込 or 起動失敗)。制御は不可、理由を明示する。
-            _rescan.Enabled = false;
-            _reload.Enabled = false;
-            _reapply.Enabled = false;
-            _statusLine.Text = $"状態: 取り込み停止中({_degradedReason ?? "未起動"})";
-            _lastScanLine.Text = "最終スキャン: —";
-            return;
-        }
+        // 取り込みワーカー未起動(設定未読込 or 起動失敗)なら理由を、あれば in-process のスナップショットを
+        // 直接・即時に読んで出す(W-101〜W-108。文言は管理画面のホームと共有する)。ワーカーが異常終了しても
+        // トレイ(メッセージループ)は生存しうるが、その場合は「稼働中」と偽らず停止を出す(ADR-0012)。
+        var view = _control is null
+            ? ServiceStatusText.Stopped(_degradedReason)
+            : ServiceStatusText.From(_control.GetStatus());
+        _statusLine.Text = view.Status;
+        _lastScanLine.Text = view.LastScan;
 
-        // in-process なのでスナップショットを直接・即時に読める(pipe 往復・非同期は不要)。
-        ApplyReachable(_control.GetStatus());
-    }
-
-    private void ApplyReachable(ServiceStatusSnapshot status)
-    {
-        // ワーカーが異常終了してもトレイ(メッセージループ)は生存しうる。その場合「稼働中」と偽らず、
-        // 停止を明示して制御の項目(rescan / reload / 再適用)を伏せる(誤って「動いている」と信じさせない。ADR-0012)。
-        if (!status.Running)
-        {
-            _rescan.Enabled = false;
-            _reload.Enabled = false;
-            _reapply.Enabled = false;
-            _statusLine.Text = "状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)";
-            _lastScanLine.Text = "最終スキャン: —";
-            return;
-        }
-
-        // 再適用の確認〜完了の途中は、2 本目の再適用も、再スキャン・設定リロード(確認の MessageBox が
-        // 再適用のダイアログと入れ子になる・確認した設定を途中で差し替える)も始めない。
-        _rescan.Enabled = !_reapplyBusy;
-        _reload.Enabled = !_reapplyBusy;
-        _reapply.Enabled = !_reapplyBusy;
-
-        _statusLine.Text = status.Watching ? "状態: 稼働中(監視中)" : "状態: 稼働中(定期スキャンのみ)";
-
-        if (status.LastScanCompletedUtc is { } completed)
-        {
-            var local = completed.ToLocalTime().ToString("M/d HH:mm");
-            var trigger = string.IsNullOrEmpty(status.LastScanTrigger) ? "" : $" {status.LastScanTrigger}";
-            var failed = status.LastFailed > 0 ? $"・失敗 {status.LastFailed}" : "";
-            _lastScanLine.Text = $"最終スキャン: {local}{trigger}(取込 {status.LastImported}{failed})";
-        }
-        else
-        {
-            _lastScanLine.Text = "最終スキャン: 未走査";
-        }
+        // 取り込みが止まっていれば制御の項目(rescan / reload / 再適用)を伏せる。再適用の確認〜完了の途中も、
+        // 2 本目の再適用も、再スキャン・設定リロード(確認の MessageBox が再適用のダイアログと入れ子になる・
+        // 確認した設定を途中で差し替える)も始めない。
+        var enabled = view.CanControl && !_reapplyBusy;
+        _rescan.Enabled = enabled;
+        _reload.Enabled = enabled;
+        _reapply.Enabled = enabled;
     }
 
     private void OnRescan(object? sender, EventArgs e)
@@ -536,39 +500,6 @@ internal sealed class ControlTrayMenu
             // async void の例外はメッセージループへ抜けてトレイごと落とすので、ここで止める。
             TrayLog.Warn($"設定ファイルを開くときに例外: {ex}");
             _tray.ShowBalloonTip(4000, "Radirec", "設定ファイルを開けませんでした(gui.log 参照)", ToolTipIcon.Warning);
-        }
-    }
-
-    private void OnHistory(object? sender, EventArgs e)
-    {
-        if (_ledgerPath is null)
-            return;
-
-        try
-        {
-            // 既に開いていれば前面化する(複数枚を防ぐ)。最小化されていれば通常表示へ戻してから前面化する
-            // (Activate=SetForegroundWindow は最小化を解除しないため、クリックが無反応に見えるのを防ぐ)。
-            if (_historyWindow is { IsLoaded: true })
-            {
-                if (_historyWindow.WindowState == System.Windows.WindowState.Minimized)
-                    _historyWindow.WindowState = System.Windows.WindowState.Normal;
-                _historyWindow.Activate();
-                return;
-            }
-
-            var window = new IngestHistoryWindow(() => IngestHistory.Load(_ledgerPath));
-            window.Closed += (_, _) => _historyWindow = null;
-            _historyWindow = window;
-            window.Show();
-        }
-        catch (Exception ex)
-        {
-            // このプロセス初の WPF ウィンドウ。WPF プレゼンテーション初期化や Show の失敗が WinForms の
-            // クリックハンドラを抜けて未処理例外(ThreadException)になり、トレイ全体を巻き添えに落とすのを防ぐ。
-            // (Load 失敗は窓内の Reload が別途握るので、ここは主に WPF 初期化・Show の失敗を対象にする。)
-            _historyWindow = null;
-            TrayLog.Warn($"取込履歴ウィンドウを開けませんでした: {ex}");
-            _tray.ShowBalloonTip(4000, "Radirec", "取込履歴を開けませんでした(gui.log 参照)", ToolTipIcon.Warning);
         }
     }
 

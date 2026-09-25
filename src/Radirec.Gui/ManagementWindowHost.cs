@@ -1,0 +1,129 @@
+using System.Runtime.Versioning;
+using System.Windows.Forms;
+using Radirec.Gui.Core;
+using Radirec.Gui.Core.Management;
+using Radirec.Hosting.Control;
+using WindowState = System.Windows.WindowState;
+
+namespace Radirec.Gui;
+
+/// <summary>
+/// 管理画面(#151)を開く・前面に出す・エラーで閉じる。同時に開けるのは 1 つだけで、2 回目は開いているものを
+/// 前面に出す。閉じても常駐(トレイとワーカー)は続く。すべて UI スレッドから呼ぶ。
+/// </summary>
+[SupportedOSPlatform("windows")]
+internal sealed class ManagementWindowHost
+{
+    /// <summary>W-004。UI スレッドの未捕捉例外で管理画面を閉じたときのバルーン(#151 の設計の決定 5)。</summary>
+    public const string ClosedAfterErrorBalloon = "管理画面でエラーが起きたため閉じました(gui.log 参照)";
+
+    private readonly NotifyIcon _tray;
+    private readonly IServiceControl? _control;
+    private readonly string? _degradedReason;
+    private readonly string? _ledgerPath;
+    private ManagementWindow? _window;
+    private bool _closingAfterError;
+
+    /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
+    /// <param name="degradedReason">control が null の理由(W-104 / W-105)。</param>
+    /// <param name="ledgerPath">台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。</param>
+    public ManagementWindowHost(NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath)
+    {
+        _tray = tray;
+        _control = control;
+        _degradedReason = degradedReason;
+        _ledgerPath = ledgerPath;
+    }
+
+    /// <summary>管理画面を開く。開いていれば前面に出す(最小化していれば元の大きさに戻してから)。</summary>
+    public void Show()
+    {
+        try
+        {
+            if (_window is { } open)
+            {
+                // Activate(= SetForegroundWindow)は最小化を解かないので、押しても反応が無いように見えるのを防ぐ。
+                if (open.WindowState == WindowState.Minimized)
+                    open.WindowState = WindowState.Normal;
+                open.Activate();
+                return;
+            }
+
+            var ledgerPath = _ledgerPath;
+            Func<IReadOnlyList<IngestHistoryRow>>? loadHistory = ledgerPath is null ? null : () => IngestHistory.Load(ledgerPath);
+            var viewModel = new ManagementViewModel(_control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn);
+
+            var window = new ManagementWindow(viewModel);
+            window.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_window, window))
+                    _window = null;
+            };
+            _window = window;
+            window.Show();
+            window.Activate();
+        }
+        catch (Exception ex)
+        {
+            // WPF の初期化や Show の失敗をトレイのクリックのハンドラから漏らさない(トレイごと落とさない)。
+            TrayLog.Warn($"管理画面を開けませんでした: {ex}");
+            var broken = _window;
+            _window = null;
+            TryClose(broken);
+            _tray.ShowBalloonTip(4000, "Radirec", "管理画面を開けませんでした(gui.log 参照)", ToolTipIcon.Warning); // W-005
+        }
+    }
+
+    /// <summary>
+    /// UI スレッドの未捕捉例外(WinForms の <c>Application.ThreadException</c> / WPF の <c>Dispatcher.UnhandledException</c>)
+    /// の受け口。gui.log に書き、管理画面が開いていればそれだけを閉じてバルーンで知らせる。トレイとワーカーは生かす。
+    /// </summary>
+    public void OnUnhandledUiException(Exception ex, string source)
+    {
+        TrayLog.Error($"UI スレッドで捕まえていない例外({source}): {ex}");
+
+        // 閉じる途中の例外でもう一度ここに来たら、入れ子で閉じない(ログだけ残す)。
+        if (_closingAfterError || _window is not { } window)
+            return;
+
+        _closingAfterError = true;
+        try
+        {
+            _window = null;
+            TryClose(window);
+        }
+        finally
+        {
+            _closingAfterError = false;
+        }
+        _tray.ShowBalloonTip(5000, "Radirec", ClosedAfterErrorBalloon, ToolTipIcon.Warning);
+    }
+
+    private static void TryClose(ManagementWindow? window)
+    {
+        if (window is null)
+            return;
+        try
+        {
+            window.Close();
+        }
+        catch (Exception ex)
+        {
+            // レイアウトの途中など、ディスパッチャの処理が止まっている間の例外だと Close が投げる。
+            // そのときは後回しにして閉じる(開いたまま残さない)。
+            TrayLog.Warn($"管理画面を閉じるときに例外(後で閉じ直します): {ex}");
+            try
+            {
+                window.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { window.Close(); }
+                    catch (Exception retry) { TrayLog.Warn($"管理画面を閉じ直せませんでした: {retry}"); }
+                }));
+            }
+            catch (Exception post)
+            {
+                TrayLog.Warn($"管理画面を閉じ直す予約に失敗しました: {post}");
+            }
+        }
+    }
+}

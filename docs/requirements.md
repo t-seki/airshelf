@@ -452,7 +452,7 @@ radirec-tool/
   core/   # ドメインロジック: パース(importer) / 正規化ルール / 放送局・番組解決 /
           #   タグ書込(TagLib#) / import-once 台帳 / Jellyfin リフレッシュ。GUI 非依存・テスト可能
   cli/    # 薄い入口(dev/batch の単発)。radirec ingest / reapply / refresh / organize-source
-  gui/    # 本番の常駐本体。取り込みワーカー + トレイ + 取込通知 + 取込履歴 UI + 制御 + 自己更新。
+  gui/    # 本番の常駐本体。取り込みワーカー + トレイ + 取込通知 + 管理画面(取込履歴を含む。§10.3)+ 制御 + 自己更新。
           #   取込後編集グリッド(§10.1)は同プロジェクトに後載せ・保留
   docs/  tests/
 ```
@@ -478,7 +478,7 @@ radirec-tool/
 
 > **注**: [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) の常駐移行が
 > **2 ツリー統合(C2 の構造前提)を先に確立済み**。`Gui → Core` の直接参照が入ったわけではなく、
-> Core の型が推移参照(`Gui → Hosting → Core` / `Gui → Gui.Core → Core`)で `Radirec.Gui` の
+> Core の型が推移参照(`Gui → Hosting → Core` / `Gui → Gui.Core → {Core, Hosting}`)で `Radirec.Gui` の
 > コンパイル面に乗っている状態(§11 の参照グラフ)。よって編集本体着手時は構造前提が既に整っており、
 > 残るは編集機能そのもの。ただし**「CLI 運用で不足が判明したら着手」のゲート自体は維持**
 > (移行は常駐単純化が動機で、編集本体の greenlight ではない)。
@@ -511,7 +511,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 
 - **構成**:1 つのウィンドウに 5 ページ。同時に開けるのは 1 つだけで、閉じても常駐は続く。
   - **ホーム**:状態(稼働・最終スキャン)と「今すぐ再スキャン」/ **要対応** / **取込履歴**(新しい方の数件。「すべて表示」で取込履歴ページへ移る)
-  - **取込履歴**:台帳の全件の一覧(列の見出しで並べ替え・出力先 / 取込元を開く・パスのコピー)。いまの取込履歴ウィンドウを引き継ぐ
+  - **取込履歴**:台帳の全件の一覧(列の見出しで並べ替え・出力先 / 取込元を開く・パスのコピー)。旧取込履歴ウィンドウ(#66)を引き継ぐ(#151 でウィンドウは退役)
     (全件をホームの中で広げると、要対応が押し出されるため分けた。#161)
   - **番組**:統合番組と分けておく兄弟フォルダの一覧・追加・編集・削除([ADR-0017](adr/0017-management-window-owns-programs-json.md))
   - **設定**:新規取込のトーストの切り替え / `radirec.json`・`stations.json` を読み取り専用で見せ、「ファイルを開く」と「再読み込み」を付ける
@@ -548,14 +548,17 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
     ※ かつては常駐サービス(`service` verb)と制御チャネル窓口(`status`/`rescan`/`reload`)も
     1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
   - `Radirec.Gui` — **本番の常駐本体**(独立 exe、WPF + WinForms、`net10.0-windows10.0.x`)。
-    取り込みワーカー・取込通知・取込履歴 UI・制御メニュー・自己更新を 1 プロセスで持つ([ADR-0012])。
+    取り込みワーカー・取込通知・管理画面(取込履歴を含む。§10.3)・制御メニュー・自己更新を 1 プロセスで持つ([ADR-0012])。
     将来の配布フロントエンド兼編集 UI(M5)は同プロジェクトへ後載せ。`radirec.exe` とは実行モデルが
     別(ユーザーセッション GUI)なので別 exe。
   - `Radirec.Gui.Core` — `Radirec.Gui` のテスト可能ロジック(トースト文面整形・取込履歴行の整形・
-    版表示)。**CI で走らせられない WinRT/WPF/WinForms シェルから隔離**する置き場([ADR-0012])。
+    版表示・状態の文言)と、管理画面の ViewModel(§10.3。CommunityToolkit.Mvvm)。**CI で走らせられない
+    WinRT/WPF/WinForms シェルから隔離**する置き場([ADR-0012])。
   - `Radirec.Tests` — 単体テスト(xUnit 等)。
-  - **参照グラフ**: `Gui → {Gui.Core, Hosting}` / `Gui.Core → Core` / `Cli → {Hosting, Core}` /
+  - **参照グラフ**: `Gui → {Gui.Core, Hosting}` / `Gui.Core → {Core, Hosting}` / `Cli → {Hosting, Core}` /
     `Hosting → Core`。`Gui → Core` の直接参照は無く、Core の型は推移参照で乗る([ADR-0012])。
+    `Gui.Core → Hosting` は管理画面の ViewModel が制御面(`IServiceControl` / `ServiceStatusSnapshot`)をそのまま
+    受け取るための辺(#151。Gui.Core 側にインタフェースを切ると写しとアダプタを二重に保守することになるため)。
     詳細は [development.md](development.md) §プロジェクト構成 と [roadmap.md](roadmap.md) §前提。
 - タグ操作: **TagLib#(TagLibSharp)**(MP4/M4A の track/disc/標準フィールド + MP3 ID3 の読み書き)。
   §6 は標準フィールドのみ使用(freeform 不要)。
@@ -616,6 +619,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - [x] デスクトップ GUI フレームワーク選定: **WPF に確定**([ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md)。
       トレイは WinForms の NotifyIcon + WinRT トースト、ウィンドウは WPF)。取込履歴ウィンドウ(#66)で
       WPF スタックは実体化済みで、編集本体も同プロジェクトに後載せ。
+      → 取込履歴ウィンドウは管理画面の取込履歴ページに吸収して退役した(#151。管理画面は XAML + MVVM。§10.3)。
 - [x] TagLib# で §6 の全フィールド(MP4 track/disc/albumartist、date=フル ISO を `©day`)が
       書けることを実 M4A で確認済み(M1 スパイク)。**disc は `Tag.Disc`、date は `AppleTag.©day`
       直接**(`Tag.Year` は使わない)。

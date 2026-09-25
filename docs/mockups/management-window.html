@@ -203,7 +203,7 @@
 
 <!-- ================= 管理画面 ================= -->
 <div class="window" data-if="scene:window">
-  <div class="titlebar"><span data-w="W-001" class="an">Radirec</span><span class="caps"><span>—</span><span>☐</span><span>✕</span></span></div>
+  <div class="titlebar"><span data-w="W-001">Radirec</span><span class="caps"><span>—</span><span>☐</span><span>✕</span></span></div>
   <nav>
     <button data-go="page:home" class="on" data-w="W-002">ホーム</button>
     <button data-go="page:history" data-w="W-002">取込履歴</button>
@@ -233,13 +233,14 @@
         <div style="text-align: right;">
           <button class="btn primary" data-if="run:watching,polling,noscan" data-go="rescan:done" data-w="W-110">今すぐ再スキャン</button>
           <button class="btn" disabled data-if="run:crashed,startfail,noconfig" data-w="W-110">今すぐ再スキャン</button>
-          <div class="sub an" data-if="run:crashed,startfail,noconfig" data-w="W-112">取り込みが止まっているため、再スキャンできません</div>
+          <div class="sub" data-if="run:crashed,startfail,noconfig" data-w="W-112">取り込みが止まっているため、再スキャンできません</div>
         </div>
       </div>
       <div class="msg info" data-if="rescan:done run:watching,polling,noscan" data-w="W-111">手動再スキャンを要求しました</div>
       <div class="mocknote">「最終スキャン」のきっかけは
         <span data-w="W-109">検知 / 定期 / 起動時 / スリープ復帰 / 手動 / リロード / 再適用</span> の 7 種。
-        「今すぐ再スキャン」を押すと、結果はバルーンではなくこの枠の中に出る。</div>
+        「今すぐ再スキャン」を押すと、結果はバルーンではなくこの枠の中に出る。要求が失敗したときは
+        <span class="an" data-w="W-113">再スキャンを要求できませんでした(gui.log 参照)</span>。</div>
     </div>
 
     <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startfail" data-w="W-120">要対応 7 件</span></h3>
@@ -306,8 +307,8 @@
     </div>
 
     <h3><span data-w="W-140">取込履歴</span>
-      <span class="sub an" data-if="hist:ok run:watching,polling,noscan,crashed,startfail" data-w="W-140">新しい方の 5 件</span></h3>
-    <div data-if="run:noconfig" class="msg warn an" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
+      <span class="sub" data-if="hist:ok run:watching,polling,noscan,crashed,startfail" data-w="W-140">新しい方の 5 件</span></h3>
+    <div data-if="run:noconfig" class="msg warn" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
     <div data-if="hist:error run:watching,polling,noscan,crashed,startfail" class="msg err" data-w="W-149">読み込みに失敗しました</div>
     <div data-if="hist:ok run:watching,polling,noscan,crashed,startfail">
       <table class="grid">
@@ -320,7 +321,7 @@
         <tr><td>大竹まこと ゴールデンラジオ!(1)</td><td>文化放送</td><td>2026-09-18</td><td>2026-09-24 09:12</td><td>大竹まこと ゴールデンラジオ!(1)_20260918.m4a</td></tr>
       </table>
       <div class="row" style="justify-content: flex-end; margin-top: 6px;">
-        <button class="btn small an" data-go="page:history" data-w="W-142">すべて表示</button>
+        <button class="btn small" data-go="page:history" data-w="W-142">すべて表示</button>
       </div>
       <div class="mocknote">「すべて表示」は取込履歴ページへ移る(ホームの中では広げない。広げると要対応が押し出される)。</div>
     </div>
@@ -329,7 +330,7 @@
   <!-- ========== 取込履歴 ========== -->
   <section data-if="page:history">
     <h2>取込履歴</h2>
-    <div data-if="run:noconfig" class="msg warn an" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
+    <div data-if="run:noconfig" class="msg warn" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
     <div data-if="hist:error run:watching,polling,noscan,crashed,startfail">
       <div class="row" style="margin-bottom: 6px;">
         <button class="btn small" data-w="W-143">更新</button>
@@ -369,10 +370,12 @@
             <span data-w="W-147">ファイルが見つからないため親フォルダを開きました: {パス}</span> /
             <span data-w="W-147">見つかりません: {パス}</span> /
             <span data-w="W-147">エクスプローラーを開けませんでした(gui.log 参照)</span> /
+            <span data-w="W-152">出力先が記録されていません</span> /
+            <span data-w="W-152">取込元が記録されていません</span> /
             <span data-w="W-148">パスをコピーしました</span> /
             <span data-w="W-148">パスをコピーできませんでした</span></div>
         </div>
-        <div class="mocknote">いまの取込履歴ウィンドウ(IngestHistoryWindow)の中身を、このページに引き継ぐ。開いた時点のスナップショットで、「更新」で読み直す。</div>
+        <div class="mocknote">旧取込履歴ウィンドウの中身を、このページに引き継いだ(#151 でウィンドウは退役)。開いた時点のスナップショットで、「更新」で読み直す。</div>
       </div>
     </div>
   </section>
@@ -768,7 +771,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
   </section>
 
   </div>
-  <div class="statusbar an" data-w="W-003">閉じてもトレイに常駐し、取り込みは続きます</div>
+  <div class="statusbar" data-w="W-003">閉じてもトレイに常駐し、取り込みは続きます</div>
 </div>
 
 <!-- ================= トレイと通知 ================= -->
@@ -818,12 +821,16 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       <span class="gone">設定リロード…</span> /
       <span class="gone">統合設定の再適用…</span> /
       <span class="gone">設定ファイルを開く ▸</span> /
-      <span class="gone">取込履歴…</span> /
-      <span class="gone">今すぐ更新を確認</span></div>
+      <span class="gone">今すぐ更新を確認</span>
+      (取込履歴の項目は #151 で取込履歴ページへ移して消した)</div>
 
     <h3>バルーン(トレイに残した操作)</h3>
     <div class="toast"><div class="app">Radirec</div><div data-w="W-608">手動再スキャンを要求しました</div></div>
     <div class="toast"><div class="app">Radirec</div><div class="an" data-w="W-609">更新があります(v0.13.0)。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。</div></div>
+
+    <h3>バルーン(管理画面が開けない・閉じた)</h3>
+    <div class="toast"><div class="app">Radirec</div><div data-w="W-004">管理画面でエラーが起きたため閉じました(gui.log 参照)</div></div>
+    <div class="toast"><div class="app">Radirec</div><div class="an" data-w="W-005">管理画面を開けませんでした(gui.log 参照)</div></div>
 
     <h3>取込通知(トースト)</h3>
     <div class="toast" data-w="W-701"><div class="app">Radirec</div>

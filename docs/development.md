@@ -103,8 +103,8 @@ Git for Windows を PATH に置く、こと。
 src/Radirec.Core/     ドメインロジック(OS 非依存・テスト可能)
 src/Radirec.Hosting/  合成ルート + 環境設定・パス解決 + 制御(Control/)。Cli と Gui が共有する
 src/Radirec.Cli/      単一 exe radirec.exe。dev/batch の単発 CLI(ingest / reapply / refresh / organize-source)
-src/Radirec.Gui/      本番の常駐本体 Radirec.Gui.exe。取り込みワーカー + トレイ + 通知 + 履歴 UI + 自己更新
-src/Radirec.Gui.Core/ Gui のテスト可能な提示ロジック(WinRT/WPF/WinForms シェルから隔離)
+src/Radirec.Gui/      本番の常駐本体 Radirec.Gui.exe。取り込みワーカー + トレイ + 通知 + 管理画面(XAML)+ 自己更新
+src/Radirec.Gui.Core/ Gui のテスト可能な提示ロジックと管理画面の ViewModel(WinRT/WPF/WinForms シェルから隔離)
 tests/Radirec.Tests/  xUnit
 ```
 
@@ -114,6 +114,7 @@ tests/Radirec.Tests/  xUnit
 
 ```
 Radirec.Gui ──> Radirec.Gui.Core ──> Radirec.Core
+     │                 └───────────> Radirec.Hosting
      └────────> Radirec.Hosting  ──> Radirec.Core
 Radirec.Cli ──> Radirec.Hosting / Radirec.Core
 Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core
@@ -121,6 +122,12 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core
 
 - `Radirec.Gui` 自体に `Radirec.Core` への直接 ProjectReference は**無い**が、Core の型は推移参照で
   Gui のコンパイル面に乗っている(ADR-0012 の「参照の実体は `Gui → Hosting → Core`」)。
+- `Gui.Core → Hosting` は、管理画面の ViewModel が制御面(`Hosting/Control/` の `IServiceControl` /
+  `ServiceStatusSnapshot`)をそのまま受け取るための辺(#151)。Gui.Core 側にインタフェースを切らないのは、
+  写しとアダプタを制御面の変更のたびに二重に直すことになるため。
+- 管理画面は WPF + XAML + MVVM(`CommunityToolkit.Mvvm`)。ViewModel は `Gui.Core/Management/` に置いて
+  WSL の CI でテストし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
+  XAML(`ManagementWindow.xaml`)も `EnableWindowsTargeting` により Linux でコンパイルされる(起動はしない)。
 - `Radirec.Hosting` は **CLI と常駐トレイの 2 フロントエンドが共有する合成層**。だから Cli に畳まず
   独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。
 - `Radirec.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux CI でビルド/テスト可能)、
