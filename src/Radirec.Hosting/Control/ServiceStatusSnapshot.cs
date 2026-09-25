@@ -24,6 +24,12 @@ public sealed record ServiceStatusSnapshot
     /// <summary>今読み込んでいる設定の番組 alias のパス(解決済み)。<see cref="StationsFile"/> と同じ。</summary>
     public string ProgramsFile { get; init; } = string.Empty;
 
+    /// <summary>
+    /// 今読み込んでいる設定の台帳のパス(解決済み)。管理画面の取込履歴と要対応(#196)が読む場所。
+    /// <see cref="StationsFile"/> と同じく、設定リロードの反映に成功したときだけ変わる。
+    /// </summary>
+    public string LedgerPath { get; init; } = string.Empty;
+
     /// <summary>FileSystemWatcher が有効か(false = ルート不在で定期スキャンのみ)。</summary>
     public required bool Watching { get; init; }
 

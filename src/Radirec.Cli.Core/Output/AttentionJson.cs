@@ -1,0 +1,35 @@
+using Radirec.Core.Attention;
+using Radirec.Core.Ledger;
+
+namespace Radirec.Cli.Core.Output;
+
+/// <summary>
+/// <c>attention --json</c> の <c>result</c>(#183)。管理画面のホームの要対応と同じもの(<see cref="AttentionItems"/>)を、
+/// 表の見た目に整形する前の値で出す。
+/// </summary>
+/// <param name="Count">要対応の件数。兄弟フォルダの組・失敗・再適用が要る番組のまとまりを 1 件ずつ数えた合計(ホームの見出しの件数と同じ)。</param>
+/// <param name="UnintegratedSiblings">統合設定の無い兄弟フォルダの組。programs.json を使わない設定では空。</param>
+/// <param name="UnresolvedFailures">解決していない取込失敗(記録した時刻の新しい順。時刻を持たない失敗は後ろ)。</param>
+/// <param name="SettingsDrift">番組の設定と食い違ったままの回のまとまり(再適用すれば消える)。</param>
+public sealed record AttentionJson(
+    int Count,
+    IReadOnlyList<UnintegratedSiblingJson> UnintegratedSiblings,
+    IReadOnlyList<UnresolvedFailureJson> UnresolvedFailures,
+    IReadOnlyList<SettingsDriftGroup> SettingsDrift)
+{
+    public static AttentionJson From(AttentionItems items) => new(
+        items.UnintegratedSiblings.Count + items.UnresolvedFailures.Count + items.SettingsDrift.Count,
+        items.UnintegratedSiblings.Select(UnintegratedSiblingJson.From).ToList(),
+        items.UnresolvedFailures.Select(UnresolvedFailureJson.From).ToList(),
+        items.SettingsDrift);
+}
+
+/// <summary>解決していない取込失敗の 1 件。</summary>
+/// <param name="SourcePath">取込元のフルパス。</param>
+/// <param name="Reason">失敗の理由(トーストと同じ文言)。理由を持つ前(#172 の移行前)に記録された失敗は null。</param>
+/// <param name="FailedAt">記録した時刻(ISO 8601。ローカルの時差つき)。時刻を持つ前に記録された失敗は null。</param>
+public sealed record UnresolvedFailureJson(string SourcePath, string? Reason, DateTimeOffset? FailedAt)
+{
+    public static UnresolvedFailureJson From(IngestFailureRecord failure) =>
+        new(failure.SourcePath, failure.Reason, failure.FailedAtUtc?.ToLocalTime());
+}
