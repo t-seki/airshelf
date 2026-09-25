@@ -6,8 +6,9 @@ namespace Radirec.Gui.Core.Management;
 
 /// <summary>
 /// 管理画面のバージョン情報ページ(#157)。版 / 今すぐ更新を確認 / 更新を適用して再起動(保留中だけ)。
-/// 結果はバルーンではなくページの中に出す(W-503〜W-506・W-509)。開発版・portable(Velopack で入れていない版)と、
-/// 設定を読めず更新の仕組みを作れなかったときは、更新の項目を出さず W-510 を出す。
+/// 結果はバルーンではなくページの中に出す(W-503〜W-506・W-509)。更新の項目を出せないときは、理由を出す
+/// (<see cref="UpdateSupport"/>):開発版・portable(Velopack で入れていない版)は W-510、Velopack で入れた版で設定を
+/// 読めないときは W-511。
 /// <para>
 /// 自動の確認(トレイ)と同じ <see cref="UpdateChecker"/> を使うので、重なったら W-505 を返す。ページを開いている間に
 /// 自動の確認が更新を保留にしたら、シェルのタイマー(<see cref="Refresh"/>)が「更新を適用して再起動」を出す。
@@ -25,19 +26,23 @@ public sealed class AboutPageViewModel : ObservableObject
     private bool _messageIsWarning;
 
     /// <param name="version">表示する版(W-501)。</param>
+    /// <param name="support">更新の項目を出せるか。出せないときの理由(W-510 / W-511)。</param>
     /// <param name="updater">更新の仕組み。作れなかった(設定を読めない等)なら null。</param>
     /// <param name="checker">更新の確認(トレイの自動の確認と共有する)。<paramref name="updater"/> が無ければ null。</param>
     /// <param name="confirmApply">適用の確認(W-508 の文言を受け取り、OK なら true)。シェルがダイアログを出す。</param>
     /// <param name="logWarn">gui.log への記録。</param>
     public AboutPageViewModel(
         string version,
+        UpdateSupport support,
         IAppUpdater? updater,
         UpdateChecker? checker,
         Func<string, bool> confirmApply,
         Action<string> logWarn)
     {
         VersionText = UpdateTexts.VersionLine(version);
-        CanUpdate = updater is { IsInstalled: true } && checker is not null;
+        Support = support;
+        // Supported でも、更新の仕組みか確認を作れなかった(初期化の失敗。gui.log にある)ときは、理由を出さずに項目を隠す。
+        CanUpdate = support == UpdateSupport.Supported && updater is { IsInstalled: true } && checker is not null;
         _updater = CanUpdate ? updater : null;
         _checker = CanUpdate ? checker : null;
         _confirmApply = confirmApply;
@@ -52,11 +57,17 @@ public sealed class AboutPageViewModel : ObservableObject
     /// <summary>W-501。</summary>
     public string VersionText { get; }
 
-    /// <summary>更新の項目(W-502・W-507)を出すか。false なら W-510 を出す。</summary>
+    /// <summary>更新の項目を出せるか。出せないときの理由。</summary>
+    public UpdateSupport Support { get; }
+
+    /// <summary>更新の項目(W-502・W-507)を出すか。</summary>
     public bool CanUpdate { get; }
 
-    /// <summary>W-510。更新の項目を出さないときだけ。</summary>
-    public string? NotUpdatableNote => CanUpdate ? null : UpdateTexts.NotUpdatable;
+    /// <summary>W-510 を出すか(Velopack で入れていない版)。</summary>
+    public bool IsNotInstalled => Support == UpdateSupport.NotInstalled;
+
+    /// <summary>W-511 を出すか(Velopack で入れた版で、設定を読めない)。</summary>
+    public bool IsConfigUnreadable => Support == UpdateSupport.ConfigUnreadable;
 
     /// <summary>W-502。</summary>
     public AsyncRelayCommand CheckCommand { get; }

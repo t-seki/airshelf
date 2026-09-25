@@ -19,7 +19,8 @@ public enum UpdateCheckOutcome
 /// <param name="Outcome">結果。</param>
 /// <param name="Version">見つけた更新の版(<see cref="UpdateCheckOutcome.Found"/> のときだけ)。</param>
 /// <param name="NotifyBalloon">
-/// 自動の確認で、この更新を初めて見つけた(バルーン W-609 で知らせる)。手動の確認では常に false(結果は画面の中に出す)。
+/// 自動の確認で更新を見つけ、まだ知らせていない(バルーン W-609 で知らせる)。版は区別しない。一度知らせたら、最新に戻る
+/// までは別の版を見つけても false。手動の確認では常に false(結果は画面の中に出す)。
 /// </param>
 public sealed record UpdateCheckResult(UpdateCheckOutcome Outcome, string? Version = null, bool NotifyBalloon = false);
 
@@ -28,9 +29,11 @@ public sealed record UpdateCheckResult(UpdateCheckOutcome Outcome, string? Versi
 /// 「今すぐ更新を確認」が同じインスタンスを使う。
 /// <list type="bullet">
 /// <item>2 つが重なると同じ UpdateManager へ二重に照会するので、確認の途中に来たものは照会せず <see cref="UpdateCheckOutcome.Busy"/> を返す</item>
-/// <item>自動の確認で更新を見つけたときは、同じ更新については 1 度だけバルーンを出す(<see cref="UpdateCheckResult.NotifyBalloon"/>)。
-/// 手動で見つけた更新も「知らせた」扱いにする(画面で見ているので、後の自動の確認でバルーンを重ねない)</item>
-/// <item>更新が無い状態に戻ったら(適用した・取り下げられた)、次の新しい版でもう一度知らせる</item>
+/// <item>自動の確認で更新を見つけたときは、1 度だけバルーンを出す(<see cref="UpdateCheckResult.NotifyBalloon"/>)。
+/// 知らせたかどうかは版を区別しない 1 つのフラグで持つので、一度知らせたら、最新に戻るまでは別の版を見つけても知らせない
+/// (旧 <c>UpdateCoordinator</c> と同じ)。手動で見つけた更新も「知らせた」扱いにする(画面で見ているので、後の自動の確認で
+/// バルーンを重ねない)</item>
+/// <item>最新に戻ったら(適用した・取り下げられた)フラグを戻し、次に見つけた版でもう一度知らせる</item>
 /// </list>
 /// すべて UI スレッドから呼ぶ(状態は bool で足りる)。
 /// </summary>

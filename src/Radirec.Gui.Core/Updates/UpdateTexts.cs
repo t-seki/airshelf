@@ -43,6 +43,9 @@ public static class UpdateTexts
     /// <summary>W-510。Velopack で入れていない版(開発版・portable)。</summary>
     public const string NotUpdatable = "この版は自己更新の対象外です(開発版・portable)";
 
+    /// <summary>W-511。Velopack で入れた版だが、設定を読めないので更新の仕組みを作れない(W-137 / W-150 と同じ言い方)。</summary>
+    public const string ConfigUnreadable = "設定を読めないため、更新を確認できません";
+
     /// <summary>W-609。自動の確認で初めて更新を見つけたときのバルーン。</summary>
     public static string FoundBalloon(string? version) =>
         $"更新があります(v{version})。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。";

@@ -171,6 +171,7 @@ internal static class Program
             // バージョン情報ページ(#157)は、更新の確認が作れたとき(Velopack で入れた版)だけ更新の項目を出す。
             var windowHost = new ManagementWindowHost(
                 trayIcon, control, degradedReason, ledgerPath,
+                DecideUpdateSupport(updateService, configLoaded: startupConfig is not null),
                 updateChecker is null ? null : updateService, updateChecker);
             managementHost = windowHost;
             trayIcon.DoubleClick += (_, _) => windowHost.Show();
@@ -199,6 +200,18 @@ internal static class Program
         // 更新チェックタイマーを止め、ワーカーを graceful に停止する。
         updateCoordinator?.Dispose();
         StopHost(host);
+    }
+
+    // バージョン情報ページで更新の項目を出せるか(#157)。インストール済みかは、更新の仕組みが作れていればそれに、
+    // 作れていない(設定を読めない等)ならトークン無しで調べる(UpdateService.ProbeInstalled)。
+    // - Velopack で入れていない版 → W-510(設定を読めるかに依らない。開発版・portable ではそもそも更新できない)
+    // - 入れた版で設定を読めない → W-511(調べられなかったときも、設定を読めないのは確かなのでこちら)
+    private static UpdateSupport DecideUpdateSupport(UpdateService? updateService, bool configLoaded)
+    {
+        var installed = updateService is not null ? updateService.IsInstalled : UpdateService.ProbeInstalled();
+        if (installed == false)
+            return UpdateSupport.NotInstalled;
+        return configLoaded ? UpdateSupport.Supported : UpdateSupport.ConfigUnreadable;
     }
 
     // UI スレッドの未捕捉例外の受け口。管理画面があればそれだけを閉じる(ManagementWindowHost)。トレイを作る前はログだけ。

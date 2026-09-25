@@ -40,10 +40,12 @@ public sealed class AboutPageViewModelTests
     private readonly List<string> _log = [];
     private readonly List<string> _confirms = [];
 
-    private AboutPageViewModel Page(FakeUpdater? updater, bool confirm = true, UpdateChecker? checker = null)
+    private AboutPageViewModel Page(
+        FakeUpdater? updater, bool confirm = true, UpdateChecker? checker = null,
+        UpdateSupport support = UpdateSupport.Supported)
     {
         checker ??= updater is null ? null : new UpdateChecker(updater, _log.Add);
-        return new AboutPageViewModel("0.12.0", updater, checker, message =>
+        return new AboutPageViewModel("0.12.0", support, updater, checker, message =>
         {
             _confirms.Add(message);
             return confirm;
@@ -53,7 +55,7 @@ public sealed class AboutPageViewModelTests
     // ---- UpdateChecker ----
 
     [Fact]
-    public async Task Checker_AutoFindsUpdate_NotifiesOnlyOncePerUpdate()
+    public async Task Checker_AutoFindsUpdate_NotifiesOnlyOnce()
     {
         var updater = new FakeUpdater { Available = "0.13.0" };
         var checker = new UpdateChecker(updater, _log.Add);
@@ -63,6 +65,20 @@ public sealed class AboutPageViewModelTests
 
         Assert.Equal(new UpdateCheckResult(UpdateCheckOutcome.Found, "0.13.0", NotifyBalloon: true), first);
         Assert.Equal(new UpdateCheckResult(UpdateCheckOutcome.Found, "0.13.0", NotifyBalloon: false), second);
+    }
+
+    [Fact]
+    public async Task Checker_AfterNotifying_DoesNotNotifyForNewerVersionUntilUpToDate()
+    {
+        // 知らせたかどうかは版を区別しない(旧 UpdateCoordinator と同じ)。最新に戻るまでは、別の版でも知らせない。
+        var updater = new FakeUpdater { Available = "0.13.0" };
+        var checker = new UpdateChecker(updater, _log.Add);
+        await checker.CheckAsync(manual: false);
+
+        updater.Available = "0.14.0";
+        var newer = await checker.CheckAsync(manual: false);
+
+        Assert.Equal(new UpdateCheckResult(UpdateCheckOutcome.Found, "0.14.0", NotifyBalloon: false), newer);
     }
 
     [Fact]
@@ -132,23 +148,51 @@ public sealed class AboutPageViewModelTests
     }
 
     [Fact]
-    public void Page_NotInstalled_HidesUpdateItems()
+    public void Page_NotInstalled_ShowsNotUpdatable()
     {
-        var page = Page(new FakeUpdater { IsInstalled = false, PendingVersion = "0.13.0" });
+        var page = Page(new FakeUpdater { IsInstalled = false, PendingVersion = "0.13.0" }, support: UpdateSupport.NotInstalled);
 
         Assert.False(page.CanUpdate);
-        Assert.Equal("この版は自己更新の対象外です(開発版・portable)", page.NotUpdatableNote); // W-510
+        Assert.True(page.IsNotInstalled); // W-510
+        Assert.False(page.IsConfigUnreadable);
         Assert.False(page.CheckCommand.CanExecute(null));
         Assert.False(page.HasPending);
+        Assert.Equal("この版は自己更新の対象外です(開発版・portable)", UpdateTexts.NotUpdatable);
     }
 
     [Fact]
-    public void Page_WithoutUpdater_HidesUpdateItems()
+    public void Page_WithoutUpdater_NotInstalled_ShowsNotUpdatable()
     {
-        var page = Page(updater: null); // 設定を読めず更新の仕組みを作れなかった
+        // 開発版・portable で、さらに設定も読めない。更新できない根本の理由(W-510)を出す。
+        var page = Page(updater: null, support: UpdateSupport.NotInstalled);
 
         Assert.False(page.CanUpdate);
-        Assert.Equal(UpdateTexts.NotUpdatable, page.NotUpdatableNote);
+        Assert.True(page.IsNotInstalled);
+        Assert.False(page.IsConfigUnreadable);
+    }
+
+    [Fact]
+    public void Page_WithoutUpdater_ConfigUnreadable_ShowsConfigReason()
+    {
+        // Velopack で入れた版で設定を読めない。「自己更新の対象外」ではなく、設定を読めないことを出す(W-511)。
+        var page = Page(updater: null, support: UpdateSupport.ConfigUnreadable);
+
+        Assert.False(page.CanUpdate);
+        Assert.False(page.IsNotInstalled);
+        Assert.True(page.IsConfigUnreadable);
+        Assert.False(page.CheckCommand.CanExecute(null));
+        Assert.Equal("設定を読めないため、更新を確認できません", UpdateTexts.ConfigUnreadable);
+    }
+
+    [Fact]
+    public void Page_SupportedButCheckerMissing_HidesItemsWithoutReason()
+    {
+        // 設定は読めたが、更新の確認の初期化に失敗した(gui.log にある)。事実と違う理由は出さない。
+        var page = new AboutPageViewModel("0.12.0", UpdateSupport.Supported, new FakeUpdater(), checker: null, _ => true, _log.Add);
+
+        Assert.False(page.CanUpdate);
+        Assert.False(page.IsNotInstalled);
+        Assert.False(page.IsConfigUnreadable);
     }
 
     [Fact]
@@ -157,7 +201,8 @@ public sealed class AboutPageViewModelTests
         var page = Page(new FakeUpdater());
 
         Assert.True(page.CanUpdate);
-        Assert.Null(page.NotUpdatableNote);
+        Assert.False(page.IsNotInstalled);
+        Assert.False(page.IsConfigUnreadable);
         Assert.True(page.CheckCommand.CanExecute(null));
     }
 

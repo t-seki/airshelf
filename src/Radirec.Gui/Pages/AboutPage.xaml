@@ -31,9 +31,14 @@
                             Visibility="{Binding HasPending, Converter={StaticResource Visible}}" />
                 </StackPanel>
 
-                <!-- W-510(開発版・portable、更新の仕組みを作れなかったとき) -->
+                <!-- W-510(Velopack で入れていない版 = 開発版・portable) -->
                 <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap"
-                           Text="{Binding NotUpdatableNote}" />
+                           Text="{x:Static u:UpdateTexts.NotUpdatable}"
+                           Visibility="{Binding IsNotInstalled, Converter={StaticResource Visible}}" />
+                <!-- W-511(Velopack で入れた版で、設定を読めない) -->
+                <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap"
+                           Text="{x:Static u:UpdateTexts.ConfigUnreadable}"
+                           Visibility="{Binding IsConfigUnreadable, Converter={StaticResource Visible}}" />
 
                 <!-- W-503〜W-506 / W-509。結果はバルーンではなくここに出す -->
                 <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Text="{Binding Message}"

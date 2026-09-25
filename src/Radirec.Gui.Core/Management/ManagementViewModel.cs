@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Radirec.Gui.Core.Updates;
 using Radirec.Hosting.Control;
 
 namespace Radirec.Gui.Core.Management;
@@ -38,7 +39,7 @@ public sealed class ManagementViewModel : ObservableObject
     /// <param name="pathActions">取込履歴の行をエクスプローラーで開く / コピーする。</param>
     /// <param name="logWarn">gui.log への記録。</param>
     /// <param name="zone">時刻を表示する時間帯(既定はローカル。テスト用)。</param>
-    /// <param name="about">バージョン情報ページ(#157)。省略すると、このアセンブリの版で更新の項目の無いページにする。</param>
+    /// <param name="about">バージョン情報ページ(#157)。省略すると、このアセンブリの版で、更新の項目の無いページ(W-510)にする。</param>
     public ManagementViewModel(
         IServiceControl? control,
         string? degradedReason,
@@ -52,7 +53,8 @@ public sealed class ManagementViewModel : ObservableObject
             showAll: () => CurrentPage = ManagementPage.History, zone);
         History = new IngestHistoryViewModel(loadHistory, pathActions, logWarn);
         About = about ?? new AboutPageViewModel(
-            AppVersion.Of(typeof(ManagementViewModel).Assembly), updater: null, checker: null, _ => false, logWarn);
+            AppVersion.Of(typeof(ManagementViewModel).Assembly), UpdateSupport.NotInstalled,
+            updater: null, checker: null, _ => false, logWarn);
     }
 
     public HomeViewModel Home { get; }
