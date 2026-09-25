@@ -23,11 +23,14 @@ public interface ISettingsPageActions
     /// <summary>設定リロードの確認(W-309)。既定はキャンセル。OK なら true。</summary>
     bool ConfirmReload(string message);
 
-    /// <summary>プロセスごと再起動する(W-404「再読み込みして再起動」)。</summary>
+    /// <summary>プロセスごと再起動する(W-404 / W-409「再読み込みして再起動」)。</summary>
     void Restart();
 }
 
-/// <summary>設定ページの 1 つの設定ファイルの段(radirec.json / stations.json)。</summary>
+/// <summary>
+/// 設定ページの 1 つの設定ファイルの段(radirec.json / stations.json)。programs.json は中身を出さず、起動の失敗のパネル(W-409)で
+/// 開く場所にだけ使う。
+/// </summary>
 public sealed class SettingsFileRow : ObservableObject
 {
     private string? _path;
@@ -200,7 +203,9 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
         OpenRadirecCommand = new AsyncRelayCommand(() => OpenAsync(Radirec), () => Radirec.HasPath);
         OpenStationsCommand = new AsyncRelayCommand(() => OpenAsync(Stations), () => Stations.HasPath);
-        OpenProgramsCommand = new AsyncRelayCommand(() => OpenAsync(Programs), () => Programs.HasPath);
+        StartFailedPanel = new SettingsFileRow(ConfigFile.Radirec, "");
+        OpenProgramsCommand = new AsyncRelayCommand(() => OpenAsync(Programs, StartFailedPanel), () => Programs.HasPath);
+        OpenStationsFromPanelCommand = new AsyncRelayCommand(() => OpenAsync(Stations, StartFailedPanel), () => Stations.HasPath);
         ReloadCommand = new AsyncRelayCommand(ReloadAsync, () => CanReload);
         RestartCommand = new RelayCommand(Restart);
 
@@ -233,6 +238,11 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// programs.json。中身は出さず(番組ページで編集する。W-313)、起動の失敗のパネルの「programs.json を開く」(W-409)にだけ使う。
     /// </summary>
     public SettingsFileRow Programs { get; }
+
+    /// <summary>
+    /// 起動の失敗のパネル(W-406〜W-409)の結果の 1 行(W-308)。<see cref="SettingsFileRow.Message"/> だけを使う。
+    /// </summary>
+    public SettingsFileRow StartFailedPanel { get; }
 
     /// <summary>W-313 / W-212。</summary>
     public string? ProgramsNote { get => _programsNote; private set => SetProperty(ref _programsNote, value); }
@@ -285,6 +295,9 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
     /// <summary>W-409「programs.json を開く」(起動の失敗のパネル)。</summary>
     public IAsyncRelayCommand OpenProgramsCommand { get; }
+
+    /// <summary>W-409「stations.json を開く」(起動の失敗のパネル)。結果は下の stations.json の段ではなく、パネルの 1 行に出す。</summary>
+    public IAsyncRelayCommand OpenStationsFromPanelCommand { get; }
     public IAsyncRelayCommand ReloadCommand { get; }
 
     /// <summary>W-404 / W-409「再読み込みして再起動」(縮退パネル・起動の失敗のパネル)。</summary>
@@ -353,6 +366,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
         OpenStationsCommand.NotifyCanExecuteChanged();
         OpenProgramsCommand.NotifyCanExecuteChanged();
+        OpenStationsFromPanelCommand.NotifyCanExecuteChanged();
     }
 
     private async Task LoadContentAsync(SettingsFileRow row, bool mask)
@@ -384,16 +398,19 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         }
     }
 
-    private async Task OpenAsync(SettingsFileRow row)
+    // messageTo: 結果の 1 行(W-308)を出す先。省略すると開いたファイルの段。起動の失敗のパネルのボタンは、パネルの 1 行に出す
+    // (stations.json の結果が、パネルと下の stations.json の段の 2 か所に出ないように)。
+    private async Task OpenAsync(SettingsFileRow row, SettingsFileRow? messageTo = null)
     {
         if (row.Path is not { } path)
             return;
 
+        var target = messageTo ?? row;
         var name = System.IO.Path.GetFileName(path);
         try
         {
             var result = await _actions.OpenAsync(row.File, path);
-            SetMessage(row, result.Message, warning: !result.Ok);
+            SetMessage(target, result.Message, warning: !result.Ok);
             // 見本から作ったので中身が変わった(programs.json は中身を出さないので読まない)。
             if (result.Ok && result.Message is not null && !IsDegraded && row.File != ConfigFile.Programs)
                 await LoadContentAsync(row, mask: row.File == ConfigFile.Radirec);
@@ -401,7 +418,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         catch (Exception ex)
         {
             _logWarn($"管理画面: {path} を開くときに例外: {ex}");
-            SetMessage(row, $"{name} を開けませんでした(gui.log 参照)", warning: true); // W-308
+            SetMessage(target, $"{name} を開けませんでした(gui.log 参照)", warning: true); // W-308
         }
     }
 

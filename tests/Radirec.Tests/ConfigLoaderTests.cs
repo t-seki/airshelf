@@ -41,6 +41,8 @@ public sealed class ConfigLoaderTests
                 () => ConfigLoader.LoadOptional<Radirec.Core.Configuration.ProgramMasterConfig>(path));
 
             Assert.StartsWith("programs.json を読めません(JSON が壊れています): ", ex.Message);
+            // 位置(Path / LineNumber)は元のメッセージにある分だけ。包んだときに二重にならない。
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(ex.Message, "LineNumber"));
             Assert.IsAssignableFrom<System.Text.Json.JsonException>(ex.InnerException);
         }
         finally

@@ -261,7 +261,7 @@ public sealed class SettingsPageTests : IDisposable
         // W-409:原因になりうるファイルを、起動時に読めた設定の場所で開ける。
         Assert.True(page.OpenProgramsCommand.CanExecute(null));
         await page.OpenProgramsCommand.ExecuteAsync(null);
-        await page.OpenStationsCommand.ExecuteAsync(null);
+        await page.OpenStationsFromPanelCommand.ExecuteAsync(null);
         Assert.Equal([(ConfigFile.Programs, ProgramsPath), (ConfigFile.Stations, StationsPath)], actions.Opened);
 
         page.RestartCommand.Execute(null);
@@ -276,9 +276,22 @@ public sealed class SettingsPageTests : IDisposable
 
         await page.OpenProgramsCommand.ExecuteAsync(null);
 
-        Assert.Equal("programs.json が無かったので見本から作りました", page.Programs.Message); // W-308
-        Assert.False(page.Programs.IsMessageWarning);
+        Assert.Equal("programs.json が無かったので見本から作りました", page.StartFailedPanel.Message); // W-308
+        Assert.False(page.StartFailedPanel.IsMessageWarning);
         Assert.Null(page.Programs.Content); // 中身は番組ページで見る(W-313)
+    }
+
+    [Fact]
+    public async Task パネルでstationsjsonを開いた結果は_パネルにだけ出る()
+    {
+        var actions = new FakeActions { OpenResult = new(false, "stations.json を開けませんでした(gui.log 参照)") };
+        var page = Page(control: null, actions, Config(), startError: "x");
+
+        await page.OpenStationsFromPanelCommand.ExecuteAsync(null);
+
+        Assert.Equal("stations.json を開けませんでした(gui.log 参照)", page.StartFailedPanel.Message);
+        Assert.True(page.StartFailedPanel.IsMessageWarning);
+        Assert.Null(page.Stations.Message); // 下の stations.json の段には出さない(2 か所に出ない)
     }
 
     [Fact]
