@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Radirec.Core.Ingestion;
 using Radirec.Gui.Core;
+using Radirec.Gui.Core.Updates;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
 using Velopack;
@@ -69,6 +70,7 @@ internal static class Program
         string? configPath = null;          // 設定ファイルを開く(#143)。読めなかったときも開ける(直すため)。
         RadirecConfig? startupConfig = null; // 同上。ワーカーが無いときの programs/stations の場所の出どころ。
         UpdateService? updateService = null;       // 自己更新(S6)。設定が読めたときだけ。
+        UpdateChecker? updateChecker = null;       // 更新の確認。トレイの自動の確認と管理画面で共有する(#157)。
         UpdateCoordinator? updateCoordinator = null;
         NotifyIcon trayIcon;
         try
@@ -141,11 +143,13 @@ internal static class Program
             {
                 try
                 {
-                    updateCoordinator = new UpdateCoordinator(updateService, trayIcon);
+                    updateChecker = new UpdateChecker(updateService, TrayLog.Warn);
+                    updateCoordinator = new UpdateCoordinator(updateChecker, trayIcon);
                 }
                 catch (Exception ex)
                 {
                     TrayLog.Warn($"更新チェックの初期化に失敗しました(更新無効で継続): {ex.Message}");
+                    updateChecker = null;
                     updateCoordinator = null;
                 }
             }
@@ -160,16 +164,22 @@ internal static class Program
                     try { await capturedHost.StopAsync(TimeSpan.FromSeconds(15)); }
                     catch (Exception ex) { TrayLog.Warn($"更新適用前のワーカー停止で例外: {ex.Message}"); }
                 };
+            if (updateService is not null)
+                updateService.DrainBeforeRestart = drainWorker; // 管理画面から適用するとき(#157)
 
             // 管理画面(#151)。トレイの「Radirec を開く」とアイコンのダブルクリックで開く。縮退時も開ける。
-            var windowHost = new ManagementWindowHost(trayIcon, control, degradedReason, ledgerPath);
+            // バージョン情報ページ(#157)は、更新の確認が作れたとき(Velopack で入れた版)だけ更新の項目を出す。
+            var windowHost = new ManagementWindowHost(
+                trayIcon, control, degradedReason, ledgerPath,
+                DecideUpdateSupport(updateService, configLoaded: startupConfig is not null),
+                updateChecker is null ? null : updateService, updateChecker);
             managementHost = windowHost;
             trayIcon.DoubleClick += (_, _) => windowHost.Show();
 
             // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
             trayIcon.ContextMenuStrip = new ControlTrayMenu(
-                trayIcon, windowHost.Show, control, degradedReason, updateService, updateCoordinator, drainWorker,
+                trayIcon, windowHost.Show, control, degradedReason, updateService, drainWorker,
                 configPath, startupConfig).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
@@ -190,6 +200,18 @@ internal static class Program
         // 更新チェックタイマーを止め、ワーカーを graceful に停止する。
         updateCoordinator?.Dispose();
         StopHost(host);
+    }
+
+    // バージョン情報ページで更新の項目を出せるか(#157)。インストール済みかは、更新の仕組みが作れていればそれに、
+    // 作れていない(設定を読めない等)ならトークン無しで調べる(UpdateService.ProbeInstalled)。
+    // - Velopack で入れていない版 → W-510(設定を読めるかに依らない。開発版・portable ではそもそも更新できない)
+    // - 入れた版で設定を読めない → W-511(調べられなかったときも、設定を読めないのは確かなのでこちら)
+    private static UpdateSupport DecideUpdateSupport(UpdateService? updateService, bool configLoaded)
+    {
+        var installed = updateService is not null ? updateService.IsInstalled : UpdateService.ProbeInstalled();
+        if (installed == false)
+            return UpdateSupport.NotInstalled;
+        return configLoaded ? UpdateSupport.Supported : UpdateSupport.ConfigUnreadable;
     }
 
     // UI スレッドの未捕捉例外の受け口。管理画面があればそれだけを閉じる(ManagementWindowHost)。トレイを作る前はログだけ。

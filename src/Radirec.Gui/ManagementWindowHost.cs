@@ -2,7 +2,11 @@ using System.Runtime.Versioning;
 using System.Windows.Forms;
 using Radirec.Gui.Core;
 using Radirec.Gui.Core.Management;
+using Radirec.Gui.Core.Updates;
 using Radirec.Hosting.Control;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
 using WindowState = System.Windows.WindowState;
 
 namespace Radirec.Gui;
@@ -21,18 +25,29 @@ internal sealed class ManagementWindowHost
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
     private readonly string? _ledgerPath;
+    private readonly UpdateSupport _updateSupport;
+    private readonly IAppUpdater? _updater;
+    private readonly UpdateChecker? _updateChecker;
     private ManagementWindow? _window;
     private bool _closingAfterError;
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="degradedReason">control が null の理由(W-104 / W-105)。</param>
     /// <param name="ledgerPath">台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。</param>
-    public ManagementWindowHost(NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath)
+    /// <param name="updateSupport">バージョン情報ページで更新の項目を出せるか。出せないときの理由(W-510 / W-511。#157)。</param>
+    /// <param name="updater">自己更新(#157)。作れなかった・Velopack で入れていない版なら null。</param>
+    /// <param name="updateChecker">更新の確認(トレイの自動の確認と共有する。#157)。</param>
+    public ManagementWindowHost(
+        NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath,
+        UpdateSupport updateSupport, IAppUpdater? updater = null, UpdateChecker? updateChecker = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
         _ledgerPath = ledgerPath;
+        _updateSupport = updateSupport;
+        _updater = updater;
+        _updateChecker = updateChecker;
     }
 
     /// <summary>管理画面を開く。開いていれば前面に出す(最小化していれば元の大きさに戻してから)。</summary>
@@ -51,7 +66,11 @@ internal sealed class ManagementWindowHost
 
             var ledgerPath = _ledgerPath;
             Func<IReadOnlyList<IngestHistoryRow>>? loadHistory = ledgerPath is null ? null : () => IngestHistory.Load(ledgerPath);
-            var viewModel = new ManagementViewModel(_control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn);
+            var about = new AboutPageViewModel(
+                AppVersion.Of(typeof(ManagementWindowHost).Assembly), _updateSupport, _updater, _updateChecker,
+                ConfirmApplyUpdate, TrayLog.Warn);
+            var viewModel = new ManagementViewModel(
+                _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn, about: about);
 
             var window = new ManagementWindow(viewModel);
             window.Closed += (_, _) =>
@@ -97,6 +116,17 @@ internal sealed class ManagementWindowHost
             _closingAfterError = false;
         }
         _tray.ShowBalloonTip(5000, "Radirec", ClosedAfterErrorBalloon, ToolTipIcon.Warning);
+    }
+
+    // W-508 の確認(#157)。管理画面を持ち主にして出す。既定はキャンセル側(#157 の設計の決定 3)。
+    private bool ConfirmApplyUpdate(string message)
+    {
+        var result = _window is { } owner
+            ? System.Windows.MessageBox.Show(owner, message, UpdateTexts.ApplyConfirmCaption,
+                MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel)
+            : System.Windows.MessageBox.Show(message, UpdateTexts.ApplyConfirmCaption,
+                MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        return result == MessageBoxResult.OK;
     }
 
     private static void TryClose(ManagementWindow? window)
