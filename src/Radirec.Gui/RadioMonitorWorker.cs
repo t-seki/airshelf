@@ -305,7 +305,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 
         // 設定リロードが反映できなかった(programs.json の JSON が壊れている等)。取り込みは旧構成のまま
         // 稼働しているので、再適用だけを新しい設定で走らせることはせず中止する(ADR-0016)。
-        if (_lastReloadError is { } reloadError)
+        // 下書きで確かめる(#154)ときは止めない。実行の段(ReloadAndApplyAsync)で必ずリロードを試し直し、失敗なら実行しない。
+        if (ReapplyPlanGate.BlockingReloadError(hasDraft: draft is not null, _lastReloadError) is { } reloadError)
         {
             _log.LogWarning("統合設定の再適用: 設定の反映に失敗したため中止しました: {Error}", reloadError);
             return ReapplyResult.Failed($"設定の読み込みに失敗しました: {reloadError}");

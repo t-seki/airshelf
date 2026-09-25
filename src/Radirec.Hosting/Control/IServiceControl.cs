@@ -43,8 +43,10 @@ public interface IServiceControl
     /// <summary>
     /// 保存前の番組の設定で再適用を確かめる(管理画面の番組ページの「確認」。#154)。ファイルから設定リロードはせず、
     /// 今の設定(radirec.json)とディスクの <c>stations.json</c>、渡した <paramref name="programs"/> で dry-run する。
-    /// 直列ループの上で行う(取り込み中は終わるのを待つ)。直近の設定リロードの反映に失敗していれば中止する。
-    /// 実行は、保存してから <see cref="ReloadAndApplyReapplyAsync"/> で行う。
+    /// 直列ループの上で行う(取り込み中は終わるのを待つ)。直近の設定リロードの反映の失敗では止めない
+    /// (<see cref="ReapplyPlanGate"/>。番組の設定は下書きから取るので、原因を直した後にやり直せるように)。stations.json を
+    /// 読めなければ、その理由で失敗を返す。実行は、保存してから <see cref="ReloadAndApplyReapplyAsync"/> で行う
+    /// (実行の前に必ずリロードを試し直し、失敗なら実行しない)。
     /// </summary>
     Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs);
 

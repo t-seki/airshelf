@@ -29,7 +29,8 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         """;
 
     // worker の代わり。「保存して適用」は ReloadAndApplyReapplyAsync(1 つのジョブで設定リロード → 再適用)で呼ばれる。
-    // ReloadError を立てると、worker と同じく設定リロードに失敗して再適用を実行しない。
+    // ReloadError を立てると、worker と同じく設定リロードに失敗して再適用を実行しない。失敗は worker の _lastReloadError と
+    // 同じく残り(LastReloadError)、次にリロードに成功するまで消えない。確認は worker と同じ ReapplyPlanGate で判定する。
     private sealed class FakeControl : IServiceControl
     {
         public ServiceStatusSnapshot Status { get; set; } = Snapshot();
@@ -39,6 +40,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         public Func<ReapplyResult>? PlanResult { get; set; }
         public Func<ReapplyReport, ReapplyResult>? ApplyResult { get; set; }
         public string? ReloadError { get; set; }
+        public string? LastReloadError { get; private set; }
         public ReapplyReport Plan { get; set; } = Report(dryRun: true, ReapplyAction.Move, ReapplyAction.Move);
 
         public void RequestRescan() => Calls.Add("rescan");
@@ -56,6 +58,8 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         {
             Calls.Add("plan");
             PlannedWith = programs;
+            if (ReapplyPlanGate.BlockingReloadError(hasDraft: true, LastReloadError) is { } blocking)
+                return Task.FromResult(ReapplyResult.Failed($"設定の読み込みに失敗しました: {blocking}"));
             return Task.FromResult(PlanResult?.Invoke() ?? ReapplyResult.Ok(Plan));
         }
 
@@ -64,6 +68,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan)
         {
             Calls.Add("reload-and-apply");
+            LastReloadError = ReloadError; // 実行の前に必ずリロードを試し直す。成功したときだけ消える
             if (ReloadError is { } error)
                 return Task.FromResult(ReapplyResult.Failed($"設定の反映に失敗しました: {error}(取り込みは前の設定のまま動いています)"));
 
@@ -571,13 +576,16 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.False(vm.HasChanges);
         Assert.True(vm.ConfirmCommand.CanExecute(null));
 
-        control.ReloadError = null;
+        control.ReloadError = null; // 原因を直した。worker の側には古いリロードの失敗がまだ残っている
+        Assert.NotNull(control.LastReloadError);
         control.Calls.Clear();
         var written = File.ReadAllBytes(ProgramsPath);
         await vm.ConfirmCommand.ExecuteAsync(null);
+        Assert.True(vm.IsConfirmMode); // 古い失敗で「確認」が止まらない(#154 のレビュー 2 周目)
         await vm.SaveAndApplyCommand.ExecuteAsync(null);
 
         Assert.Equal(["plan", "reload-and-apply"], control.Calls);
+        Assert.Null(control.LastReloadError); // 実行の前にリロードを試し直し、成功した
         Assert.Equal(written, File.ReadAllBytes(ProgramsPath)); // 書かない
         Assert.Equal("統合設定の再適用が完了しました", vm.ResultHeading);
     }
