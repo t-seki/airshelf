@@ -33,6 +33,7 @@ public sealed class ManagementViewModelTests
         public Task<ReapplyResult> PlanReapplyAsync() => throw new NotSupportedException();
         public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs) => throw new NotSupportedException();
         public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
+        public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
     }
 
     private sealed class FakeLedger

@@ -352,7 +352,7 @@
                     <Button Style="{StaticResource Button}" Content="読み込み直す" Command="{Binding ReloadCommand}"
                             Visibility="{Binding IsConflict, Converter={StaticResource Visible}}" />
                     <!-- 結果から一覧に戻る(W-249 の「戻る」と同じ語) -->
-                    <Button Style="{StaticResource Button}" Content="戻る" IsDefault="{Binding IsResultMode}"
+                    <Button Style="{StaticResource Button}" Content="戻る" IsDefault="{Binding IsResultBackDefault}"
                             Command="{Binding BackCommand}"
                             Visibility="{Binding CanReturnFromResult, Converter={StaticResource Visible}}" />
                 </StackPanel>

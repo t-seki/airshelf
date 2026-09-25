@@ -37,12 +37,13 @@ public enum ProgramsPageMode
 /// <summary>
 /// 管理画面の番組ページ(#154・requirements §10.3・ADR-0017)。<c>programs.json</c> の一覧・追加・編集・削除を画面の中の
 /// 変更として溜め、「確認」で**保存前の設定のまま**再適用の dry-run を行って変更前 → 変更後を見せる。
-/// 「保存して適用」(保存 → 再適用の実行 → 設定リロード)/「保存だけ」(保存 → 設定リロード)/「戻る」。
+/// 「保存して適用」(保存 → 設定リロード → 再適用の実行。ADR-0016)/「保存だけ」(保存 → 設定リロード)/「戻る」。
 /// <para>
 /// 保存は <see cref="ProgramsFileWriter"/>(ファイル全体の書き直し・バックアップ・読み込んだ後の変更の検出)で行う。
-/// 再適用は確認のときの設定で実行し、確認の後に設定や状態が変わっていれば実行しない(W-278)。再適用の実行は
-/// 今の設定(radirec.json)が確認のときと同じであることを前提にするので、設定リロードは実行の**後**に行う
-/// (先に行うと、確認のときの設定と別物になり実行されない)。
+/// 設定リロードと再適用の実行は、worker の 1 つのジョブの中で続けて行う(<see cref="IServiceControl.ReloadAndApplyReapplyAsync"/>。
+/// 間に取り込みの走査を挟まない)。リロードに失敗したら再適用はせず、理由を出す(W-251)。読み直した設定が確認のときの
+/// 下書きと値で違う、または予定が変わっていれば実行しない(W-278)。保存できたのに実行できなかったときは、変更が無くても
+/// 「確認」から実行し直せる(リロードも試し直す)。
 /// </para>
 /// <para>「確認」を押してから一覧か結果に戻るまでは <see cref="ProgramsApplyGate"/> を立て、ホームの再スキャンを止める(W-110)。</para>
 /// </summary>
@@ -292,6 +293,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
             OnPropertyChanged(nameof(IsResultMode));
             OnPropertyChanged(nameof(IsSavedMessageVisible));
             OnPropertyChanged(nameof(IsConfirmBackDefault));
+            OnPropertyChanged(nameof(IsResultBackDefault));
             // 確認〜適用の途中はホームの再スキャンを止める(W-110)。一覧・フォーム・結果に戻ったら下ろす。
             _applyGate.IsBusy = value is ProgramsPageMode.Checking or ProgramsPageMode.Confirm or ProgramsPageMode.Applying;
             NotifyCommands();
@@ -409,12 +411,20 @@ public sealed class ProgramsPageViewModel : ObservableObject
         private set
         {
             if (SetProperty(ref _isConflict, value))
+            {
                 OnPropertyChanged(nameof(CanReturnFromResult));
+                OnPropertyChanged(nameof(IsResultBackDefault));
+            }
         }
     }
 
     /// <summary>結果から「戻る」で一覧に戻れるか(W-275 のときは読み込み直すしかない)。</summary>
     public bool CanReturnFromResult => !IsConflict;
+
+    /// <summary>
+    /// 結果の「戻る」が既定のボタン(Enter)か。見えているときだけ(W-275 で隠しているときに Enter で押せないように)。
+    /// </summary>
+    public bool IsResultBackDefault => IsResultMode && CanReturnFromResult;
 
     // ---- コマンド ----
 
@@ -460,13 +470,39 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <summary>
     /// ページを出したとき(管理画面の CurrentPage が番組になったとき)に呼ぶ。まだ読んでいない、または一覧で変更が無ければ
     /// programs.json を読み直す(エディタで直した・設定リロードで場所が変わった等に追従する)。
+    /// 保存したのに再適用を実行できなかった(<see cref="_reapplyPending"/>)ときは、ファイルがエディタで変わっていたときだけ
+    /// 読み直す(変わっていなければ読み直さず、「確認」から中止された再適用を続けられるようにする)。
     /// </summary>
-    public Task OnShownAsync()
+    public async Task OnShownAsync()
     {
         RefreshStatus();
-        if (_loaded && (!IsListMode || HasChanges || _reapplyPending))
-            return Task.CompletedTask;
-        return LoadAsync();
+        if (_loaded && (!IsListMode || HasChanges))
+            return;
+        if (_loaded && _reapplyPending && !await FileChangedAsync())
+            return;
+        await LoadAsync();
+    }
+
+    // 読み込んだときから programs.json が変わったか(読めない・消えた等も「変わった」として読み直させる)。
+    private async Task<bool> FileChangedAsync()
+    {
+        if (_snapshot is not { } snapshot)
+            return true;
+        try
+        {
+            var current = await Task.Run(() => File.Exists(snapshot.Path) ? File.ReadAllBytes(snapshot.Path) : null);
+            return (current, snapshot.Original) switch
+            {
+                (null, null) => false,
+                ({ } c, { } o) => !c.AsSpan().SequenceEqual(o),
+                _ => true,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"管理画面: {snapshot.Path} を確かめられませんでした: {ex}");
+            return true;
+        }
     }
 
     /// <summary>programs.json を読み、一覧を作り直す(この画面での変更は捨てる)。</summary>
@@ -492,7 +528,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         {
             _logWarn($"管理画面: programs.json の場所を決められませんでした: {ex}");
             SetSnapshot(null);
-            LoadError = $"programs.json の場所を決められませんでした: {ex.Message}";
+            LoadError = LocateFailed(ex.Message); // W-215
             return;
         }
 
@@ -514,6 +550,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         }
         catch (ProgramsFileException ex)
         {
+            // W-216(ProgramsFileWriter.Read の文言:「{ファイル名} を読めませんでした: …」/「… を読めません(JSON が壊れています): …」)
             _logWarn($"管理画面: {path} を読めませんでした: {ex}");
             SetSnapshot(null);
             LoadError = ex.Message;
@@ -522,9 +559,18 @@ public sealed class ProgramsPageViewModel : ObservableObject
         {
             _logWarn($"管理画面: {path} を読めませんでした: {ex}");
             SetSnapshot(null);
-            LoadError = $"{Path.GetFileName(path)} を読めませんでした: {ex.Message}";
+            LoadError = ReadFailed(Path.GetFileName(path), ex.Message); // W-216
         }
     }
+
+    /// <summary>W-215。programs.json の場所を決められなかった(状態を読めない等)。</summary>
+    public static string LocateFailed(string reason) => $"programs.json の場所を決められませんでした: {reason}";
+
+    /// <summary>
+    /// W-216。programs.json を読めなかった(<see cref="ProgramsFileWriter.Read"/> と同じ形。壊れているときは
+    /// <c>{ファイル名} を読めません(JSON が壊れています): {理由}</c>)。
+    /// </summary>
+    public static string ReadFailed(string fileName, string reason) => $"{fileName} を読めませんでした: {reason}";
 
     /// <summary>取り込みが動いているか(確認を押せるか)を読み直す。管理画面のタイマーから 2 秒ごとに呼ぶ。</summary>
     public void RefreshStatus()
@@ -881,7 +927,6 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
         var name = Path.GetFileName(snapshot.Path);
         SavedMessage = null;
-        var saved = false;
 
         // 変更が無い(保存した後に再適用だけをやり直す)ときは書かない。
         if (HasChanges)
@@ -896,7 +941,6 @@ public sealed class ProgramsPageViewModel : ObservableObject
                     ? $"{name} を保存しました"
                     : $"{name} を保存しました(バックアップ: {Path.GetFileName(backup)})"; // W-270
                 _logInfo($"管理画面: {snapshot.Path} を保存しました(バックアップ: {backup ?? "なし(新しく作った)"})");
-                saved = true;
             }
             catch (ProgramsFileChangedException ex)
             {
@@ -925,21 +969,19 @@ public sealed class ProgramsPageViewModel : ObservableObject
             return;
         }
 
+        // 設定リロード → 再適用の実行(ADR-0016)。worker の 1 つのジョブの中で続けて行う。リロードに失敗すれば再適用は
+        // 行われず、その理由が返る(W-251)。書かなかった(保存済みの設定で実行し直す)ときもリロードを試し直す。
         Mode = ProgramsPageMode.Applying;
         ReapplyResult applied;
         try
         {
-            applied = await _control!.ApplyReapplyAsync(plan);
+            applied = await _control!.ReloadAndApplyReapplyAsync(plan);
         }
         catch (Exception ex)
         {
             _logWarn($"管理画面: 再適用の実行に失敗しました: {ex}");
             applied = ReapplyResult.Failed($"再適用に失敗しました: {ex.Message}");
         }
-
-        // 取り込みも保存した設定で動くよう、再適用の後に設定リロードする(先にすると確認のときの設定と別物になり実行されない)。
-        if (saved)
-            Reload();
 
         var done = applied.Report is not null;
         await ReloadSnapshotAfterSaveAsync(snapshot.Path, reapplyPending: !done);

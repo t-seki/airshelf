@@ -441,7 +441,11 @@
         <button class="btn primary" data-if="prog:dirty" data-go="prog:confirm" data-w="W-207">確認</button>
       </div>
       <div class="mocknote">「確認」は変更が無いと押せない。一覧の「追加・編集・削除」はファイルに書かず、この画面の中の変更として溜める。
-        取り込みが止まっているときも押せず、横に <span class="an" data-w="W-214">取り込みが止まっているため、確認と保存はできません</span> と出す。</div>
+        取り込みが止まっているときも押せず、横に <span class="an" data-w="W-214">取り込みが止まっているため、確認と保存はできません</span> と出す。
+        programs.json を読めないときは、一覧の代わりに
+        <span class="an" data-w="W-215">programs.json の場所を決められませんでした: {理由}</span> か
+        <span class="an" data-w="W-216">programs.json を読めません(JSON が壊れています): {理由}</span>(読めないときは
+        <span class="an" data-w="W-216">programs.json を読めませんでした: {理由}</span>)と、「読み込み直す」を出す。</div>
     </div>
 
     <!-- 編集フォーム -->
@@ -496,7 +500,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
     <!-- 確かめている途中 -->
     <div data-if="prog:checking" class="card">
       <p data-w="W-240">再適用の内容を確かめています(取り込み中なら完了後)</p>
-      <div class="mocknote">すぐ終われば出さない(いまのトレイは 1.5 秒待っても終わらないときだけバルーンを出す。ControlTrayMenu.cs:229)。</div>
+      <div class="mocknote">すぐ終われば出さない(旧トレイ〈#154 で退役〉は 1.5 秒待っても終わらないときだけバルーンを出していた。ControlTrayMenu.cs:229)。</div>
     </div>
 
     <!-- 確認 -->
@@ -534,8 +538,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <button class="btn" data-go="prog:saveonly" data-w="W-249">保存だけ</button>
         <button class="btn" data-go="prog:dirty" data-w="W-249" style="outline: 2px solid var(--accent);">戻る</button>
       </div>
-      <div class="mocknote">既定のボタン(Enter)は「戻る」。いまのトレイの確認と同じく、ファイルを動かす側を既定にしない。
-        いまのトレイの確認にある「統合設定の無い兄弟フォルダ」の段と「統合設定を追記して開く」は出さない(要対応へ移る)。</div>
+      <div class="mocknote">既定のボタン(Enter)は「戻る」。旧トレイの確認(#154 で退役)と同じく、ファイルを動かす側を既定にしない。
+        旧トレイの確認にあった「統合設定の無い兄弟フォルダ」の段と「統合設定を追記して開く」は出さない(要対応へ移る)。</div>
     </div>
 
     <!-- 再適用の確認(要対応から) -->
@@ -718,7 +722,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
           <button class="btn primary" data-w="W-312">適用</button>
           <button class="btn" data-go="set:normal" data-w="W-312" style="outline: 2px solid var(--accent);">戻る</button>
         </div>
-        <div class="mocknote">W-253 の「今の programs.json の設定で」は、stations.json を直したときには少しずれる。いまのトレイの文言のまま残すか、
+        <div class="mocknote">W-253 の「今の programs.json の設定で」は、stations.json を直したときには少しずれる。旧トレイ(#154 で退役)の文言のまま残すか、
           ここだけ言い換えるかは #154 で決める。</div>
       </div>
     </div>

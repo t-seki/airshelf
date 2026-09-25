@@ -28,6 +28,8 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         }
         """;
 
+    // worker の代わり。「保存して適用」は ReloadAndApplyReapplyAsync(1 つのジョブで設定リロード → 再適用)で呼ばれる。
+    // ReloadError を立てると、worker と同じく設定リロードに失敗して再適用を実行しない。
     private sealed class FakeControl : IServiceControl
     {
         public ServiceStatusSnapshot Status { get; set; } = Snapshot();
@@ -36,6 +38,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         public ReapplyReport? AppliedPlan { get; private set; }
         public Func<ReapplyResult>? PlanResult { get; set; }
         public Func<ReapplyReport, ReapplyResult>? ApplyResult { get; set; }
+        public string? ReloadError { get; set; }
         public ReapplyReport Plan { get; set; } = Report(dryRun: true, ReapplyAction.Move, ReapplyAction.Move);
 
         public void RequestRescan() => Calls.Add("rescan");
@@ -56,9 +59,14 @@ public sealed class ProgramsPageViewModelTests : IDisposable
             return Task.FromResult(PlanResult?.Invoke() ?? ReapplyResult.Ok(Plan));
         }
 
-        public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan)
+        public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
+
+        public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan)
         {
-            Calls.Add("apply");
+            Calls.Add("reload-and-apply");
+            if (ReloadError is { } error)
+                return Task.FromResult(ReapplyResult.Failed($"設定の反映に失敗しました: {error}(取り込みは前の設定のまま動いています)"));
+
             AppliedPlan = plan;
             return Task.FromResult(ApplyResult?.Invoke(plan) ?? ReapplyResult.Ok(Report(dryRun: false, ReapplyAction.Move, ReapplyAction.Move)));
         }
@@ -404,7 +412,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
     // ---------- 保存 ----------
 
     [Fact]
-    public async Task Save_and_apply_writes_then_applies_then_reloads()
+    public async Task Save_and_apply_writes_then_reloads_and_applies_in_one_job()
     {
         var control = new FakeControl();
         var vm = await CreateLoaded(control);
@@ -413,8 +421,8 @@ public sealed class ProgramsPageViewModelTests : IDisposable
 
         await vm.SaveAndApplyCommand.ExecuteAsync(null);
 
-        // 確認で見せた計画を実行し、設定リロードはその後(先にすると確認のときの設定と別物になり実行されない)
-        Assert.Equal(["plan", "apply", "reload"], control.Calls);
+        // 保存 → 設定リロード → 再適用の実行(ADR-0016)。リロードと実行は worker の 1 つのジョブで(単独のリロードは要求しない)
+        Assert.Equal(["plan", "reload-and-apply"], control.Calls);
         Assert.Same(control.Plan, control.AppliedPlan);
 
         var saved = ConfigLoader.Parse<ProgramMasterConfig>(File.ReadAllText(ProgramsPath));
@@ -474,7 +482,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         await vm.SaveAndApplyCommand.ExecuteAsync(null);
         await vm.ProceedAfterCommentsCommand.ExecuteAsync(null); // W-262「保存する」
 
-        Assert.Equal(["plan", "apply", "reload"], control.Calls);
+        Assert.Equal(["plan", "reload-and-apply"], control.Calls);
         Assert.DoesNotContain("//", File.ReadAllText(ProgramsPath));
     }
 
@@ -530,12 +538,72 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.False(vm.SaveOnlyCommand.CanExecute(null)); // 保存するものが無い
         await vm.SaveAndApplyCommand.ExecuteAsync(null);
 
-        Assert.Equal(["plan", "apply"], control.Calls); // 書かないのでリロードもしない
+        Assert.Equal(["plan", "reload-and-apply"], control.Calls); // 書かないが、リロードは試し直す
         Assert.Equal(written, File.ReadAllBytes(ProgramsPath));
         Assert.Equal("統合設定の再適用が完了しました", vm.ResultHeading);
 
         vm.BackCommand.Execute(null);
         Assert.False(vm.ConfirmCommand.CanExecute(null)); // 実行できたので、もう確認は要らない
+    }
+
+    [Fact]
+    public async Task Reload_failure_aborts_W251_then_retry_reloads_again_without_writing()
+    {
+        var control = new FakeControl { ReloadError = "stations.json を読めません" };
+        var vm = await CreateLoaded(control);
+        AddAnzu(vm);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+
+        await vm.SaveAndApplyCommand.ExecuteAsync(null);
+
+        // 保存はできたが、リロードに失敗したので再適用は実行していない。理由と、前の設定で動いていることを画面に出す
+        Assert.Equal(["plan", "reload-and-apply"], control.Calls);
+        Assert.Null(control.AppliedPlan);
+        Assert.Equal(3, ConfigLoader.Parse<ProgramMasterConfig>(File.ReadAllText(ProgramsPath)).Programs.Count);
+        Assert.True(vm.IsResultMode);
+        Assert.Equal("統合設定の再適用を中止しました", vm.ResultHeading); // W-251
+        Assert.Equal("設定の反映に失敗しました: stations.json を読めません(取り込みは前の設定のまま動いています)", vm.ResultBody);
+        Assert.True(vm.ResultIsError);
+        Assert.False(_gate.IsBusy);
+
+        // 設定を変えずに(直したのは stations.json だけ)、もう一度実行できる。リロードも試し直す
+        vm.BackCommand.Execute(null);
+        Assert.False(vm.HasChanges);
+        Assert.True(vm.ConfirmCommand.CanExecute(null));
+
+        control.ReloadError = null;
+        control.Calls.Clear();
+        var written = File.ReadAllBytes(ProgramsPath);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveAndApplyCommand.ExecuteAsync(null);
+
+        Assert.Equal(["plan", "reload-and-apply"], control.Calls);
+        Assert.Equal(written, File.ReadAllBytes(ProgramsPath)); // 書かない
+        Assert.Equal("統合設定の再適用が完了しました", vm.ResultHeading);
+    }
+
+    [Fact]
+    public async Task Pending_reapply_is_kept_when_file_unchanged_and_reread_when_edited()
+    {
+        var control = new FakeControl { ReloadError = "x" };
+        var vm = await CreateLoaded(control);
+        AddAnzu(vm);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveAndApplyCommand.ExecuteAsync(null);
+        vm.BackCommand.Execute(null);
+        Assert.True(vm.ConfirmCommand.CanExecute(null)); // 中止された再適用を続けられる
+
+        await vm.OnShownAsync(); // ページを出し直しても、ファイルが同じなら読み直さない
+        Assert.True(vm.ConfirmCommand.CanExecute(null));
+        Assert.Equal(3, vm.Programs.Count);
+
+        // エディタで直したら読み直す(usage §6:エディタで直した後は、番組ページを開き直すと読み直す)
+        var edited = File.ReadAllText(ProgramsPath).Replace("安住紳一郎の日曜天国\"", "安住紳一郎の日曜天国!\"");
+        File.WriteAllText(ProgramsPath, edited);
+        await vm.OnShownAsync();
+
+        Assert.Equal("安住紳一郎の日曜天国!", vm.Programs[2].Album);
+        Assert.False(vm.HasChanges);
     }
 
     [Fact]

@@ -44,14 +44,29 @@ public interface IServiceControl
     /// 保存前の番組の設定で再適用を確かめる(管理画面の番組ページの「確認」。#154)。ファイルから設定リロードはせず、
     /// 今の設定(radirec.json)とディスクの <c>stations.json</c>、渡した <paramref name="programs"/> で dry-run する。
     /// 直列ループの上で行う(取り込み中は終わるのを待つ)。直近の設定リロードの反映に失敗していれば中止する。
+    /// 実行は、保存してから <see cref="ReloadAndApplyReapplyAsync"/> で行う。
     /// </summary>
     Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs);
 
     /// <summary>
-    /// 確認した再適用を実行する(直列ループの上で)。<paramref name="plan"/> は直前の
-    /// <see cref="PlanReapplyAsync()"/> / <see cref="PlanReapplyAsync(ProgramMasterConfig)"/> が返した結果で、
-    /// その後に設定・状態が変わっていれば実行せず、<see cref="ReapplyResult.IsStale"/> の失敗を返す。
-    /// 確かめたときの番組・放送局の設定で実行する(ディスクを読み直さない)。
+    /// 保存した番組の設定で、**設定リロード → 再適用の実行**を 1 つの続きとして行う(管理画面の番組ページの「保存して適用」。
+    /// #154・ADR-0016)。直列ループの 1 つのジョブの中で続けて行い、間に取り込みの走査を挟まない。
+    /// <list type="number">
+    /// <item>設定をファイルから読み直して反映する(<see cref="RequestReload"/> と同じ検証・組み直し)。読めない・組み直せない
+    /// なら再適用は実行せず、理由を返す(取り込みは前の設定のまま動き続ける)。</item>
+    /// <item>読み直した番組・放送局の設定が、<paramref name="plan"/> を確かめたとき(<see cref="PlanReapplyAsync(ProgramMasterConfig)"/>)
+    /// の設定と**値で**同じかを確かめる。違えば <see cref="ReapplyResult.IsStale"/> の失敗を返す。</item>
+    /// <item>読み直した設定で dry-run し直し、予定が <paramref name="plan"/> と同じときだけ実行する(違えば IsStale)。</item>
+    /// </list>
+    /// 失敗・中止した後は、もう一度確かめてから呼び直せる(設定リロードも試し直す)。
+    /// </summary>
+    Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan);
+
+    /// <summary>
+    /// 確認した再適用を実行する(直列ループの上で)。<paramref name="plan"/> は直前の <see cref="PlanReapplyAsync()"/>
+    /// (保存済みの設定で、設定リロードを反映してから確かめたもの)が返した結果で、その後に設定・状態が変わっていれば
+    /// 実行せず、<see cref="ReapplyResult.IsStale"/> の失敗を返す。確かめたときの番組・放送局の設定で実行する
+    /// (ディスクを読み直さない)。保存前の設定で確かめた結果は <see cref="ReloadAndApplyReapplyAsync"/> で実行する。
     /// </summary>
     Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan);
 }
