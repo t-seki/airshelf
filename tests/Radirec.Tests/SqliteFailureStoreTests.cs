@@ -167,6 +167,27 @@ public sealed class SqliteFailureStoreTests : IDisposable
     }
 
     [Fact]
+    public void 移行が途中で止まった台帳も_読み取り専用で理由なしで読め_書き込みで開けば移行を終える()
+    {
+        // 列の追加は 2 本の ALTER で、1 本ずつ確定する。reason だけ足されて failed_at が無い台帳を作る。
+        CreateLegacyFailuresDb("/in/old.m4a");
+        using (var conn = new SqliteConnection($"Data Source={DbPath};Pooling=False"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "ALTER TABLE failures ADD COLUMN reason TEXT NULL;";
+            cmd.ExecuteNonQuery();
+        }
+
+        using (var readOnly = new SqliteLedger(DbPath, readOnly: true))
+            Assert.Null(Assert.Single(readOnly.List()).Reason);
+
+        using var store = new SqliteLedger(DbPath);
+        Record(store, "/in/new.m4a", Fp, reason: "新しい失敗");
+        Assert.Equal(At, store.List().Single(r => r.SourcePath == "/in/new.m4a").FailedAtUtc);
+    }
+
+    [Fact]
     public void 読み取り専用でfailuresの無い台帳を開くと_一覧は空()
     {
         using (var conn = new SqliteConnection($"Data Source={DbPath};Pooling=False"))

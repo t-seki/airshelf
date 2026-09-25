@@ -470,16 +470,47 @@ public sealed class IngestServiceTests
     }
 
     [Fact]
-    public async Task 取込元のパスは大文字小文字を区別せずに照らし合わせる()
+    public async Task パスの表記が変わっても_同じファイルの失敗記録は1行だけ残る()
     {
-        // 本番(Windows)のパスは大文字小文字を区別しない。表記の揺れだけで、まだあるファイルの記録を消さない。
-        var bad = BadFile();
-        _failureStore.Seed(bad.FilePath.ToUpperInvariant(), FileFingerprint.Of(bad));
+        // 実物の台帳で確かめる(ストアの主キーは大文字小文字を区別する)。前の走査では大文字の表記で失敗を記録し、
+        // 今の走査では小文字の表記で同じファイルが列挙された。古い表記の行が残り続けないこと。
+        var dir = Directory.CreateTempSubdirectory("radirec-ingest-failures-").FullName;
+        try
+        {
+            using var store = new SqliteLedger(Path.Combine(dir, "ledger.db"));
+            var bad = BadFile();
+            store.Record(bad.FilePath.ToUpperInvariant(), FileFingerprint.Of(bad), "前の走査の理由", Now);
 
-        await Build([bad]).RunOnceAsync(dryRun: false);
+            await BuildWithStore(store, [bad]).RunOnceAsync(dryRun: false);
 
-        Assert.DoesNotContain(bad.FilePath.ToUpperInvariant(), _failureStore.Cleared);
+            var record = Assert.Single(store.List());
+            Assert.Equal(bad.FilePath, record.SourcePath);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
     }
+
+    private IngestService BuildWithStore(IIngestFailureStore store, IEnumerable<RecordingFile> files)
+        => new(
+            new FakeRecordingSource(files.ToArray()),
+            new RajirekoImporter(),
+            new StabilityChecker(new FixedClock(Now), TimeSpan.FromSeconds(15)),
+            new RecordingSkipPolicy([]),
+            _tagReader,
+            new EpisodeAssembler(
+                new StationResolver(new StationMasterConfig()),
+                new ProgramResolver(new ProgramMasterConfig())),
+            _target,
+            _ledger,
+            new FixedClock(Now),
+            genre: "ラジオ",
+            _refresher,
+            _publisher,
+            store,
+            _failurePublisher);
 
     [Fact]
     public async Task DryRun_失敗があっても発行しない()

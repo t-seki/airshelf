@@ -116,7 +116,9 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
             {
                 _usable = TableExists("imports") && ColumnExists("imports", "part_index");
                 _failuresUsable = TableExists("failures");
-                _failureDetailsUsable = _failuresUsable && ColumnExists("failures", "reason");
+                // 列の追加は 2 本の ALTER で、1 本ずつ確定する。途中で止まった台帳(reason だけある)も未移行として扱う。
+                _failureDetailsUsable = _failuresUsable
+                    && ColumnExists("failures", "reason") && ColumnExists("failures", "failed_at");
                 _contentUsable = _usable && ColumnExists("imports", "size_bytes");
             }
         }

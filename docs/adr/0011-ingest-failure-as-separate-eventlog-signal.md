@@ -1,6 +1,12 @@
 # 取込失敗は別 EventID の独立シグナルにする(1 アラート種別 = 1 シグナル)
 
-Status: accepted / superseded by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(軸A A3 / #5 配下。requirements §7.1 / [CONTEXT.md](../../CONTEXT.md) の「取込失敗シグナル」)。トレイ常駐 per-user 移行で失敗シグナル(EventID 1002)の EventLog 契約は退役し、ワーカーが in-process で失敗トーストを直接出す。「成功と失敗は別種・同居させない」区別は不変。**#72 まで EventLog 1002 が現行の生きた契約だった**。
+Status: accepted / superseded by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(軸A A3 / #5 配下。requirements §7.1 / [CONTEXT.md](../../CONTEXT.md) の「取込失敗シグナル」)。トレイ常駐 per-user 移行で失敗シグナル(EventID 1002)の EventLog 契約は退役し、ワーカーが in-process で失敗トーストを直接出す。「成功と失敗は別種・同居させない」区別は不変。**#72 まで EventLog 1002 が現行の生きた契約だった**。**#172(2026-09-25)で失敗ストアに reaper と理由・時刻の列を足した — 下の追記を参照**
+
+> **追記(#172、2026-09-25。本文は決定当時の記録なので直さない)**:Consequences の「失敗ストアに reaper は置かない」は、もう当てはまらない。
+> 失敗ストアは管理画面の要対応(ADR-0018)の「解決していない取込失敗」の出どころになり、取込元から消えたファイルの記録が残り続けると、
+> 解消できない要対応になるため。#172 で、走査で取込元を列挙し終えたときに、列挙に無いパスの記録を消すようにした(本文の「走査時に現存パス集合との差分で掃除する reaper」そのもの)。
+> 列挙が例外で終わった走査と、列挙が 0 件の走査では消さない(取込元が一時的に見えないときに、記録をまとめて消さないため)。
+> あわせて、要対応に出すために、失敗の理由(トーストと同じ整形済みの文言)と記録した時刻の列を足した(移行前の行は NULL)。
 
 [ADR-0008](0008-ingest-notification-via-eventlog-signal.md) でサービスは取込**要約**シグナル(成功)を EventLog(EventID 1001)へ発行するようにした。しかし**ファイル単位の失敗**(`IngestOutcome.Failed` = パース失敗・書込/タグ/台帳失敗)は `IngestReport` に入るだけで自由文ログ止まりで、トレイに届かない。A3 はこの失敗をユーザーセッションのトーストへ**能動通知**する。
 

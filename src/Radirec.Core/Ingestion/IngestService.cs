@@ -125,8 +125,11 @@ public sealed class IngestService(
         if (items.Count == 0)
             return;
 
-        // 本番(Windows)のパスは大文字小文字を区別しない。区別して比べると、同じファイルの記録を消してしまいうる。
-        var enumerated = new HashSet<string>(items.Select(i => i.SourcePath), StringComparer.OrdinalIgnoreCase);
+        // ストア(failures の主キー・IsKnown・Record・Clear)と同じく、大文字小文字を区別して比べる。区別しないと、
+        // 走査の間でパスの表記(大文字小文字)が変わったとき、古い表記の行がここでも成功時の Clear でも消えず、
+        // 要対応に残り続ける。区別すれば古い表記の行は消え、新しい表記で記録し直される(IsKnown も区別するので、
+        // 表記が変われば今でも再通知される)。
+        var enumerated = new HashSet<string>(items.Select(i => i.SourcePath), StringComparer.Ordinal);
         foreach (var failure in failureStore.List())
         {
             if (!enumerated.Contains(failure.SourcePath))
