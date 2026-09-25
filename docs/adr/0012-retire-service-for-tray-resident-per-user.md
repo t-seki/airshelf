@@ -1,6 +1,6 @@
 # Windows サービスを廃し、トレイ常駐 per-user モデルへ移行する
 
-Status: accepted(常駐モデルの構造転換。ADR-0003/0005/0006/0007/0008/0009/0010/0011 を supersede/amend。C2〔2 ツリー統合〕をこの移行で先行実施(参照の実体は `Gui→Hosting→Core`。下記 Consequences の自己訂正を参照)。**実装済み — エピック #62、2026-07-19 完了**)
+Status: accepted(常駐モデルの構造転換。ADR-0003/0005/0006/0007/0008/0009/0010/0011 を supersede/amend。C2〔2 ツリー統合〕をこの移行で先行実施(参照の実体は `Gui→Hosting→Core`。下記 Consequences の自己訂正を参照)。**実装済み — エピック #62、2026-07-19 完了**)。**[ADR-0020](0020-cli-as-agent-front-via-control-channel.md)(2026-09-25)で、CLI の位置づけと named pipe の退役を変更 — 下の注記を参照**
 
 > **⚠ 本文に、実装と食い違う記述が 1 箇所ある**(#113。本文は決定当時の記録なので直さない):
 > Consequences の ADR-0010 supersede 項が「`rescan` は `radirec ingest --once` に吸収」と書いているが、
@@ -8,6 +8,10 @@ Status: accepted(常駐モデルの構造転換。ADR-0003/0005/0006/0007/0008/0
 > (`ControlTrayMenu` → `IServiceControl.RequestRescan` = 常駐プロセス内の走査要求)である。
 > `radirec ingest` は移行前から在る dev/batch の単発 CLI で、制御コマンドの移設先ではない。
 > 現行の姿は [requirements.md](../requirements.md) §7.2 の「現在地」を参照。
+
+> **[ADR-0020](0020-cli-as-agent-front-via-control-channel.md) で改めた(2026-09-25)**:`radirec.exe` を普段の運用と AI エージェントの窓口にする。
+> 台帳を書き換える `ingest` / `reapply` と `status` / `reload` は、named pipe の制御チャネル(トレイのプロセスが受け口)で常駐に頼む。
+> 本 ADR の「`radirec.exe` は dev/batch の単発 CLI」「named pipe は退役」はこれで置き換わる。常駐はトレイ、という決定は変わらない。
 
 本番の実行形態を **Windows サービス(Session 0 常駐)** から **トレイ常駐(ユーザーセッション自動起動・非 admin の per-user)** へ移行する。取り込みワーカーを `Radirec.Gui`(トレイ)プロセスに畳み込み、`Radirec.Gui → Radirec.Core` を直接参照する。EventLog シグナル・named pipe 制御チャネル・run-as-user 資格情報という **Session 0 を橋渡しするための機構一式を撤去**する。
 
