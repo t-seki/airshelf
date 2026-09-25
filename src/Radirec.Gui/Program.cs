@@ -76,6 +76,7 @@ internal static class Program
         UpdateService? updateService = null;       // 自己更新(S6)。設定が読めたときだけ。
         UpdateChecker? updateChecker = null;       // 更新の確認。トレイの自動の確認と管理画面で共有する(#157)。
         UpdateCoordinator? updateCoordinator = null;
+        ControlPipeServer? controlServer = null; // CLI からの状態取得・設定リロードの受け口(ADR-0020 / #179)。縮退時も起動する。
         NotifyIcon trayIcon;
         try
         {
@@ -198,11 +199,27 @@ internal static class Program
             trayIcon.ContextMenuStrip = new ControlTrayMenu(
                 trayIcon, windowHost.Show, control, degradedReason, updateService, drainWorker).Menu;
 
+            // CLI(radirec status / reload)の受け口(ADR-0020 / #179)。取り込みが止まっている(縮退)ときも起動し、
+            // 理由を答える。受け口の失敗ではトレイと取り込みを止めない。
+            try
+            {
+                controlServer = new ControlPipeServer(
+                    ControlProtocol.DefaultPipeName(), control, degradedReason, configPath,
+                    AppVersion.Of(typeof(Program).Assembly), TrayLog.Warn);
+                controlServer.Start();
+            }
+            catch (Exception ex)
+            {
+                TrayLog.Warn($"制御チャネルの受け口を起動できませんでした(CLI の status / reload は使えません): {ex}");
+                controlServer = null;
+            }
+
             TrayLog.Info("Radirec トレイを起動");
         }
         catch (Exception ex)
         {
             TrayLog.Warn($"トレイ起動に失敗: {ex}");
+            StopControlServer(controlServer);
             StopHost(host);
             return;
         }
@@ -213,9 +230,25 @@ internal static class Program
             trayIcon.Visible = false;
         }
 
-        // 更新チェックタイマーを止め、ワーカーを graceful に停止する。
+        // 更新チェックタイマーと制御チャネルの受け口を止め、ワーカーを graceful に停止する。
         updateCoordinator?.Dispose();
+        StopControlServer(controlServer);
         StopHost(host);
+    }
+
+    // 制御チャネルの受け口を止める(処理中の要求が終わるのを最大 5 秒待つ)。失敗しても終了は続ける。
+    private static void StopControlServer(ControlPipeServer? server)
+    {
+        if (server is null)
+            return;
+        try
+        {
+            server.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            TrayLog.Warn($"制御チャネルの受け口の停止で例外(続行します): {ex.Message}");
+        }
     }
 
     // バージョン情報ページで更新の項目を出せるか(#157)。インストール済みかは、更新の仕組みが作れていればそれに、

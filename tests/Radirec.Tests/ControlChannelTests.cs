@@ -1,0 +1,339 @@
+using System.IO.Pipes;
+using System.Text.Json;
+using Radirec.Cli.Core;
+using Radirec.Core.Configuration;
+using Radirec.Core.Reapply;
+using Radirec.Hosting.Control;
+using Spectre.Console;
+
+namespace Radirec.Tests;
+
+/// <summary>
+/// 制御チャネル(CLI → トレイの常駐。ADR-0020 / #179)の往復。named pipe を実際に使う(Linux では Unix ドメインソケット)。
+/// 名前はテストごとに一意にする(既定のユーザーごとの名前は使わない)。
+/// </summary>
+public sealed class ControlChannelTests
+{
+    private static readonly TimeSpan ShortConnect = TimeSpan.FromMilliseconds(300);
+
+    // ---- パイプ名 ----
+
+    [Fact]
+    public void パイプ名はユーザーごとで_使えない文字は置き換える()
+    {
+        Assert.Equal("radirec-control-S-1-5-21-1", ControlProtocol.PipeNameFor("S-1-5-21-1"));
+        Assert.Equal("radirec-control-DOMAIN_user", ControlProtocol.PipeNameFor(@"DOMAIN\user"));
+        Assert.StartsWith(ControlProtocol.PipeNamePrefix, ControlProtocol.DefaultPipeName());
+    }
+
+    // ---- 往復 ----
+
+    [Fact]
+    public async Task statusは取り込みワーカーの状態と設定ファイルの場所を返す()
+    {
+        var control = new FakeControl();
+        await using var server = StartServer(control, degradedReason: null);
+
+        var result = await Client(server).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None);
+
+        Assert.Equal(ControlCallOutcome.Answered, result.Outcome);
+        Assert.Equal("1.2.3", result.TrayVersion);
+        var status = result.Response!.Status!;
+        Assert.True(status.Running);
+        Assert.Equal(@"C:\data\radirec.json", status.ConfigPath);
+        Assert.Equal(@"I:\radio", status.RadioRoot);
+        Assert.Equal(3, status.LastImported);
+        Assert.Equal("手動", status.LastScanTrigger);
+    }
+
+    [Fact]
+    public async Task 縮退中のstatusは止まっていることと理由を返す()
+    {
+        await using var server = StartServer(control: null, degradedReason: "設定を読み込めませんでした");
+
+        var result = await Client(server).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None);
+
+        Assert.Equal(ControlCallOutcome.Answered, result.Outcome);
+        var status = result.Response!.Status!;
+        Assert.False(status.Running);
+        Assert.Equal("設定を読み込めませんでした", status.DegradedReason);
+        Assert.Equal(@"C:\data\radirec.json", status.ConfigPath);
+        Assert.Null(status.RadioRoot);
+    }
+
+    [Fact]
+    public async Task reloadは受理と拒否をそのまま返す()
+    {
+        var control = new FakeControl();
+        await using var server = StartServer(control, degradedReason: null);
+
+        var accepted = await Client(server).SendAsync(ControlProtocol.ReloadCommand, CancellationToken.None);
+        Assert.True(accepted.Response!.Reload!.Accepted);
+
+        control.Reload = ReloadResult.Failed("programs.json の JSON が壊れています");
+        var rejected = await Client(server).SendAsync(ControlProtocol.ReloadCommand, CancellationToken.None);
+        Assert.Equal(ControlResponseKind.Ok, rejected.Response!.Kind);
+        Assert.False(rejected.Response.Reload!.Accepted);
+        Assert.Equal("programs.json の JSON が壊れています", rejected.Response.Reload.Error);
+        Assert.Equal(2, control.ReloadCalls);
+    }
+
+    [Fact]
+    public async Task 縮退中のreloadは縮退と理由を返す()
+    {
+        await using var server = StartServer(control: null, degradedReason: "取り込みの起動に失敗しました(設定ページ参照)");
+
+        var result = await Client(server).SendAsync(ControlProtocol.ReloadCommand, CancellationToken.None);
+
+        Assert.Equal(ControlResponseKind.Degraded, result.Response!.Kind);
+        Assert.Equal("取り込みの起動に失敗しました(設定ページ参照)", result.Response.Error);
+    }
+
+    [Fact]
+    public async Task 版の違う要求には版の不一致を返して何もしない()
+    {
+        var control = new FakeControl();
+        await using var server = StartServer(control, degradedReason: null);
+
+        var result = await Client(server).SendAsync(new ControlRequest(99, ControlProtocol.ReloadCommand), CancellationToken.None);
+
+        Assert.Equal(ControlCallOutcome.VersionMismatch, result.Outcome);
+        Assert.Equal("1.2.3", result.TrayVersion);
+        Assert.Equal(0, control.ReloadCalls);
+    }
+
+    [Fact]
+    public async Task 版の違う応答は形を読まずに版の不一致にする()
+    {
+        var name = UniqueName();
+        var fake = Task.Run(async () =>
+        {
+            await using var pipe = new NamedPipeServerStream(
+                name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            await pipe.WaitForConnectionAsync();
+            using var reader = new StreamReader(pipe, leaveOpen: true);
+            await reader.ReadLineAsync();
+            await using var writer = new StreamWriter(pipe, ControlProtocol.LineEncoding, leaveOpen: true) { AutoFlush = true };
+            await writer.WriteLineAsync("""{"protocolVersion":99,"trayVersion":"9.0.0","somethingNew":true}""");
+        });
+
+        var result = await new ControlPipeClient(name, TimeSpan.FromSeconds(2)).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None);
+        await fake;
+
+        Assert.Equal(ControlCallOutcome.VersionMismatch, result.Outcome);
+        Assert.Equal("9.0.0", result.TrayVersion);
+    }
+
+    [Fact]
+    public async Task 受け口が無ければ繋がらないとして返す()
+    {
+        var result = await new ControlPipeClient(UniqueName(), ShortConnect).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None);
+
+        Assert.Equal(ControlCallOutcome.NotRunning, result.Outcome);
+        Assert.Equal(ControlPipeClient.NotRunningMessage, result.Error);
+    }
+
+    [Fact]
+    public async Task 知らないコマンドは読めない要求として返す()
+    {
+        await using var server = StartServer(new FakeControl(), degradedReason: null);
+
+        var result = await Client(server).SendAsync("rescan", CancellationToken.None);
+
+        Assert.Equal(ControlResponseKind.BadRequest, result.Response!.Kind);
+    }
+
+    [Fact]
+    public async Task 遅い要求の処理中も次の接続に応える()
+    {
+        var control = new FakeControl { BlockReload = new ManualResetEventSlim(false) };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var slow = Client(server).SendAsync(ControlProtocol.ReloadCommand, CancellationToken.None);
+        await control.ReloadEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var status = await Client(server).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(ControlCallOutcome.Answered, status.Outcome);
+        Assert.False(slow.IsCompleted);
+
+        control.BlockReload.Set();
+        Assert.True((await slow).Response!.Reload!.Accepted);
+    }
+
+    // ---- CLI(radirec status / reload) ----
+
+    [Fact]
+    public async Task CLIのstatusは常駐に繋がらなくても0で_running_falseと理由を返す()
+    {
+        var (exitCode, output) = await RunCli(["status", "--json"], new ControlPipeClient(UniqueName(), ShortConnect));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        var result = doc.RootElement.GetProperty("result");
+        Assert.Equal("status", doc.RootElement.GetProperty("command").GetString());
+        Assert.False(result.GetProperty("reachable").GetBoolean());
+        Assert.False(result.GetProperty("running").GetBoolean());
+        Assert.Equal(ControlPipeClient.NotRunningMessage, result.GetProperty("reason").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("tray").ValueKind);
+    }
+
+    [Fact]
+    public async Task CLIのstatusは常駐の状態をjsonで返す()
+    {
+        await using var server = StartServer(new FakeControl(), degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["status", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        var result = doc.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("reachable").GetBoolean());
+        Assert.True(result.GetProperty("running").GetBoolean());
+        Assert.Equal(@"C:\data\radirec.json", result.GetProperty("tray").GetProperty("configPath").GetString());
+        Assert.Equal(@"I:\radio", result.GetProperty("tray").GetProperty("radioRoot").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのstatusは縮退中も0で理由を返す()
+    {
+        await using var server = StartServer(control: null, degradedReason: "設定を読み込めませんでした");
+
+        var (exitCode, output) = await RunCli(["status", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        var result = doc.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("reachable").GetBoolean());
+        Assert.False(result.GetProperty("running").GetBoolean());
+        Assert.Equal("設定を読み込めませんでした", result.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのreloadは受理で0_拒否で1()
+    {
+        var control = new FakeControl();
+        await using var server = StartServer(control, degradedReason: null);
+
+        Assert.Equal(ExitCodes.Success, (await RunCli(["reload"], Client(server))).ExitCode);
+
+        control.Reload = ReloadResult.Failed("radirec.json を読めません");
+        var (exitCode, output) = await RunCli(["reload", "--json"], Client(server));
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.False(doc.RootElement.GetProperty("result").GetProperty("accepted").GetBoolean());
+        Assert.Equal("radirec.json を読めません", doc.RootElement.GetProperty("result").GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのreloadは縮退中なら2で理由を添える()
+    {
+        await using var server = StartServer(control: null, degradedReason: "設定を読み込めませんでした");
+
+        var (exitCode, output) = await RunCli(["reload", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Contains("設定を読み込めませんでした", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのreloadは常駐に繋がらなければ2()
+    {
+        var (exitCode, output) = await RunCli(["reload", "--json"], new ControlPipeClient(UniqueName(), ShortConnect));
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal(ControlPipeClient.NotRunningMessage, doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Theory]
+    [InlineData("status")]
+    [InlineData("reload")]
+    public async Task CLIは版が違えば1で_トレイとCLIの版を知らせる(string command)
+    {
+        var client = new FixedClient(new ControlCallResult(ControlCallOutcome.VersionMismatch, null, "プロトコルの版が違います", "2.0.0"));
+
+        var (exitCode, output) = await RunCli([command, "--json"], client);
+
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal("トレイと CLI の版が違います(トレイ v2.0.0 / CLI v9.9.9-test)", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Theory]
+    [InlineData(new[] { "status" }, "status")]
+    [InlineData(new[] { "--json", "reload" }, "reload")]
+    public void 引数からstatusとreloadのコマンド名も決める(string[] args, string expected)
+    {
+        Assert.Equal(expected, RadirecCli.CommandOf(args));
+    }
+
+    // ---- 組み立て ----
+
+    private static string UniqueName() => "radirec-test-" + Guid.NewGuid().ToString("N");
+
+    private static ControlPipeServer StartServer(IServiceControl? control, string? degradedReason)
+    {
+        var server = new ControlPipeServer(UniqueName(), control, degradedReason, @"C:\data\radirec.json", "1.2.3");
+        server.Start();
+        return server;
+    }
+
+    // 受け口のタスクが最初のパイプを作るまでの間も、クライアントは接続をやり直すので待てる。
+    private static ControlPipeClient Client(ControlPipeServer server) => new(server.PipeName, TimeSpan.FromSeconds(5));
+
+    private static async Task<(int ExitCode, string Output)> RunCli(string[] args, IControlClient client)
+    {
+        var writer = new StringWriter();
+        var console = AnsiConsole.Create(new AnsiConsoleSettings
+        {
+            Ansi = AnsiSupport.No,
+            ColorSystem = ColorSystemSupport.NoColors,
+            Interactive = InteractionSupport.No,
+            Out = new AnsiConsoleOutput(writer),
+        });
+        var exitCode = await RadirecCli.RunAsync(args, "9.9.9-test", console, controlClient: client);
+        return (exitCode, writer.ToString());
+    }
+
+    private sealed class FixedClient(ControlCallResult result) : IControlClient
+    {
+        public Task<ControlCallResult> SendAsync(string command, CancellationToken cancellationToken) => Task.FromResult(result);
+    }
+
+    private sealed class FakeControl : IServiceControl
+    {
+        public ReloadResult Reload { get; set; } = ReloadResult.Ok();
+        public int ReloadCalls { get; private set; }
+        public ManualResetEventSlim? BlockReload { get; init; }
+        public TaskCompletionSource ReloadEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ServiceStatusSnapshot GetStatus() => new()
+        {
+            Version = "1.2.3",
+            StartedUtc = new DateTimeOffset(2026, 9, 26, 0, 0, 0, TimeSpan.Zero),
+            RadioRoot = @"I:\radio",
+            Watching = true,
+            LastScanCompletedUtc = new DateTimeOffset(2026, 9, 26, 1, 0, 0, TimeSpan.Zero),
+            LastScanTrigger = "手動",
+            LastImported = 3,
+            StationsFile = @"C:\data\stations.json",
+            ProgramsFile = @"C:\data\programs.json",
+        };
+
+        public ReloadResult RequestReload()
+        {
+            ReloadCalls++;
+            ReloadEntered.TrySetResult();
+            BlockReload?.Wait(TimeSpan.FromSeconds(10));
+            return Reload;
+        }
+
+        public void RequestRescan() => throw new NotSupportedException();
+        public Task<ReapplyResult> PlanReapplyAsync() => throw new NotSupportedException();
+        public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs) => throw new NotSupportedException();
+        public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
+        public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
+    }
+}
