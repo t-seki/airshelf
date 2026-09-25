@@ -39,14 +39,14 @@
 ## 開発時の実行(SDK から)
 
 ```bash
-# サンプル設定をコピー(相対パスは radirec.json のあるディレクトリ基準で解決される)
-cp config/radirec.sample.json  radirec.json
-cp config/stations.sample.json stations.json
-cp config/programs.sample.json programs.json
+# 設定は常に %LOCALAPPDATA%\RadirecData\ に置く(CLI も常駐トレイもここを読む。別の場所を指すオプションは無い)。
+# トレイを一度起動すると見本から作られる。手で置くなら config/*.sample.json を
+# radirec.json / stations.json / programs.json としてそこへコピーする
+# (相対パスは radirec.json のあるディレクトリ基準で解決される)。
 
 # まず dry-run(副作用なしで取り込み予定を確認)→ 実行
-dotnet run --project src/Radirec.Cli -- ingest --config radirec.json --dry-run
-dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
+dotnet run --project src/Radirec.Cli -- ingest --dry-run
+dotnet run --project src/Radirec.Cli -- ingest
 ```
 
 詳しくは [利用ガイド](docs/usage.md)。

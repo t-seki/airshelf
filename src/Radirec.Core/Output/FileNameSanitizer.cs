@@ -2,8 +2,7 @@ namespace Radirec.Core.Output;
 
 /// <summary>
 /// パスセグメント(放送局/番組フォルダ名やファイル名)を作るときに不正文字を畳む共有ヘルパ。
-/// 出力先(<see cref="LocalFolderTarget"/>)とソース仕分け(SourceOrganizer)で同じ規則を使い、
-/// フォルダ命名がずれないようにする(#81 のレビュー指摘)。
+/// 出力先(<see cref="LocalFolderTarget"/>)が使う。
 /// </summary>
 public static class FileNameSanitizer
 {

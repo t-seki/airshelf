@@ -15,10 +15,6 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
-        [CommandOption("-c|--config <PATH>")]
-        [Description("設定ファイル(radirec.json)のパス。省略時は " + ConfigPaths.DefaultConfigDisplay)]
-        public string? Config { get; init; }
-
         [CommandOption("--dry-run")]
         [Description("副作用なしで再適用の予定を表示する")]
         public bool DryRun { get; init; }
@@ -27,7 +23,7 @@ public sealed class ReapplyCommand : AsyncCommand<ReapplyCommand.Settings>
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var config = ConfigLoading.Load(settings.Config);
+        var config = ConfigLoading.Load();
         if (config is null)
             return 1;
 
