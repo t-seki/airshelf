@@ -101,6 +101,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             Watching = false, // StartWatcher 後に更新する
             StationsFile = config.StationsFile,
             ProgramsFile = config.ProgramsFile,
+            LedgerPath = config.LedgerPath,
         };
     }
 
@@ -483,8 +484,13 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             _ingest = newIngest;
             _resources = newResources;
             _config = newConfig;
-            // 設定ページの「ファイルを開く」(#143 / #152)が開く場所も、差し替えた設定に合わせる。
-            _status = _status with { StationsFile = newConfig.StationsFile, ProgramsFile = newConfig.ProgramsFile };
+            // 設定ページの「ファイルを開く」(#143 / #152)が開く場所と、管理画面が読む台帳(#196)も、差し替えた設定に合わせる。
+            _status = _status with
+            {
+                StationsFile = newConfig.StationsFile,
+                ProgramsFile = newConfig.ProgramsFile,
+                LedgerPath = newConfig.LedgerPath,
+            };
             StartWatcher();      // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
             StartPeriodicTimer(); // 新 ScanIntervalSeconds で定期タイマーを張り直す。
         }
