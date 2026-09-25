@@ -553,7 +553,7 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 
 トレイアイコンの右クリックから(かつての `radirec status/rescan/reload`〔named pipe〕は in-process 化で
 **メニューに統合**。ADR-0012 で pipe は退役。`status` / `reload` は ADR-0020 で CLI から頼めるよう戻した。下の
-「CLI から状態を見る・設定リロードを頼む」):
+「CLI から状態を見る・設定リロードを頼む」。CLI の `ingest` も走査の実行をトレイに頼む。§3):
 
 - **Radirec を開く**: 管理画面を開きます(上記)。
 - **今すぐ再スキャン**: 自動トリガを待たず今すぐ 1 回スキャン(受理まで。バルーンで知らせます)。

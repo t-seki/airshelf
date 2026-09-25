@@ -124,6 +124,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// <summary>走査の実行を、最後のスキャンのきっかけ(status・管理画面のホーム)に出すときの名前。ループを起こすトリガにも使う。</summary>
     public const string ScanRunTrigger = "CLI";
 
+    // 走査の実行の起こしだけが残っていたとき(キューは前の反復で処理済み)の通常の走査のきっかけ。束ねられて捨てられたトリガの分。
+    private const string CoalescedTrigger = "再走査";
+
     /// <summary>
     /// 走査の実行(#180 / ADR-0020)。キューに積んでループを起こし、走査が終わると完了する結果を返す。走査は直列ループの上で、
     /// 再適用の後に走る(<see cref="ExecuteAsync"/>)。
@@ -283,14 +286,18 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 }
 
                 // 走査の実行(#180)。積まれた分をまとめて 1 回の走査で処理する(新規取込のトーストは出さない)。
-                await _scanRuns.RunPendingAsync(ct => RunScanAsync(ScanRunTrigger, ct), stoppingToken);
+                // 再適用と同じく、直前に置かれた reload(radirec reload → radirec ingest の順に打たれた等)を先に反映する。
+                if (_pendingReload.Take() is { } configBeforeScanRun)
+                    ApplyReload(configBeforeScanRun);
+                var ranScanRun = await _scanRuns.RunPendingAsync(ct => RunScanAsync(ScanRunTrigger, ct), stoppingToken);
 
-                // 走査の実行のために起こしただけなら、上で走査したので、もう一度は走らせない。ほかのトリガ(検知など)は、
-                // 走査の実行と束ねられていても今までどおり走らせる。
-                if (trigger == ScanRunTrigger)
+                // 走査の実行のために起こされ、この反復で走査の実行を行ったなら、もう一度は走らせない(このトリガより前に来て
+                // 容量 1 のチャネルで捨てられたトリガも、この後に始めた走査が覆っている)。起こしのトリガだけが残っていて
+                // キューが空(前の反復が先に処理した)なら、その間に捨てられたトリガがありうるので、通常の走査として 1 回走らせる。
+                if (trigger == ScanRunTrigger && ranScanRun)
                     continue;
 
-                await ScanAsync(trigger, stoppingToken);
+                await ScanAsync(trigger == ScanRunTrigger ? CoalescedTrigger : trigger, stoppingToken);
             }
         }
         catch (OperationCanceledException)

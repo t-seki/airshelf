@@ -3,7 +3,7 @@ using Radirec.Hosting.Control;
 
 namespace Radirec.Cli.Core.Commands;
 
-/// <summary>常駐に頼むコマンド(<c>status</c> / <c>reload</c>)に共通の、頼めなかったときの扱い(#179)。</summary>
+/// <summary>常駐に頼むコマンド(<c>status</c> / <c>reload</c> / <c>ingest</c>)に共通の、頼めなかったときの扱い(#179 / #180)。</summary>
 internal static class ControlCommandSupport
 {
     /// <summary>トレイと CLI でプロトコルの版が違うときの知らせ(#179 の設計の決定の文言)。</summary>

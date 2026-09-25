@@ -7,6 +7,7 @@
 > → **#179 で形を変えて戻った**([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md)):CLI の `radirec status` / `reload` が
 > トレイの受け口へ頼む。パイプはユーザーごとの名前(`radirec-control-<SID>`)で、同じユーザーへは `PipeOptions.CurrentUserOnly` で絞る
 > (本ランブックの固定名・`PipeSecurity` とは違う)。今の実機検証の手順は #163。
+> → #180 で `radirec ingest`(走査の実行)も同じ受け口へ頼むようになった。
 
 制御チャネル([ADR-0010](adr/0010-gui-service-control-via-named-pipe.md))は、WSL では named pipe の
 ACL(`PipeSecurity` は `PlatformNotSupported`)・実サービスの listener+worker 疎通・SQLite 再オープンが
