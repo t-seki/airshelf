@@ -297,6 +297,35 @@ public sealed class ProgramsPageViewModelTests : IDisposable
     });
 
     [Fact]
+    public void Revert_while_loading_still_takes_the_newer_read() => UiThreadContext.Run(async () =>
+    {
+        // 「元に戻す」(W-209)は、ファイルを読まずに、読み込んだときの基準(古い中身)で一覧を作り直す。読んでいるあいだに
+        // 「編集 → 元に戻す」をしても、読み終えたら新しい中身で作り直す(捨てると、一覧が古いままで次の保存が W-275 になる)。
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+        File.WriteAllText(ProgramsPath, Sample.Replace("パンサー向井のふらっと\" }", "パンサー向井のふらっと!\" }"));
+
+        var shown = vm.OnShownAsync(); // 新しい中身を読んで止まる
+        Assert.False(shown.IsCompleted);
+        AddAnzu(vm);
+        vm.RevertCommand.Execute(null); // W-209
+        Assert.False(vm.HasChanges);
+        Assert.Equal("パンサー向井のふらっと", vm.Programs[1].Album); // 元に戻したのは、読み込んだときの古い中身
+        gate.SetResult();
+        await shown;
+
+        Assert.Equal("パンサー向井のふらっと!", vm.Programs[1].Album); // 新しい中身で作り直した
+        Assert.False(vm.HasChanges);
+
+        // 基準も新しい中身になっているので、次の保存は W-275 にならない。
+        AddAnzu(vm);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveOnlyCommand.ExecuteAsync(null);
+        Assert.False(vm.IsConflict);
+        Assert.Equal(3, ProgramsFileWriter.Read(ProgramsPath).Config.Programs.Count);
+    });
+
+    [Fact]
     public void Form_opened_while_loading_stays_open() => UiThreadContext.Run(async () =>
     {
         var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();

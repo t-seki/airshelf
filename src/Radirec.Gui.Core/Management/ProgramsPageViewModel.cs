@@ -657,7 +657,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
     // 読み終えたときに、読んだ結果(読めなかったことも)で一覧を作り直してよいか(#185)。version は読み始めたときの値。
     private bool MayReplaceAfterRead(int version)
     {
-        // ほかの経路が、読んでいるあいだに一覧を作り直した。読んでいるあいだに「確認 → 保存して適用 / 保存だけ」まで進むと、
+        // ほかの経路が、読んでいるあいだにファイルを読んで一覧を作り直した(番号を進めるのはそういう経路だけ。SetSnapshot)。
+        // 読んでいるあいだに「確認 → 保存して適用 / 保存だけ」まで進むと、
         // 保存した後の読み直し(ReloadSnapshotAfterSaveAsync)が作り直してから結果の画面になる。その読み直しは書いた後の
         // ファイルを読んでいて、こちらの読み込み(書く前に始めたかもしれない)より古くない。作り直すと、保存した番組が消えた
         // ように見え、次の保存の基準(_snapshot.Original)も古くなって W-275 を誤って出す。
@@ -784,9 +785,22 @@ public sealed class ProgramsPageViewModel : ObservableObject
         ConfirmCommand.NotifyCanExecuteChanged();
     }
 
+    // programs.json を読んだ(読もうとした)結果で、基準のスナップショットと一覧を作り直す。世代の番号を進める
+    // (走っている読み込みが、読み終えたときに「ほかの経路がファイルを読んで作り直した」と分かるように。#185)。
+    // 呼ぶのは、ファイルの今の状態を見て作り直すところだけ:
+    // - LoadCoreAsyncInner:読み込み(設定を読めない・場所を決められない・使わない設定・読んだ・読めなかった)
+    // - ReloadSnapshotAfterSaveAsync:保存した後の読み直し(読めなかったときも)
+    // ファイルを読まずに手元のスナップショットで作り直す「元に戻す」(W-209)は RebuildList を呼び、番号を進めない
+    // (進めると、走っている読み込みが読んだ新しい中身が捨てられ、一覧が古いままになる)。
     private void SetSnapshot(ProgramsFileSnapshot? snapshot)
     {
         _snapshotVersion++;
+        RebuildList(snapshot);
+    }
+
+    // 基準のスナップショットを snapshot にし、一覧をその写しで作り直す(画面での変更は捨てる)。
+    private void RebuildList(ProgramsFileSnapshot? snapshot)
+    {
         _snapshot = snapshot;
         _removedPrograms.Clear();
         _removedKeeps.Clear();
@@ -891,8 +905,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     private void Revert()
     {
+        // ファイルは読まない(読み込んだときの基準に戻すだけ)。走っている読み込みは、読み終えたら今までどおり作り直す。
         if (_snapshot is { } snapshot)
-            SetSnapshot(snapshot);
+            RebuildList(snapshot);
     }
 
     // ---- 要対応の「統合する」「分けておく」(#155・ADR-0018)----
