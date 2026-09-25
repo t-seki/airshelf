@@ -125,12 +125,20 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     // programs.json の場所を決めた回数(= 読み込みを始めた回数)。
     private int _locates;
 
-    private ProgramsPageViewModel Programs(FakeControl? control)
+    private ProgramsPageViewModel Programs(FakeControl? control, Func<string, Task<ProgramsFileSnapshot>>? readForLoad = null)
     {
         File.WriteAllText(ProgramsPath, Sample, new UTF8Encoding(false));
         return new ProgramsPageViewModel(control, () => { _locates++; return ProgramsPath; }, new ProgramsApplyGate(), _log.Add,
-            navigate: _navigated.Add);
+            navigate: _navigated.Add, readForLoad: readForLoad);
     }
+
+    // 読み込みを、テストが gate を開けるまで終わらせない(読み込みの速さに依らず、「読んでいる途中」を作る。#198)。
+    private static Func<string, Task<ProgramsFileSnapshot>> ReadAfter(Task gate) =>
+        async path =>
+        {
+            await gate.ConfigureAwait(false);
+            return ProgramsFileWriter.Read(path);
+        };
 
     // ---------- 番組ページの確認の画面(W-252 / W-253 / W-312) ----------
 
@@ -314,17 +322,43 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     public void Confirm_waits_for_the_load_started_by_showing_the_page()
     {
         var control = new FakeControl();
-        var vm = Programs(control);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var vm = Programs(control, ReadAfter(gate.Task));
 
         UiThreadContext.Run(async () =>
         {
             var shown = vm.OnShownAsync(); // 番組ページを開いた(読み込みが走る)
             Assert.False(shown.IsCompleted);
 
-            var start = await vm.ConfirmSavedAsync(ManagementPage.Settings);
+            var confirming = vm.ConfirmSavedAsync(ManagementPage.Settings);
+            Assert.False(confirming.IsCompleted); // 読み込みが終わるのを待っている
+            gate.SetResult();
+            var start = await confirming;
             await shown;
 
             Assert.Equal(1, _locates); // 確認は走っている読み込みを待ち、読み直さない
+            Assert.True(start.ShowsConfirm);
+            Assert.True(vm.IsConfirmMode);
+            Assert.True(vm.IsSavedBasis);
+        });
+    }
+
+    // 番組ページを開いたときの読み込みが、確認を押すより先に終わっていても(読むのが速い・プールに空きがある)、確認は読み直さずに進む。
+    [Fact]
+    public void Confirm_after_the_load_started_by_showing_the_page_has_finished_does_not_load_again()
+    {
+        var control = new FakeControl();
+        var vm = Programs(control, path => Task.FromResult(ProgramsFileWriter.Read(path)));
+
+        UiThreadContext.Run(async () =>
+        {
+            var shown = vm.OnShownAsync(); // 読み込みがその場で終わる順序
+            Assert.True(shown.IsCompleted);
+
+            var start = await vm.ConfirmSavedAsync(ManagementPage.Settings);
+            await shown;
+
+            Assert.Equal(1, _locates);
             Assert.True(start.ShowsConfirm);
             Assert.True(vm.IsConfirmMode);
             Assert.True(vm.IsSavedBasis);
@@ -336,13 +370,15 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     public void Showing_the_page_during_the_confirm_preload_does_not_start_a_second_load()
     {
         var control = new FakeControl();
-        var vm = Programs(control);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var vm = Programs(control, ReadAfter(gate.Task));
 
         UiThreadContext.Run(async () =>
         {
             var confirming = vm.ConfirmSavedAsync(ManagementPage.Settings); // まだ読んでいないので先に読む
             Assert.False(confirming.IsCompleted);
             var shown = vm.OnShownAsync(); // その間に番組のタブへ切り替えた
+            gate.SetResult();
 
             var start = await confirming;
             await shown;
