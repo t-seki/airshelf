@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using Radirec.Hosting;
 using Radirec.Core.Jellyfin;
 using Spectre.Console;
@@ -11,15 +10,12 @@ public sealed class RefreshCommand : AsyncCommand<RefreshCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
-        [CommandOption("-c|--config <PATH>")]
-        [Description("設定ファイル(radirec.json)のパス。省略時は " + ConfigPaths.DefaultConfigDisplay)]
-        public string? Config { get; init; }
     }
 
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var config = ConfigLoading.Load(settings.Config);
+        var config = ConfigLoading.Load();
         if (config is null)
             return 1;
 
