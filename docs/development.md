@@ -111,9 +111,9 @@ tests/Radirec.Tests/  xUnit
 
 **本番の常駐は `Radirec.Gui`(トレイ)**で([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)。`service` verb は廃止)、
 `radirec.exe` は普段の運用と AI エージェントの窓口([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
-台帳を書き換える `ingest` と、`status` / `reload` はトレイの制御チャネルへ頼む(トレイが動いていなければ終了コード 2)。
+台帳を書き換える `ingest` / `reapply` と、`status` / `reload` はトレイの制御チャネルへ頼む(トレイが動いていなければ終了コード 2)。
 そのため、開発機でトレイを動かさずに CLI だけで**取り込み**を試せるのは `ingest --dry-run` まで(ADR-0020 の帰結。
-`reapply` / `refresh` / `history` / `attention` はトレイなしでも動く)。
+`refresh` / `history` / `attention` はトレイなしでも動く。`reapply` は確認も含めてトレイに頼む。#181)。
 参照グラフは 2 経路で Core に届く:
 
 ```

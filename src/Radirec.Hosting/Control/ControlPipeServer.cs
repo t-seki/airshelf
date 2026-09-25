@@ -181,6 +181,13 @@ public sealed class ControlPipeServer(
                 ? Reply(ControlResponseKind.Degraded, error: reason)
                 : Reply(ControlResponseKind.Ok,
                     scanRun: await control!.RunScanAsync().WaitAsync(stoppingToken).ConfigureAwait(false)),
+            ControlProtocol.ReapplyCommand => StoppedReason() is { } reason
+                ? Reply(ControlResponseKind.Degraded, error: reason)
+                : Reply(ControlResponseKind.Ok,
+                    reapply: await (request.PlanId is { } planId
+                            ? control!.ApplyReapplyPlanAsync(planId)
+                            : control!.PlanReapplyForCliAsync())
+                        .WaitAsync(stoppingToken).ConfigureAwait(false)),
             _ => Reply(ControlResponseKind.BadRequest, error: $"知らないコマンドです: {request.Command}"),
         };
     }
@@ -213,7 +220,7 @@ public sealed class ControlPipeServer(
 
     private ControlResponse Reply(
         ControlResponseKind kind, string? error = null, ControlStatus? status = null, ReloadResult? reload = null,
-        ScanRunResult? scanRun = null) => new()
+        ScanRunResult? scanRun = null, ReapplyResult? reapply = null) => new()
     {
         ProtocolVersion = ControlProtocol.Version,
         TrayVersion = trayVersion,
@@ -222,6 +229,7 @@ public sealed class ControlPipeServer(
         Status = status,
         Reload = reload,
         ScanRun = scanRun,
+        Reapply = reapply,
     };
 
     /// <summary>接続を待つのをやめ、処理中の要求が終わるのを待つ。</summary>

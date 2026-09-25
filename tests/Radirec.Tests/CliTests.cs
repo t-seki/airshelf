@@ -193,11 +193,11 @@ public sealed class CliTests
     public async Task コマンドの実行中の想定外の例外は1でjsonにコマンド名と理由が出る()
     {
         var (exitCode, output) = await Run(
-            ["reapply", "--json"], new ThrowingConfigSource(new InvalidOperationException("想定外")));
+            ["refresh", "--json"], new ThrowingConfigSource(new InvalidOperationException("想定外")));
 
         Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
         using var doc = JsonDocument.Parse(output);
-        Assert.Equal("reapply", doc.RootElement.GetProperty("command").GetString());
+        Assert.Equal("refresh", doc.RootElement.GetProperty("command").GetString());
         Assert.Equal("想定外", doc.RootElement.GetProperty("error").GetString());
     }
 
@@ -221,8 +221,8 @@ public sealed class CliTests
 
     [Theory]
     // ingest は --dry-run のときだけ設定を読む(実行は常駐に頼み、常駐の設定で走る。#180)。
+    // reapply は確認も実行も常駐に頼み、常駐の設定で走るので、ここには入らない(#181。ControlChannelTests)。
     [InlineData("ingest", "--dry-run")]
-    [InlineData("reapply")]
     [InlineData("refresh")]
     public async Task 設定を読めなければ1でjsonにも理由が出る(string command, params string[] options)
     {
@@ -296,7 +296,7 @@ public sealed class CliTests
                 new UnintegratedSiblingGroup(new SiblingFolderGroup("TBSラジオ", "ふらっと", ["ふらっと(1)", "ふらっと(2)"]), ["ふらっと(2)"]),
             ],
         };
-        using var doc = Parse(CliJson.Result("reapply", ExitCodeRules.For(report), ReapplyJson.From(report)));
+        using var doc = Parse(CliJson.Result("reapply", ExitCodeRules.For(report), ReapplyJson.From(report, planId: null)));
         var result = doc.RootElement.GetProperty("result");
 
         Assert.False(result.GetProperty("aligned").GetBoolean());

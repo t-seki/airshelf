@@ -326,6 +326,7 @@ alias 設計が必要(§9)。
 > `radirec status` / `radirec reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前(`radirec-control-<SID>`)で、
 > 同じユーザーだけに `PipeOptions.CurrentUserOnly` で絞る(以下の ADR-0010 の固定名・`PipeSecurity` の記述とは違う)。
 > → #180 で 5 種目の「走査の実行」を足した(CLI の `radirec ingest` が頼む。下の一覧)。
+> → #181 で「再適用の実行」を CLI からも頼めるようにした(`radirec reapply`。予定 ID で実行する。下の一覧)。
 
 取込通知が**サービス発・一方向**なのに対し、常駐サービスへ**利用者側から指示を出す**逆方向の
 経路を制御チャネルとして持つ。到達範囲は**ローカル同一ユーザー**に限定し、リモート制御は含めない。
@@ -344,13 +345,17 @@ alias 設計が必要(§9)。
   弾かれ、再構築に失敗しても**旧構成のまま稼働継続**する。
 - **status(状態取得)**: サービスの**ライブ状態**(稼働状態・監視ルート・最終スキャン完了時刻と
   その結果)を読む。
-- **再適用の実行**(#126 で追加。常駐からのみ): 統合設定の**再適用**
+- **再適用の実行**(#126 で追加。#181 から CLI の `radirec reapply` からも): 統合設定の**再適用**
   ([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))の dry-run の結果を返し、
   利用者が確認したら実行する。rescan / reload と違い、受理ではなく**結果が返るまで待つ**。確かめる設定は 2 通り:
   設定リロードを反映した保存済みの設定と、管理画面の番組ページで編集した**保存前の設定**(#154。確かめるときは
   リロードしない)。保存前の設定で確かめたものは、保存してから**設定リロード → 実行**を 1 つの続きとして行い、
   間に取り込みの走査を挟まない(リロードに失敗したら実行しない)。確認の後に設定・状態が変わっていれば(読み直した
   設定を確認のときと値で比べる)実行しない。
+  CLI からは、dry-run が返した**予定 ID**([CONTEXT.md](../CONTEXT.md))を添えたときだけ実行する(#181・
+  [ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。CLI の確認は設定リロードをせず、ディスクの
+  `programs.json` / `stations.json` で確かめる(管理画面で開いている確認を古くしない)。実行は設定リロード → 確かめ直し →
+  予定 ID が一致したときだけ行い、一致しなければ実行せずに新しい予定と予定 ID を返す。
 
 サービス未起動/未応答時は各コマンドともエラー表示 + 終了コード 1 で破綻しない。実装(named pipe・
 同一ユーザー限定の認可・再構築のセマンティクス)は [ADR-0010](adr/0010-gui-service-control-via-named-pipe.md)、
@@ -360,7 +365,8 @@ Windows 実機での検証手順は [control-channel-verification.md](control-ch
 **現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニューと管理画面**(in-process 呼び出し。
 [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))と、**CLI**(named pipe の制御チャネル。
 [ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))の 2 つ。どちらも最後は `IServiceControl` を呼ぶ。
-CLI からは `radirec status`(状態取得)・`radirec reload`(設定リロード。#179)・`radirec ingest`(走査の実行。#180)が
+CLI からは `radirec status`(状態取得)・`radirec reload`(設定リロード。#179)・`radirec ingest`(走査の実行。#180)・
+`radirec reapply`(再適用の確認と実行。#181)が
 トレイへ頼む(受け口は `Radirec.Hosting/Control/ControlPipeServer`。パイプはユーザーごとの名前で、同じユーザーからしか繋げない)。
 CLI の `rescan` verb は戻していない。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
 (`ControlTrayMenu` → `IServiceControl.RequestRescan`)、常駐プロセス内の走査要求になる。

@@ -2,61 +2,101 @@ using System.ComponentModel;
 using Radirec.Cli.Core.Output;
 using Radirec.Core.Ingestion;
 using Radirec.Core.Reapply;
-using Radirec.Hosting;
+using Radirec.Hosting.Control;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace Radirec.Cli.Core.Commands;
 
 /// <summary>
-/// 今の番組の設定(programs.json の正規名・統合)を取り込み済みの回へ再適用する(ADR-0016)。
-/// まず <c>--dry-run</c> で、どのアルバムの何回が動くかを確かめる。
+/// 今の番組の設定(programs.json の正規名・統合)を取り込み済みの回へ再適用する(ADR-0016)。台帳と出力先を書き換えるので、CLI が
+/// 自分では走らせず、制御チャネルで常駐に頼む(ADR-0020 / #181)。常駐が動いていなければ 2 で終わる。
+/// <list type="bullet">
+/// <item>オプションなし(<c>--dry-run</c> も同じ):確認だけを行い、予定と予定 ID(CONTEXT.md)を出す。常駐の設定リロードはしない。</item>
+/// <item><c>--apply &lt;予定 ID&gt;</c>:常駐が設定リロード → dry-run し直し → 予定 ID が一致したときだけ実行する。一致しなければ実行せず、
+/// 新しい予定と予定 ID を出して 3 で終わる。</item>
+/// </list>
 /// </summary>
-public sealed class ReapplyCommand(IAnsiConsole console, ICliConfigSource configSource)
+public sealed class ReapplyCommand(
+    IAnsiConsole console, ICliConfigSource configSource, IControlClient controlClient, CliVersion cliVersion)
     : AsyncCommand<ReapplyCommand.Settings>
 {
     public const string Name = "reapply";
-
     public sealed class Settings : CliSettings
     {
         [CommandOption("--dry-run")]
-        [Description("副作用なしで再適用の予定を表示する")]
+        [Description("副作用なしで再適用の予定と予定 ID を表示する(オプションなしと同じ)")]
         public bool DryRun { get; init; }
+        [CommandOption("--apply <PLAN_ID>")]
+        [Description("dry-run が出した予定 ID の予定を実行する(予定が変わっていれば実行せず、終了コード 3)")]
+        public string? Apply { get; init; }
     }
-
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var config = CommandSupport.LoadConfig(configSource, console, Name, settings.Json);
-        if (config is null)
-            return ExitCodes.UsageOrConfig;
-
-        ReapplyService service;
-        IDisposable? disposable;
-        try
-        {
-            (service, disposable) = CompositionRoot.BuildReapply(config, settings.DryRun);
-        }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
-        {
-            // 台帳オープンや stations/programs の読み込みの失敗(radirec.json 本体は LoadConfig で処理済み)。
+        if (settings.DryRun && settings.Apply is not null)
             return CommandSupport.Fail(
-                console, Name, settings.Json, ExitCodes.UsageOrConfig, $"設定の読み込みに失敗しました: {ex.Message}");
+                console, Name, settings.Json, ExitCodes.UsageOrConfig, "--dry-run と --apply は一緒に指定できません");
+        if (settings.Apply is { } id && !ReapplyPlanId.IsWellFormed(id))
+            return CommandSupport.Fail(
+                console, Name, settings.Json, ExitCodes.UsageOrConfig,
+                $"予定 ID の形が違います({ReapplyPlanId.Length} 文字の 16 進。reapply の dry-run が出した値): {id}");
+        var planId = settings.Apply is { } apply ? ReapplyPlanId.Normalize(apply) : null;
+        var call = await controlClient.SendAsync(
+            new ControlRequest(ControlProtocol.Version, ControlProtocol.ReapplyCommand, planId), cancellationToken);
+        if (ControlCommandSupport.Unanswered(call, cliVersion) is { } unanswered)
+            return CommandSupport.Fail(console, Name, settings.Json, unanswered.ExitCode, unanswered.Message);
+        var response = call.Response!;
+        if (response.Kind == ControlResponseKind.Degraded)
+            return CommandSupport.Fail(console, Name, settings.Json, ExitCodes.ResidentNotRunning,
+                $"取り込みが止まっているため再適用できません: {response.Error}");
+        if (response is not { Kind: ControlResponseKind.Ok, Reapply: { } result })
+            // 知らないコマンド(再適用に対応していない古いトレイ)など。
+            return CommandSupport.Fail(console, Name, settings.Json, ExitCodes.UsageOrConfig,
+                response.Error is { } error
+                    ? $"常駐が再適用を受け付けませんでした: {error}(トレイが古ければ更新してください)"
+                    : "常駐の応答に再適用の結果がありませんでした");
+        switch (result)
+        {
+            // 予定 ID が合わなかった:実行していない。新しい予定と予定 ID を、理由と一緒に出す。
+            case { IsStale: true, Report: { } replanned }:
+                Output(settings.Json, ExitCodes.PlanChanged, replanned, result.PlanId, result.Error);
+                return ExitCodes.PlanChanged;
+            case { Report: { } report }:
+            {
+                var exitCode = ExitCodeRules.For(report);
+                Output(settings.Json, exitCode, report, result.PlanId ?? planId, error: null);
+                return exitCode;
+            }
+            case { IsStopped: true }:
+                return CommandSupport.Fail(console, Name, settings.Json, ExitCodes.ResidentNotRunning,
+                    result.Error ?? "取り込みが止まっているため再適用できません");
+            default:
+                // 設定を読めない・反映できない・再適用の準備(台帳を開く等)に失敗した。
+                return CommandSupport.Fail(console, Name, settings.Json, ExitCodes.UsageOrConfig,
+                    result.Error ?? "再適用に失敗しました");
         }
-
-        ReapplyReport report;
-        using (disposable)
-            report = await service.RunAsync(settings.DryRun, cancellationToken);
-
-        var exitCode = ExitCodeRules.For(report);
-        if (settings.Json)
-            CliJson.Write(console, CliJson.Result(Name, exitCode, ReapplyJson.From(report)));
-        else
-            Render(report, config.OutputRoot);
-        return exitCode;
     }
-
-    private void Render(ReapplyReport report, string outputRoot)
+    private void Output(bool json, int exitCode, ReapplyReport report, string? planId, string? error)
+    {
+        if (json)
+        {
+            // 予定が変わった(3)ときは、結果(新しい予定)と一緒に理由も error に入れる。
+            CliJson.Write(console, CliJson.Result(Name, exitCode, ReapplyJson.From(report, planId)) with { Error = error });
+            return;
+        }
+        if (error is not null)
+            console.MarkupLineInterpolated($"[yellow]{error}[/]");
+        // 表示を短くするため、出力先からの相対パスにする。設定を読めなければ(常駐とは別に CLI が読むだけ)そのまま出す。
+        var outputRoot = configSource.TryLoad(out var config, out _) && config is not null ? config.OutputRoot : null;
+        Render(report, outputRoot);
+        if (report.DryRun && planId is not null)
+        {
+            console.MarkupLineInterpolated($"予定 ID: [bold]{planId}[/]");
+            console.MarkupLineInterpolated($"実行するには: [bold]radirec reapply --apply {planId}[/]");
+        }
+    }
+    private void Render(ReapplyReport report, string? outputRoot)
     {
         var mode = report.DryRun ? " [cyan](dry-run)[/]" : string.Empty;
 
@@ -73,7 +113,8 @@ public sealed class ReapplyCommand(IAnsiConsole console, ICliConfigSource config
         else
         {
             RenderAlbums(report);
-            console.MarkupLineInterpolated($"[grey]明細のパスは出力先({outputRoot})からの相対パスです[/]");
+            if (outputRoot is not null)
+                console.MarkupLineInterpolated($"[grey]明細のパスは出力先({outputRoot})からの相対パスです[/]");
             RenderItems(report, outputRoot);
             console.MarkupLine(
                 $"移動・リネーム {report.Count(ReapplyAction.Move)} / 台帳とタグを直す {report.Count(ReapplyAction.LedgerAndTags)} / " +
@@ -138,11 +179,13 @@ public sealed class ReapplyCommand(IAnsiConsole console, ICliConfigSource config
         console.Write(table);
     }
 
-    private void RenderItems(ReapplyReport report, string outputRoot)
+    private void RenderItems(ReapplyReport report, string? outputRoot)
     {
         // 出力先の下なら相対パスにして短くする(出力先の外 = 台帳の記録が古い等はそのまま出す)。
         string Short(string path)
         {
+            if (outputRoot is null)
+                return path;
             var relative = Path.GetRelativePath(outputRoot, path);
             return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative) ? path : relative;
         }

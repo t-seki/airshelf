@@ -80,7 +80,8 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
   トレイを起動することもしません。トレイを起動してからやり直してください
 - 使う設定はトレイが読み込んでいるもの(`radirec.json` を直したら、先に `radirec reload` か管理画面の設定リロード)。
   `--dry-run` は CLI が既定の `radirec.json` を読んで計算します
-- 開発機でトレイを動かさずに取り込みを試せるのは `--dry-run` までです(`reapply`・`refresh`・`history`・`attention` はトレイなしでも動きます)
+- 開発機でトレイを動かさずに取り込みを試せるのは `--dry-run` までです(`refresh`・`history`・`attention` はトレイなしでも動きます。
+  `reapply` は確認(dry-run)も含めてトレイに頼むので、トレイが要ります。§3「統合設定を取り込み済みの回へ再適用する」)
 
 設定は常に **`%LOCALAPPDATA%\RadirecData\radirec.json`**(常駐トレイと同じデータルート。ADR-0006)を使います。
 別の場所の設定を指すオプションはありません([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
@@ -100,6 +101,7 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
   "command": "ingest",     // コマンド名。知らないコマンドなどでコマンドが決まらなかったときだけ null
   "exitCode": 4,           // プロセスの終了コードと同じ値(下の表)
   "error": null,           // 結果が出る前に止まった理由(設定を読めない・使い方の誤りなど)。結果が出たら null
+                           // (例外:reapply の予定が変わった(3)ときは、実行しなかった理由と新しい予定の result の両方が入る)
   "result": { ... }        // コマンドごとの結果。止まったときは null
 }
 ```
@@ -109,7 +111,7 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
 | コマンド | 主なフィールド |
 |------|------|
 | `ingest` | `dryRun`、`counts`(`imported` / `planned` / `alreadyImported` / `unstable` / `junk` / `unsupported` / `failed`)、`items[]`(`outcome`・`source`・`output`・`message`・`usedFallback`)、`libraryRefresh`(`status`:`notNeeded` / `notConfigured` / `started` / `failed` / `misconfigured`、`error`) |
-| `reapply` | `dryRun`、`aligned`(揃っているか)、`counts`(`move` / `ledgerAndTags` / `ledgerOnly` / `duplicateLeft` / `excluded` / `failed`)、`duplicatesRewritingTags`、`albums[]`(アルバム単位のまとめ)、`items[]`(明細。`action`・`broadcastDate`・`fromPath`・`toPath`・`reason` など)、`unintegratedSiblings[]`(統合設定の無い兄弟フォルダの組)、`libraryRefresh` |
+| `reapply` | `dryRun`、`aligned`(揃っているか)、`counts`(`move` / `ledgerAndTags` / `ledgerOnly` / `duplicateLeft` / `excluded` / `failed`)、`duplicatesRewritingTags`、`albums[]`(アルバム単位のまとめ)、`items[]`(明細。`action`・`broadcastDate`・`fromPath`・`toPath`・`reason` など)、`unintegratedSiblings[]`(統合設定の無い兄弟フォルダの組)、`libraryRefresh`、`planId`(予定 ID。dry-run では `--apply` に渡す値、予定が変わった(3)ときは新しい予定の値、実行したときは実行した予定の値。#181) |
 | `refresh` | `status`(`started` / `notConfigured` / `misconfigured` / `failed`)、`error` |
 | `history` | `entries[]`(新しい順。`program`・`station`・`broadcastDate`・`broadcastTime`(時刻の無い録音は null)・`part`・`importedAt`(ISO 8601、時差つき)・`outputPath`・`sourcePath`) |
 | `attention` | `count`(要対応の件数)、`unintegratedSiblings[]`(`station`・`folders`・`foldersWithoutSetting`・`mergedAlbum`・`foldersNewToKeptApart`)、`unresolvedFailures[]`(`sourcePath`・`reason`・`failedAt`。記録の無い古い失敗は null)、`settingsDrift[]`(`station`・`fromAlbum`・`toAlbum`・`count`) |
@@ -125,8 +127,8 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
 |------|------|------|
 | 0 | 成功(失敗した回は 0 件) | 次へ進む |
 | 1 | 使い方の誤り(知らないオプション・コマンド)・設定を読めない・Jellyfin が未設定か URL の形式が不正(`refresh`。`ingest` / `reapply` は URL の形式不正だけ)。想定外の例外(内部エラー)も 1 | 引数か設定を直す。想定外の例外なら、理由は `gui.log` ではなく出力(`--json` なら `error`)にある |
-| 2 | 常駐が動いていない・取り込みが止まっている・常駐から応答を得られない(`ingest`・`reload` など常駐に頼むコマンド。`status` は答えとして 0。§6「CLI から状態を見る」) | トレイを起動する(縮退なら設定を直してトレイを再起動する)。`ingest` の時間切れ・途中で切れたときは、走査がトレイで続いていることがあるので、先に `radirec status` で確かめる |
-| 3 | 確かめた予定が変わった(#181 以降の `reapply` で使う) | dry-run からやり直す |
+| 2 | 常駐が動いていない・取り込みが止まっている・常駐から応答を得られない(`ingest`・`reapply`・`reload` など常駐に頼むコマンド。`status` は答えとして 0。§6「CLI から状態を見る」) | トレイを起動する(縮退なら設定を直してトレイを再起動する)。`ingest` / `reapply` の時間切れ・途中で切れたときは、走査・再適用がトレイで続いていることがあるので、先に `radirec status` / `gui.log` で確かめる |
+| 3 | 確かめた予定が変わった(`reapply --apply` の予定 ID が、実行の直前に計算し直した予定と違う。実行していない。#181) | 出力の新しい予定を確かめ、その予定 ID(`planId`)で `--apply` し直す |
 | 4 | 完了したが、一部の回が失敗した | 明細(`items[]` の `failed`)を調べる |
 | 5 | 外部との接続に失敗した(Jellyfin に繋がらない・エラー・時間切れ、NAS に届かない) | 時間をおいて再試行する |
 
@@ -135,6 +137,8 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
   `refresh` と同じ 1 です(`libraryRefresh.status` は `misconfigured`。#191。以前は 5 でした)。
 - `ingest` は、トレイでの走査そのものが途中で失敗したとき(取込元・出力先に届かない)も 5 です。走査が時間内に
   終わらなかった・トレイとの接続が切れたときは 2 です(走査はトレイで続いていることがあります。`radirec status` で確かめる)。
+- `reapply` は、確認(dry-run)も実行(`--apply`)もトレイに頼みます。トレイが動いていなければ 2 です。
+  設定を読めない・反映できない(実行の前の設定リロード)ときは実行せず 1、予定 ID が合わなければ実行せず 3 です(#181)。
 - 以前は、取り込みの一部が失敗しても 0 を返していました(#178 で 4 に変わった)。
 
 ### 結果テーブルの見方
@@ -202,11 +206,27 @@ radirec attention --json    # エージェント・スクリプト向け(result 
 出力済みのファイルを動かし、台帳の記録を書き換えます。
 
 ```powershell
-# まず dry-run(どのアルバムの何回が動くかを副作用なしに確認)
-radirec reapply --dry-run
-# 問題なければ実行
+# まず確認(どのアルバムの何回が動くかを副作用なしに確かめる。最後に予定 ID が出る)
 radirec reapply
+# 問題なければ、出た予定 ID を添えて実行
+radirec reapply --apply 3f9c0a1b2d4e5f67
 ```
+
+**確認も実行も常駐トレイに頼みます**([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) / #181)。
+トレイの取り込みと同じ順番待ちの列に並ぶので、取り込みと並んで台帳や出力先を書き換えることはありません。
+
+- **`radirec reapply`**(`--dry-run` を付けても同じ)は確認だけを行い、予定と**予定 ID**(16 文字の 16 進)を出します。
+  番組・放送局の設定は、ディスクの `programs.json` / `stations.json` を読みます(トレイの設定リロードはしません。
+  管理画面の番組ページで開いている確認を古くしないため)。`radirec.json` 本体は、トレイが今読み込んでいるものを使います
+- **`radirec reapply --apply <予定 ID>`** は、トレイが設定リロード → 確認し直し → **予定 ID が一致したときだけ**実行します。
+  確認の後に `programs.json` を直した・取り込みで台帳が変わった等で予定が変わっていれば、実行せずに終了コード 3 で終わり、
+  新しい予定と予定 ID を出します。見直して、その予定 ID で頼み直してください
+- `radirec.json`(出力先など)を直したときは、先に `radirec reload` してから確認してください。確認はトレイが今読み込んでいる
+  `radirec.json` で計算し、実行は読み直した `radirec.json` で計算し直すので、そのままだと予定がずれて 3 になります
+- 設定を読めない・反映できないときは実行せず 1(取り込みは前の設定のまま)、トレイが動いていなければ 2 です
+- 確認・実行とも、トレイが取り込み中なら終わるのを待ちます(最長 1 時間)
+- ⚠️ 以前の `radirec reapply`(オプションなし)は**実行**していました。今は確認だけです(ADR-0020 / #181)。
+  以前はトレイなしでも動きましたが、今はトレイが要ります
 
 常駐からは、管理画面の **番組** ページ(§6)で番組の設定を編集すると、保存する前に同じ処理の dry-run で
 変更前 → 変更後を確かめ、「保存して適用」で実行できます。
@@ -346,7 +366,7 @@ radikool 固有の扱い:
   消してください(使っていなければ何もしなくて構いません)。
 
 > `programs.json` の変更は新しく取り込む回にだけ効きます。取り込み済みの回へ効かせるには、変更後に
-> **`radirec reapply`**(§3「統合設定を取り込み済みの回へ再適用する」)を実行します。
+> **`radirec reapply`** で予定を確かめ、**`radirec reapply --apply <予定 ID>`** で実行します(§3「統合設定を取り込み済みの回へ再適用する」)。
 
 ### 既に取り込み済みアルバムを手作業で統合する(再適用で扱えない回の予備の手順)
 
@@ -399,7 +419,8 @@ radikool 固有の扱い:
 
 > **台帳は手で触らない**: 手作業の手順は台帳を書き換えません。import-once は `source_path` でも再取込をガードするため、
 > 出力側フォルダを動かしても元ソースの再取込は起きません(台帳の `output_path` と、アルバム名・パートの記録は古いまま残ります)。
-> 手作業で束ねた番組に対応する統合設定を `programs.json` に足したら、続けて **`radirec reapply`** を実行してください。
+> 手作業で束ねた番組に対応する統合設定を `programs.json` に足したら、続けて **`radirec reapply`** で確かめ、
+> **`radirec reapply --apply <予定 ID>`** で実行してください。
 > ファイルが既に今の設定の場所にあり、タグも揃っている回は「台帳のみ」として、台帳の `identity_key`・アルバム名・パート・`output_path` が
 > 揃います(統合設定だけを足して台帳を古いままにすると、`identity_key` がずれて、アーカイブの再スキャン時に重複取込を招くことがあります)。
 > ファイル名だけを直してタグを直していない回は「台帳とタグ」として、`album` / `title` / `track` も揃います。

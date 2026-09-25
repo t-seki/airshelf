@@ -55,6 +55,8 @@ public sealed class SavedReapplyConfirmTests : IDisposable
             AppliedPlan = plan;
             return Task.FromResult(ApplyResult?.Invoke(plan) ?? ReapplyResult.Ok(Report(dryRun: false, ReapplyAction.Move, ReapplyAction.Move)));
         }
+        public Task<ReapplyResult> PlanReapplyForCliAsync() => throw new NotSupportedException();
+        public Task<ReapplyResult> ApplyReapplyPlanAsync(string planId) => throw new NotSupportedException();
 
         public Func<ReapplyResult>? ReloadAndApplyResult { get; set; }
 
