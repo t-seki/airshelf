@@ -74,7 +74,9 @@ public sealed class ManagementViewModel : ObservableObject
             navigate: page => CurrentPage = page);
         Home = new HomeViewModel(control, degradedReason, loadHistory, logWarn,
             showAll: () => CurrentPage = ManagementPage.History, zone, applyGate,
-            computeAttention is null ? null : new AttentionActions(this, computeAttention));
+            computeAttention is null ? null : new AttentionActions(this, computeAttention),
+            pathActions,
+            savedReapply: SavedReapplyEntry(ManagementPage.Home)); // 「再適用の確認へ」(W-136。#156)
         History = new IngestHistoryViewModel(loadHistory, pathActions, logWarn);
         About = about ?? new AboutPageViewModel(
             AppVersion.Of(typeof(ManagementViewModel).Assembly), UpdateSupport.NotInstalled,
@@ -150,7 +152,8 @@ public sealed class ManagementViewModel : ObservableObject
     /// <summary>
     /// 管理画面が開いている間、シェルのタイマーが 2 秒ごとに呼ぶ。ホームの状態と、番組ページの「確認」を押せるか
     /// (取り込みが動いているか)を読み直す(取込履歴ページの全件は「更新」でだけ読み直すので、ここでは触らない)。
-    /// バージョン情報ページは保留中の更新を読み直す(#157)。
+    /// バージョン情報ページは保留中の更新を読み直す(#157)。ホームの「再適用の確認へ」(W-136)を押せるかも、ホームの
+    /// <see cref="HomeViewModel.Refresh"/> が読み直す(番組ページに保存していない変更があれば押せない。W-256)。
     /// </summary>
     public void Tick()
     {

@@ -33,20 +33,21 @@ public sealed record AttentionItems
 
     /// <summary>
     /// 番組の設定と食い違ったままの取り込み済みの回を、局・今のアルバム → 設定のアルバムごとにまとめたもの(W-134 / W-135)。
-    /// 再適用すれば消える(再適用しても衝突などで揃わない回は、実際に揃っていないので出し続ける)。
+    /// 再適用すれば消える(再適用しても衝突などで揃わない回は、実際に揃っていないので出し続ける)。今の設定で放送局が変わる回は、
+    /// 再適用が揃えない(対象外。ADR-0016)ので含めない(#156)。
     /// </summary>
     public IReadOnlyList<SettingsDriftGroup> SettingsDrift { get; init; } = [];
 }
 
 /// <summary>
-/// 番組の設定と食い違ったままの回の 1 まとまり(W-135 の 1 行)。
+/// 番組の設定と食い違ったままの回の 1 まとまり(W-135 の 1 行)。今の設定で放送局が変わる回は、再適用が揃えないので含めない
+/// (<see cref="AttentionItems.SettingsDrift"/>)。
 /// </summary>
-/// <param name="Station">台帳に記録した放送局(今の置き場所の局)。</param>
+/// <param name="Station">台帳に記録した放送局(今の置き場所の局。今の設定で解決した局も同じ)。</param>
 /// <param name="FromAlbum">台帳に記録したアルバム名(今のアルバム)。</param>
-/// <param name="ToStation">今の設定で解決した放送局(ふつうは <paramref name="Station"/> と同じ。stations.json で局の正規名を変えたときに違う)。</param>
 /// <param name="ToAlbum">今の設定で解決したアルバム名(設定のアルバム)。パートだけが違う回は <paramref name="FromAlbum"/> と同じ。</param>
 /// <param name="Count">この組の回数。</param>
-public sealed record SettingsDriftGroup(string Station, string FromAlbum, string ToStation, string ToAlbum, int Count);
+public sealed record SettingsDriftGroup(string Station, string FromAlbum, string ToAlbum, int Count);
 
 /// <summary>
 /// 要対応を、台帳・失敗のストアと番組・放送局の設定だけから計算する(ADR-0018。ファイルには触れない)。台帳の回を今の設定で
@@ -84,15 +85,16 @@ public static class AttentionCalculator
     }
 
     // 記録どおりでない回(再適用が揃える回)を、局・今のアルバム → 設定のアルバムごとに数える。名前を解析できない回
-    // (Episode が null)は、再適用も揃えられない(対象外にする)ので出さない。
+    // (Episode が null)と、今の設定で放送局が変わる回(stations.json で正規名を変えた等)は、再適用が揃えない(対象外に
+    // する。ADR-0016)ので出さない。再適用で解消できないものは、利用者の判断を待っているものではないため(#156)。
+    // 局の変更を知らせるのは、再適用の確認の「対象外 N 回」。
     private static List<SettingsDriftGroup> Drift(IEnumerable<ResolvedLedgerEntry> resolved) =>
         resolved
-            .Where(r => r.Episode is not null && !r.IsAsRecorded)
-            .GroupBy(r => (r.Entry.Station, r.Entry.Program, ToStation: r.Episode!.Station, ToProgram: r.Episode.Program))
-            .Select(g => new SettingsDriftGroup(g.Key.Station, g.Key.Program, g.Key.ToStation, g.Key.ToProgram, g.Count()))
+            .Where(r => r.Episode is not null && !r.IsAsRecorded && r.Episode.Station == r.Entry.Station)
+            .GroupBy(r => (r.Entry.Station, r.Entry.Program, ToProgram: r.Episode!.Program))
+            .Select(g => new SettingsDriftGroup(g.Key.Station, g.Key.Program, g.Key.ToProgram, g.Count()))
             .OrderBy(g => g.Station, StringComparer.Ordinal)
             .ThenBy(g => g.FromAlbum, StringComparer.Ordinal)
-            .ThenBy(g => g.ToStation, StringComparer.Ordinal)
             .ThenBy(g => g.ToAlbum, StringComparer.Ordinal)
             .ToList();
 }

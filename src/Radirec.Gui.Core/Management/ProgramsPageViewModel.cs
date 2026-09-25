@@ -430,7 +430,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     /// <summary>
     /// 保存済みの設定での確認(<see cref="ConfirmSavedAsync"/>)を始められない理由(W-256)。始められるなら null。
-    /// 入口のボタンの横に出し、ボタンは押せなくする。
+    /// 入口のボタンは押せなくし、理由は入口ごとの場所に出す(設定ページは stations.json の段、ホームは「再適用の確認へ」
+    /// 〈W-136〉の下)。
     /// </summary>
     public string? SavedConfirmBlockedReason => HasUnsavedWork ? SavedConfirmBlocked : null;
 

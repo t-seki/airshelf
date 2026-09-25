@@ -137,14 +137,31 @@ public sealed class HomeAttentionTests : IDisposable
     [Fact]
     public async Task Nothing_to_do_W121()
     {
-        Ingested(Tbs, "パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"); // 統合済み
+        // 兄弟フォルダの無い番組で、記録どおりに取り込んだ回だけ(3 種のどれも無い)。
+        Ingested(Tbs, "単発の番組");
 
         var home = (await Create()).Home;
 
         Assert.Empty(home.SiblingRows);
+        Assert.Empty(home.DriftRows);
         Assert.True(home.IsAttentionEmpty);
         Assert.Null(home.AttentionCountText);
         Assert.Equal("要対応はありません", AttentionText.None);
+    }
+
+    [Fact]
+    public async Task Integrated_group_recorded_under_folder_names_is_not_a_sibling_but_needs_reapply_W134()
+    {
+        // 統合済みの組を、統合する前のアルバム(フォルダ名)のまま記録した台帳。兄弟フォルダには出ず(統合済み)、
+        // 「再適用が要る番組」に出る(#156)。
+        Ingested(Tbs, "パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)");
+
+        var home = (await Create()).Home;
+
+        Assert.Empty(home.SiblingRows);
+        Assert.Equal(2, home.DriftRows.Count);
+        Assert.All(home.DriftRows, row => Assert.Equal("パンサー向井のふらっと", row.Drift.ToAlbum));
+        Assert.False(home.IsAttentionEmpty);
     }
 
     [Fact]

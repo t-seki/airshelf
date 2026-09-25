@@ -116,11 +116,13 @@
                 <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="DarkRed"
                            Text="{Binding AttentionNote}"
                            Visibility="{Binding IsAttentionNoteVisible, Converter={StaticResource Visible}}" />
-                <!-- 組が多いと取込履歴が押し出されるので、要対応の欄の中でスクロールする -->
+                <!-- 件数が多いと取込履歴が押し出されるので、要対応の欄の中でスクロールする -->
                 <ScrollViewer DockPanel.Dock="Top" MaxHeight="280" VerticalScrollBarVisibility="Auto"
-                              Visibility="{Binding HasSiblings, Converter={StaticResource Visible}}">
-                    <Border Padding="14,8" CornerRadius="4" BorderThickness="1"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+                              Visibility="{Binding HasAnyAttention, Converter={StaticResource Visible}}">
+                  <StackPanel>
+                    <Border Padding="14,8" CornerRadius="4" BorderThickness="1" Margin="0,0,0,6"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                            Visibility="{Binding HasSiblings, Converter={StaticResource Visible}}">
                         <StackPanel>
                             <!-- W-122 -->
                             <TextBlock FontWeight="SemiBold" Margin="0,0,0,4" Text="{x:Static m:AttentionText.SiblingsHeading}" />
@@ -156,6 +158,87 @@
                             </ItemsControl>
                         </StackPanel>
                     </Border>
+
+                    <!-- ===== 解決していない取込失敗(W-128〜W-133。#156)===== -->
+                    <Border Padding="14,8" CornerRadius="4" BorderThickness="1" Margin="0,0,0,6"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                            Visibility="{Binding HasFailures, Converter={StaticResource Visible}}">
+                        <StackPanel>
+                            <!-- W-128 -->
+                            <TextBlock FontWeight="SemiBold" Margin="0,0,0,2" Text="{x:Static m:AttentionText.FailuresHeading}" />
+                            <!-- W-133 -->
+                            <TextBlock Style="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                       Text="{x:Static m:AttentionText.FailuresHint}" />
+                            <!-- W-146 / W-147(W-132 を押した結果) -->
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,4" Text="{Binding FailureNote}"
+                                       Visibility="{Binding IsFailureNoteVisible, Converter={StaticResource Visible}}" />
+                            <ItemsControl ItemsSource="{Binding FailureRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <!-- W-129(1 行目 ファイル名 / 2 行目 理由〈W-130〉/ 3 行目 日時) -->
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock TextWrapping="Wrap" Text="{Binding FileName}" />
+                                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Sub}" Text="{Binding Reason}" />
+                                                <TextBlock Style="{StaticResource Sub}" Text="{Binding FailedAt}"
+                                                           Visibility="{Binding HasFailedAt, Converter={StaticResource Visible}}" />
+                                            </StackPanel>
+                                            <!-- W-132 -->
+                                            <Button Grid.Column="1" Margin="12,0,0,0" Padding="10,2" VerticalAlignment="Center"
+                                                    Content="{x:Static m:AttentionText.RevealSource}"
+                                                    Command="{Binding RevealCommand}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 再適用が要る番組(W-134〜W-136。#156)===== -->
+                    <Border Padding="14,8" CornerRadius="4" BorderThickness="1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                            Visibility="{Binding HasDrift, Converter={StaticResource Visible}}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <!-- W-134 -->
+                                <TextBlock Grid.Column="0" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Text="{x:Static m:AttentionText.DriftHeading}" />
+                                <!-- W-136 -->
+                                <Button Grid.Column="1" Padding="10,2" Content="{x:Static m:AttentionText.ReapplyConfirm}"
+                                        Command="{Binding ReapplyCommand}" />
+                            </Grid>
+                            <!-- W-119 / W-256(押せない理由)・W-240(確かめている途中)・W-254 / W-255(押した結果) -->
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,4" Text="{Binding ReapplyNote}"
+                                       Visibility="{Binding IsReapplyNoteVisible, Converter={StaticResource Visible}}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsReapplyNoteWarning}" Value="True">
+                                                <Setter Property="Foreground" Value="DarkRed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <!-- W-135 -->
+                            <ItemsControl ItemsSource="{Binding DriftRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock TextWrapping="Wrap" Margin="0,2" Text="{Binding Line}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                  </StackPanel>
                 </ScrollViewer>
 
                 <!-- 取込履歴(新しい方の 5 件)。W-140 -->
