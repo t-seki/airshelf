@@ -655,7 +655,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 {
                     LibraryRefreshStatus.Started => "起動",
                     LibraryRefreshStatus.NotConfigured => "未設定",
-                    LibraryRefreshStatus.Failed => report.RefreshError ?? "失敗",
+                    LibraryRefreshStatus.Failed or LibraryRefreshStatus.Misconfigured => report.RefreshError ?? "失敗",
                     _ => "-",
                 };
                 var notify = report.NotificationPublished ? "発行" : report.NotificationError ?? "-";

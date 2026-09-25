@@ -151,6 +151,9 @@ public sealed class IngestCommand(
             case LibraryRefreshStatus.Failed:
                 console.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新に失敗:[/] {report.RefreshError}");
                 break;
+            case LibraryRefreshStatus.Misconfigured:
+                console.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新を行えません(設定の誤り):[/] {report.RefreshError}");
+                break;
         }
     }
 

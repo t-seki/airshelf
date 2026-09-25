@@ -99,6 +99,9 @@ public sealed class ReapplyCommand(IAnsiConsole console, ICliConfigSource config
             case LibraryRefreshStatus.Failed:
                 console.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新に失敗:[/] {report.RefreshError}");
                 break;
+            case LibraryRefreshStatus.Misconfigured:
+                console.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新を行えません(設定の誤り):[/] {report.RefreshError}");
+                break;
         }
 
         // 書き換えた回のタグは通常スキャンで反映されないことがある(ADR-0016。FullRefresh は自動化しない)。

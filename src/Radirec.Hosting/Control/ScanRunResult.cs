@@ -49,7 +49,10 @@ public sealed record ScanRunReport
     /// <summary>取込後の Jellyfin ライブラリ更新の状態。</summary>
     public LibraryRefreshStatus LibraryRefresh { get; init; }
 
-    /// <summary>ライブラリ更新に失敗したときのメッセージ(<see cref="LibraryRefreshStatus.Failed"/> 以外は null)。</summary>
+    /// <summary>
+    /// ライブラリ更新に失敗したときのメッセージ(<see cref="LibraryRefreshStatus.Failed"/>・
+    /// <see cref="LibraryRefreshStatus.Misconfigured"/> 以外は null)。
+    /// </summary>
     public string? RefreshError { get; init; }
 
     public int Count(IngestOutcome outcome) => Items.Count(i => i.Outcome == outcome);

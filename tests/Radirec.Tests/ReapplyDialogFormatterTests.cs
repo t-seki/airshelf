@@ -263,6 +263,7 @@ public sealed class ReapplyDialogFormatterTests
     [Theory]
     [InlineData(LibraryRefreshStatus.NotConfigured, "Jellyfin ライブラリ更新: 未設定のため行いません")]
     [InlineData(LibraryRefreshStatus.Failed, "Jellyfin ライブラリ更新に失敗しました: 接続できません")]
+    [InlineData(LibraryRefreshStatus.Misconfigured, "Jellyfin ライブラリ更新に失敗しました: 接続できません")]
     public void Jellyfinの更新結果を出す(LibraryRefreshStatus status, string expected)
     {
         var text = ReapplyDialogFormatter.BuildCompletion(
