@@ -41,7 +41,9 @@ public sealed class HomeAttentionTests : IDisposable
         public ServiceStatusSnapshot GetStatus() => Status;
         public ReloadResult RequestReload() => ReloadResult.Ok();
         public Task<ReapplyResult> PlanReapplyAsync() => throw new NotSupportedException();
-        public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs) => throw new NotSupportedException();
+        // 番組ページの「確認」→「保存だけ」で結果の画面まで進めるための dry-run(揃っている予定)。
+        public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs) => Task.FromResult(ReapplyResult.Ok(
+            new ReapplyReport { Items = [], DryRun = true, UnintegratedSiblings = [] }));
         public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
         public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
     }
@@ -91,7 +93,7 @@ public sealed class HomeAttentionTests : IDisposable
         return AttentionCalculator.Compute(_ledger, resolver, new AttentionPrograms(programs));
     }
 
-    private ManagementViewModel Create(string? content = Sample, Func<AttentionItems>? compute = null, bool degraded = false)
+    private ManagementViewModel CreateNow(string? content = Sample, Func<AttentionItems>? compute = null, bool degraded = false)
     {
         if (content is not null)
             File.WriteAllText(ProgramsPath, content, new UTF8Encoding(false));
@@ -101,6 +103,13 @@ public sealed class HomeAttentionTests : IDisposable
             computeAttention: degraded ? null : compute ?? Compute);
     }
 
+    // 要対応は UI スレッドの外で計算するので、開いたときの計算が終わるのを待つ。
+    private async Task<ManagementViewModel> Create(string? content = Sample, Func<AttentionItems>? compute = null, bool degraded = false)
+    {
+        var vm = CreateNow(content, compute, degraded);
+        await vm.Home.AttentionRefreshed;
+        return vm;
+    }
     private static async Task WaitUntil(Func<bool> condition)
     {
         for (var i = 0; i < 200 && !condition(); i++)
@@ -111,11 +120,11 @@ public sealed class HomeAttentionTests : IDisposable
     // ---------- 一覧 ----------
 
     [Fact]
-    public void Lists_sibling_groups_with_count_W120_W123()
+    public async Task Lists_sibling_groups_with_count_W120_W123()
     {
         Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
 
-        var home = Create().Home;
+        var home = (await Create()).Home;
 
         var row = Assert.Single(home.SiblingRows);
         Assert.Equal("要対応 1 件", home.AttentionCountText); // W-120
@@ -126,11 +135,11 @@ public sealed class HomeAttentionTests : IDisposable
     }
 
     [Fact]
-    public void Nothing_to_do_W121()
+    public async Task Nothing_to_do_W121()
     {
         Ingested(Tbs, "パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"); // 統合済み
 
-        var home = Create().Home;
+        var home = (await Create()).Home;
 
         Assert.Empty(home.SiblingRows);
         Assert.True(home.IsAttentionEmpty);
@@ -139,12 +148,12 @@ public sealed class HomeAttentionTests : IDisposable
     }
 
     [Fact]
-    public void Merged_and_kept_apart_groups_have_their_own_lines_W124_W125()
+    public async Task Merged_and_kept_apart_groups_have_their_own_lines_W124_W125()
     {
         Ingested(Tbs, "パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)", "パンサー向井のふらっと(3)");
         Ingested(Qr, "大竹まこと ゴールデンラジオ!(1)", "大竹まこと ゴールデンラジオ!(2)", "大竹まこと ゴールデンラジオ!(3)");
 
-        var rows = Create().Home.SiblingRows;
+        var rows = (await Create()).Home.SiblingRows;
 
         Assert.Equal(2, rows.Count); // 放送局の序数順
         Assert.Equal("統合番組『パンサー向井のふらっと』に入っていないフォルダ『パンサー向井のふらっと(3)』があります", rows[0].Heading); // W-124
@@ -152,9 +161,9 @@ public sealed class HomeAttentionTests : IDisposable
     }
 
     [Fact]
-    public void Degraded_W137()
+    public async Task Degraded_W137()
     {
-        var home = Create(degraded: true).Home;
+        var home = (await Create(degraded: true)).Home;
 
         Assert.Equal("設定を読めないため、要対応を出せません", home.AttentionError);
         Assert.False(home.IsAttentionEmpty);
@@ -162,9 +171,9 @@ public sealed class HomeAttentionTests : IDisposable
     }
 
     [Fact]
-    public void Compute_failure_shows_reason_W137()
+    public async Task Compute_failure_shows_reason_W137()
     {
-        var home = Create(compute: () => throw new IOException("台帳を開けません")).Home;
+        var home = (await Create(compute: () => throw new IOException("台帳を開けません"))).Home;
 
         Assert.Equal("要対応を出せませんでした: 台帳を開けません", home.AttentionError);
         Assert.False(home.IsAttentionEmpty);
@@ -172,9 +181,9 @@ public sealed class HomeAttentionTests : IDisposable
     }
 
     [Fact]
-    public void Recomputes_only_when_scan_completes_or_home_is_shown()
+    public async Task Recomputes_only_when_scan_completes_or_home_is_shown()
     {
-        var vm = Create();
+        var vm = await Create();
         Assert.Equal(1, _computes); // 開いたとき
 
         vm.Tick();
@@ -183,11 +192,47 @@ public sealed class HomeAttentionTests : IDisposable
 
         _control.Status = Snapshot(completed: DateTimeOffset.UnixEpoch.AddMinutes(1));
         vm.Tick();
+        await vm.Home.AttentionRefreshed;
         Assert.Equal(2, _computes); // 最終スキャンが変わった
 
         vm.CurrentPage = ManagementPage.History;
         vm.CurrentPage = ManagementPage.Home;
+        await vm.Home.AttentionRefreshed;
         Assert.Equal(3, _computes); // ホームへ切り替えた
+    }
+
+    [Fact]
+    public async Task Computes_off_the_calling_thread_without_reentry()
+    {
+        var gate = new ManualResetEventSlim();
+        var running = 0;
+        var maxRunning = 0;
+        var callerThread = Environment.CurrentManagedThreadId;
+        var computeThreads = new List<int>();
+        AttentionItems Blocking()
+        {
+            lock (computeThreads)
+                computeThreads.Add(Environment.CurrentManagedThreadId);
+            maxRunning = Math.Max(maxRunning, Interlocked.Increment(ref running));
+            gate.Wait(TimeSpan.FromSeconds(5));
+            Interlocked.Decrement(ref running);
+            return Compute();
+        }
+
+        var vm = CreateNow(compute: Blocking);
+        Assert.Null(vm.Home.AttentionState); // 計算し終えるまでは「要対応はありません」を出さない
+        Assert.False(vm.Home.IsAttentionEmpty);
+
+        // 計算の途中に 2 回頼まれても、並べて走らせない(終わってから 1 度だけ計算し直す)。
+        vm.Home.RefreshAttention();
+        vm.Home.RefreshAttention();
+        gate.Set();
+        await vm.Home.AttentionRefreshed;
+
+        Assert.Equal(1, maxRunning);
+        Assert.Equal(2, _computes);
+        Assert.NotEqual(callerThread, computeThreads[0]); // 呼んだスレッドがまだ動いている間に、別のスレッドで計算していた
+        Assert.True(vm.Home.IsAttentionEmpty);
     }
 
     // ---------- 統合する ----------
@@ -196,7 +241,7 @@ public sealed class HomeAttentionTests : IDisposable
     public async Task Integrate_opens_program_form_with_new_entry_draft_W226()
     {
         Ingested(Tbs, "安住紳一郎の日曜天国(2)", "安住紳一郎の日曜天国(1)");
-        var vm = Create();
+        var vm = await Create();
         var before = File.ReadAllText(ProgramsPath);
 
         vm.Home.SiblingRows[0].IntegrateCommand.Execute(null);
@@ -219,7 +264,7 @@ public sealed class HomeAttentionTests : IDisposable
     public async Task Integrate_group_partly_merged_appends_folder_to_the_merged_program()
     {
         Ingested(Tbs, "パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)", "パンサー向井のふらっと(3)");
-        var vm = Create();
+        var vm = await Create();
 
         vm.Home.SiblingRows[0].IntegrateCommand.Execute(null);
         await WaitUntil(() => vm.Programs.IsProgramFormMode);
@@ -239,7 +284,7 @@ public sealed class HomeAttentionTests : IDisposable
     public async Task Keep_apart_writes_programs_json_and_the_group_disappears()
     {
         Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
-        var vm = Create();
+        var vm = await Create();
 
         await vm.Home.SiblingRows[0].KeepApartCommand.ExecuteAsync(null);
 
@@ -257,7 +302,7 @@ public sealed class HomeAttentionTests : IDisposable
     public async Task Keep_apart_for_a_grown_group_replaces_the_kept_entry()
     {
         Ingested(Qr, "大竹まこと ゴールデンラジオ!(1)", "大竹まこと ゴールデンラジオ!(2)", "大竹まこと ゴールデンラジオ!(3)");
-        var vm = Create();
+        var vm = await Create();
 
         await vm.Home.SiblingRows[0].KeepApartCommand.ExecuteAsync(null);
 
@@ -269,11 +314,68 @@ public sealed class HomeAttentionTests : IDisposable
         Assert.Empty(vm.Home.SiblingRows);
     }
 
+    // 番組ページで変更を「保存だけ」して、結果の画面のままにする。
+    private static async Task SaveOnlyToResult(ManagementViewModel vm)
+    {
+        await vm.Programs.LoadAsync();
+        vm.Programs.SelectedProgram = vm.Programs.Programs[0];
+        vm.Programs.DeleteProgramCommand.Execute(null);
+        await vm.Programs.ConfirmCommand.ExecuteAsync(null);
+        await vm.Programs.SaveOnlyCommand.ExecuteAsync(null);
+        Assert.True(vm.Programs.IsResultMode);
+        Assert.False(vm.Programs.HasUnsavedWork); // 結果の画面は保存済み(「分けておく」を押せる)
+    }
+
+    [Fact]
+    public async Task Programs_page_left_on_result_rereads_after_keep_apart()
+    {
+        Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
+        var vm = await Create();
+        vm.CurrentPage = ManagementPage.Programs;
+        await SaveOnlyToResult(vm);
+
+        vm.CurrentPage = ManagementPage.Home;
+        await vm.Home.SiblingRows[0].KeepApartCommand.ExecuteAsync(null);
+        vm.CurrentPage = ManagementPage.Programs; // 結果の画面のまま戻ってくる
+
+        // 古い一覧のままだと、次の保存が W-275 で弾かれる。ファイルが変わったので読み直す。
+        await WaitUntil(() => vm.Programs.IsListMode && vm.Programs.KeepSeparate.Count == 2);
+        Assert.False(vm.Programs.HasChanges);
+    }
+
+    [Fact]
+    public async Task Programs_page_left_on_result_keeps_result_when_file_is_unchanged()
+    {
+        var vm = await Create();
+        vm.CurrentPage = ManagementPage.Programs;
+        await SaveOnlyToResult(vm);
+
+        vm.CurrentPage = ManagementPage.Home;
+        vm.CurrentPage = ManagementPage.Programs;
+        await Task.Delay(50);
+
+        Assert.True(vm.Programs.IsResultMode); // 変わっていなければ結果を出したまま
+    }
+
+    [Fact]
+    public async Task Back_from_result_rereads_when_file_changed()
+    {
+        var vm = await Create();
+        await SaveOnlyToResult(vm);
+        File.WriteAllText(ProgramsPath, Sample); // 結果を出している間に、ほかの経路で書かれた
+
+        await vm.Programs.BackCommand.ExecuteAsync(null);
+
+        Assert.True(vm.Programs.IsListMode);
+        Assert.Single(vm.Programs.Programs); // Sample の 1 件を読み直した(削除して保存した 0 件ではない)
+        Assert.False(vm.Programs.HasChanges);
+    }
+
     [Fact]
     public async Task Keep_apart_is_blocked_while_programs_page_has_unsaved_changes_W138()
     {
         Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
-        var vm = Create();
+        var vm = await Create();
         await vm.Programs.LoadAsync();
         vm.Programs.SelectedProgram = vm.Programs.Programs[0];
         vm.Programs.DeleteProgramCommand.Execute(null);
@@ -296,7 +398,7 @@ public sealed class HomeAttentionTests : IDisposable
     {
         Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
         var withComment = Sample.Replace("\"Programs\": [", "// 手で書いたメモ\n  \"Programs\": [");
-        var vm = Create(withComment);
+        var vm = await Create(withComment);
 
         await vm.Home.SiblingRows[0].KeepApartCommand.ExecuteAsync(null);
         await WaitUntil(() => vm.Programs.IsKeepFormMode);
@@ -313,7 +415,7 @@ public sealed class HomeAttentionTests : IDisposable
     public async Task Keep_apart_that_finds_the_file_changed_shows_reason_W139()
     {
         Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
-        var vm = Create();
+        var vm = await Create();
         File.WriteAllText(ProgramsPath, "{ \"Programs\": [ ");
 
         await vm.Home.SiblingRows[0].KeepApartCommand.ExecuteAsync(null);

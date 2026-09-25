@@ -33,29 +33,23 @@ public static class IngestToastFormatter
     /// (「…ほか」の付与・要素数上限)を 1 箇所に集約し、成功/失敗で挙動が drift しないようにする。
     /// </summary>
     /// <remarks>
-    /// <paramref name="lines"/> が使える行に収まらないとき(または <paramref name="truncated"/>)は「…ほか」を付ける。
-    /// 使える行が 2 行以上なら最後の 1 行を「…ほか」に充て、1 行しかなければ先頭の行の末尾に「 …ほか」を付ける
-    /// (1 行を「…ほか」に充てると本文を 1 つも示せなくなるため)。
+    /// <paramref name="lines"/> が本文の行(<see cref="MaxLines"/>)に収まらないとき(または <paramref name="truncated"/>)は、
+    /// 最後の 1 行を「…ほか」に充てる。
     /// </remarks>
     private static IReadOnlyList<string> Compose(string title, IReadOnlyList<string> lines, bool truncated)
     {
         var texts = new List<string> { title };
-        var budget = MaxLines;
 
-        var hasMore = lines.Count > budget || truncated;
+        var hasMore = lines.Count > MaxLines || truncated;
         if (!hasMore)
         {
-            texts.AddRange(lines.Take(budget));
+            texts.AddRange(lines);
         }
         // 本文を少なくとも 1 行示すときだけ「…ほか」。空リスト + truncated で**裸の「…ほか」**を出さない。
-        else if (lines.Count > 0 && budget >= 2)
+        else if (lines.Count > 0)
         {
-            texts.AddRange(lines.Take(budget - 1));
+            texts.AddRange(lines.Take(MaxLines - 1));
             texts.Add("…ほか");
-        }
-        else if (lines.Count > 0 && budget == 1)
-        {
-            texts.Add($"{lines[0]} …ほか");
         }
 
         // 硬い上限(実機の text 要素上限)。ロジックが将来変わっても超えないための最終ガード。

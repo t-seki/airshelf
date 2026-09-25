@@ -244,10 +244,10 @@
     </div>
 
     <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startfail" data-w="W-120">要対応 7 件</span></h3>
-    <div data-if="run:noconfig" class="msg warn an" data-w="W-137">設定を読めないため、要対応を出せません</div>
+    <div data-if="run:noconfig" class="msg warn" data-w="W-137">設定を読めないため、要対応を出せません</div>
     <div data-if="run:noconfig" class="mocknote">台帳か programs.json・stations.json を読めず計算できなかったときは、
       <span class="an" data-w="W-137">要対応を出せませんでした: {理由}</span> を出す(縮退していなくても)。</div>
-    <div data-if="attn:empty run:watching,polling,noscan,crashed,startfail" class="sub an" data-w="W-121">要対応はありません</div>
+    <div data-if="attn:empty run:watching,polling,noscan,crashed,startfail" class="sub" data-w="W-121">要対応はありません</div>
 
     <div data-if="attn:items run:watching,polling,noscan,crashed,startfail">
       <div class="attn">
@@ -272,14 +272,14 @@
           </div>
         </div>
         <div class="item">
-          <div><div class="an" data-w="W-125">分けておく組に、新しいフォルダ『大竹まこと ゴールデンラジオ!(3)』が加わりました</div>
+          <div><div data-w="W-125">分けておく組に、新しいフォルダ『大竹まこと ゴールデンラジオ!(3)』が加わりました</div>
                <div class="sub" data-w="W-123">文化放送: 大竹まこと ゴールデンラジオ!(1) / 大竹まこと ゴールデンラジオ!(2) / 大竹まこと ゴールデンラジオ!(3)(設定なし)</div></div>
           <div class="row" style="flex-wrap: nowrap;">
             <button class="btn small" data-go="page:programs prog:draft" data-w="W-126">統合する</button>
             <button class="btn small" data-w="W-127">分けておく</button>
           </div>
         </div>
-        <div class="mocknote">「分けておく」は programs.json の <code>KeepSeparate</code> に書く(番組ページの保存と同じ書き手。初めての保存ならコメントの確認 W-260 が先に出る)。</div>
+        <div class="mocknote">「分けておく」は、その場で programs.json の <code>KeepSeparate</code> に書く(番組ページの保存と同じ書き手。バックアップを作る)。programs.json に <code>//</code> コメントがあるときは、書くとコメントが消えるので、その場では書かずに番組ページの「分けておく兄弟フォルダを追加」の下書き(W-226 の 2 つ目)へ移る。コメントの確認(W-260)は、そこで保存するときに出る。</div>
       </div>
 
       <div class="attn fail">
@@ -490,7 +490,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
     <!-- 分けておく の編集 -->
     <div data-if="prog:keepedit">
       <h3 data-w="W-228">分けておく兄弟フォルダを編集</h3>
-      <div class="mocknote">「追加」から来たときの見出しは <span class="an" data-w="W-229">分けておく兄弟フォルダを追加</span>。</div>
+      <div class="mocknote">「追加」から来たときの見出しは <span class="an" data-w="W-229">分けておく兄弟フォルダを追加</span>。要対応の「分けておく」から来たとき(programs.json にコメントがあり、その場では書かなかった)は、見出しの下に
+        <span class="an" data-w="W-226">要対応の兄弟フォルダから下書きを作りました。フォルダの組を確かめてください</span> を出す。</div>
       <div class="form card">
         <label data-w="W-228">放送局</label><input value="文化放送">
         <label data-w="W-228">フォルダの組</label><textarea>大竹まこと ゴールデンラジオ!(1)

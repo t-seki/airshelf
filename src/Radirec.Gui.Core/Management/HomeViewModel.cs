@@ -48,7 +48,9 @@ public sealed class HomeViewModel : ObservableObject
     private HistoryLoadState _historyState;
 
     private readonly IAttentionActions? _attention;
-    private HistoryLoadState _attentionState;
+    private HistoryLoadState? _attentionState;
+    private bool _attentionRunning;           // 要対応を計算している(UI スレッドの外で)
+    private bool _attentionAgain;             // 計算の途中に計算し直しを頼まれた
     private string? _attentionError;
     private string? _attentionNote;
     private string? _keepApartBlocked;
@@ -170,8 +172,11 @@ public sealed class HomeViewModel : ObservableObject
 
     // ---- 要対応(ADR-0018・#155)----
 
-    /// <summary>要対応を出せているか(台帳と設定を読めた / 読めなかった / 縮退で出せない)。</summary>
-    public HistoryLoadState AttentionState
+    /// <summary>
+    /// 要対応を出せているか(台帳と設定を読めた / 読めなかった / 縮退で出せない)。まだ計算し終えていなければ null
+    /// (調べていないのに「要対応はありません」と出さないため)。
+    /// </summary>
+    public HistoryLoadState? AttentionState
     {
         get => _attentionState;
         private set
@@ -248,11 +253,22 @@ public sealed class HomeViewModel : ObservableObject
 
     public bool IsKeepApartBlockedVisible => KeepApartBlocked is not null;
 
+    /// <summary>いま走っている(最後に始めた)要対応の計算。終わっていれば完了済みのタスク(テストで待つ)。</summary>
+    public Task AttentionRefreshed { get; private set; } = Task.CompletedTask;
+
     /// <summary>
     /// 要対応を計算し直す(開いたとき・ホームへ切り替えたとき・最終スキャンが変わったとき・「分けておく」を書いた後)。
-    /// 例外は gui.log に書いて握り、W-137 の 2 つ目を出す。
+    /// 待たずに返る(<see cref="RefreshAttentionAsync"/>)。
     /// </summary>
-    public void RefreshAttention()
+    public void RefreshAttention() => _ = RefreshAttentionAsync();
+
+    /// <summary>
+    /// 要対応を計算し直す。計算(台帳と programs.json / stations.json を読む。ProgramsFile は NAS を指しうる)は UI スレッドの
+    /// 外で行い、結果は呼んだスレッド(UI スレッド)で反映する。計算の途中に呼ばれたら、新しく並べて走らせず、今の計算が
+    /// 終わってからもう 1 度だけ計算し直す(その間に変わったものを取りこぼさないため)。例外は gui.log に書いて握り、
+    /// W-137 の 2 つ目を出す。
+    /// </summary>
+    public Task RefreshAttentionAsync()
     {
         if (_attention is null)
         {
@@ -261,28 +277,52 @@ public sealed class HomeViewModel : ObservableObject
             AttentionError = AttentionText.Unavailable; // W-137
             OnPropertyChanged(nameof(AttentionCountText));
             OnPropertyChanged(nameof(IsAttentionEmpty));
-            return;
+            return Task.CompletedTask;
         }
 
+        if (_attentionRunning)
+        {
+            _attentionAgain = true;
+            return AttentionRefreshed;
+        }
+
+        _attentionRunning = true;
+        return AttentionRefreshed = ComputeAttentionAsync(_attention);
+    }
+
+    private async Task ComputeAttentionAsync(IAttentionActions attention)
+    {
         try
         {
-            var items = _attention.Compute();
-            AttentionState = HistoryLoadState.Loaded;
-            AttentionError = null;
-            SiblingRows = items.UnintegratedSiblings
-                .Select(s => new SiblingAttentionRow(s, Integrate, KeepApartAsync))
-                .ToList();
+            do
+            {
+                _attentionAgain = false;
+                try
+                {
+                    var items = await Task.Run(attention.Compute);
+                    AttentionState = HistoryLoadState.Loaded;
+                    AttentionError = null;
+                    SiblingRows = items.UnintegratedSiblings
+                        .Select(s => new SiblingAttentionRow(s, Integrate, KeepApartAsync))
+                        .ToList();
+                }
+                catch (Exception ex)
+                {
+                    _logWarn($"管理画面: 要対応を計算できませんでした: {ex}");
+                    SiblingRows = [];
+                    AttentionState = HistoryLoadState.Failed;
+                    AttentionError = AttentionText.ComputeFailed(ex.Message);
+                }
+                OnPropertyChanged(nameof(AttentionCountText));
+                OnPropertyChanged(nameof(IsAttentionEmpty));
+                UpdateKeepApartAvailability();
+            }
+            while (_attentionAgain);
         }
-        catch (Exception ex)
+        finally
         {
-            _logWarn($"管理画面: 要対応を計算できませんでした: {ex}");
-            SiblingRows = [];
-            AttentionState = HistoryLoadState.Failed;
-            AttentionError = AttentionText.ComputeFailed(ex.Message);
+            _attentionRunning = false;
         }
-        OnPropertyChanged(nameof(AttentionCountText));
-        OnPropertyChanged(nameof(IsAttentionEmpty));
-        UpdateKeepApartAvailability();
     }
 
     // 「分けておく」を押せるか(番組ページに保存していない変更があれば押せない。W-138)。タイマーの 2 秒ごとにも読み直す。
@@ -329,7 +369,7 @@ public sealed class HomeViewModel : ObservableObject
             _logWarn($"管理画面: 分けておく組を書けませんでした: {ex}");
             AttentionNote = ProgramsPageViewModel.KeepApartFailed(ex.Message);
         }
-        RefreshAttention();
+        await RefreshAttentionAsync();
     }
 
     private ServiceStatusSnapshot? ReadStatus()

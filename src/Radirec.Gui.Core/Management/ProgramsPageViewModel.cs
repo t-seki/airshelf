@@ -200,7 +200,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         ConfirmCommand = new AsyncRelayCommand(ConfirmAsync, () => CanConfirm);
         SaveAndApplyCommand = new AsyncRelayCommand(() => SaveAsync(apply: true), () => IsConfirmMode);
         SaveOnlyCommand = new AsyncRelayCommand(() => SaveAsync(apply: false), () => IsConfirmMode && HasChanges);
-        BackCommand = new RelayCommand(BackToList);
+        BackCommand = new AsyncRelayCommand(BackToListAsync);
         ProceedAfterCommentsCommand = new AsyncRelayCommand(ProceedAfterCommentsAsync);
         CancelCommentsCommand = new RelayCommand(() => IsCommentsPromptVisible = false);
         ReloadCommand = new AsyncRelayCommand(ReloadAsync);
@@ -477,7 +477,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     public AsyncRelayCommand SaveOnlyCommand { get; }
 
     /// <summary>W-249 の「戻る」(確認から)と、結果から一覧へ戻る。</summary>
-    public RelayCommand BackCommand { get; }
+    public AsyncRelayCommand BackCommand { get; }
 
     /// <summary>W-262 の「保存する」。</summary>
     public AsyncRelayCommand ProceedAfterCommentsCommand { get; }
@@ -495,13 +495,20 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// programs.json を読み直す(エディタで直した・設定リロードで場所が変わった等に追従する)。
     /// 保存したのに再適用を実行できなかった(<see cref="_reapplyPending"/>)ときは、ファイルがエディタで変わっていたときだけ
     /// 読み直す(変わっていなければ読み直さず、「確認」から中止された再適用を続けられるようにする)。
+    /// 結果の画面のままなら、ファイルが変わっていたときだけ読み直す(ホームの要対応の「分けておく」で書いた等。古い一覧のまま
+    /// 次に保存すると W-275 で弾かれるため)。変わっていなければ結果を出したままにする。
     /// </summary>
     public async Task OnShownAsync()
     {
         RefreshStatus();
-        if (_loaded && (!IsListMode || HasChanges))
+        if (!_loaded)
+        {
+            await LoadAsync();
             return;
-        if (_loaded && _reapplyPending && !await FileChangedAsync())
+        }
+        if (HasChanges || !(IsListMode || IsResultMode))
+            return;
+        if ((_reapplyPending || IsResultMode) && !await FileChangedAsync())
             return;
         await LoadAsync();
     }
@@ -1060,11 +1067,17 @@ public sealed class ProgramsPageViewModel : ObservableObject
         return (ProgramsDraft.Describe(before), ProgramsDraft.Describe(after));
     }
 
-    private void BackToList()
+    private async Task BackToListAsync()
     {
+        var fromResult = IsResultMode;
         IsCommentsPromptVisible = false;
         IsConflict = false;
         Mode = ProgramsPageMode.List;
+
+        // 結果の画面を出している間に、ファイルが変わっていれば読み直す(OnShownAsync と同じ。保存していない変更があれば
+        // 捨てないので読み直さない。W-275 の後の「戻る」がこれ)。
+        if (fromResult && !HasChanges && await FileChangedAsync())
+            await LoadAsync();
     }
 
     // ---- 保存 ----
