@@ -209,6 +209,100 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.Equal(2, vm.Programs.Count);
     }
 
+    // ---------- 読んでいるあいだに始めた作業(#185) ----------
+
+    // 読み込みを、gate が開くまで止めておける番組ページ(最初の読み込みは止めない)。
+    private async Task<(ProgramsPageViewModel Vm, Func<TaskCompletionSource> HoldNextLoads)> CreateLoadedWithLoadGate()
+    {
+        File.WriteAllText(ProgramsPath, Sample, new UTF8Encoding(false));
+        TaskCompletionSource? gate = null;
+        var vm = new ProgramsPageViewModel(new FakeControl(), () => ProgramsPath, _gate, _log.Add, _log.Add, now: () => Now,
+            readForLoad: async path =>
+            {
+                if (gate is not null)
+                    await gate.Task;
+                return ProgramsFileWriter.Read(path);
+            });
+        await vm.LoadAsync();
+        return (vm, () => gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+    }
+
+    [Fact]
+    public void Editing_started_while_loading_is_kept() => UiThreadContext.Run(async () =>
+    {
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+        File.WriteAllText(ProgramsPath, Sample.Replace("パンサー向井のふらっと\" }", "パンサー向井のふらっと!\" }"));
+
+        var shown = vm.OnShownAsync(); // 一覧で変更が無いので読み直す
+        Assert.False(shown.IsCompleted); // 読んでいる途中
+        AddAnzu(vm); // 読んでいるあいだも一覧は出ているので、編集を始められる
+        gate.SetResult();
+        await shown;
+
+        Assert.Equal(3, vm.Programs.Count); // 読み終えても、始めた編集を消さない
+        Assert.True(vm.HasChanges);
+        Assert.Equal("パンサー向井のふらっと", vm.Programs[1].Album); // 読んだ結果は捨てた(前の一覧のまま)
+        Assert.Contains(_log, l => l.Contains("作り直しませんでした"));
+    });
+
+    [Fact]
+    public void Form_opened_while_loading_stays_open() => UiThreadContext.Run(async () =>
+    {
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+
+        var shown = vm.OnShownAsync();
+        vm.AddProgramCommand.Execute(null); // フォームを開いたまま(一覧の画面ではない)
+        vm.FormAlbum = "書きかけ";
+        gate.SetResult();
+        await shown;
+
+        Assert.True(vm.IsProgramFormMode); // 一覧へ戻さない
+        Assert.Equal("書きかけ", vm.FormAlbum);
+    });
+
+    [Fact]
+    public void Load_failing_while_editing_keeps_the_edit() => UiThreadContext.Run(async () =>
+    {
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+        File.WriteAllText(ProgramsPath, "{ \"Programs\": [ "); // 読んでいるあいだに壊れた
+
+        var shown = vm.OnShownAsync();
+        AddAnzu(vm);
+        gate.SetResult();
+        await shown;
+
+        Assert.False(vm.IsLoadFailed); // 読めなかったことで一覧を消さない(gui.log には残す)
+        Assert.Equal(3, vm.Programs.Count);
+        Assert.Contains(_log, l => l.Contains("を読めませんでした"));
+    });
+
+    [Fact]
+    public void Reload_W276_discards_changes_even_after_waiting_for_the_read() => UiThreadContext.Run(async () =>
+    {
+        // 「読み込み直す」(W-276)は、利用者が変更を捨てると決めて読み直す。読み終えたときに変更が残っていても作り直す。
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        AddAnzu(vm);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        File.WriteAllText(ProgramsPath, Sample + "\n"); // エディタで直した
+        await vm.SaveAndApplyCommand.ExecuteAsync(null);
+        Assert.True(vm.IsConflict); // W-275
+        var gate = holdNextLoads();
+
+        var reload = vm.ReloadCommand.ExecuteAsync(null);
+        Assert.False(reload.IsCompleted); // 読んでいる途中(変更はまだ残っている)
+        Assert.True(vm.HasChanges);
+        gate.SetResult();
+        await reload;
+
+        Assert.True(vm.IsListMode);
+        Assert.False(vm.IsConflict);
+        Assert.False(vm.HasChanges); // この画面での変更は消える
+        Assert.Equal(2, vm.Programs.Count);
+    });
+
     // ---------- 追加・編集・削除 ----------
 
     [Fact]
