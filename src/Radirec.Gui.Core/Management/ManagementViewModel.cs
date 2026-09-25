@@ -212,7 +212,7 @@ public sealed class ManagementViewModel : ObservableObject
     }
 
     // 番組ページを読み込んでから下書きを入れ、そのページへ移る(ページを出すときの読み込みは、下書きがあれば読み直さない)。
-    // 保存した後の結果の画面のままなら、一覧に戻してから入れる(#199)。
+    // 番組ページが結果の画面のまま(保存した後・保存済みの設定で適用した後)なら、一覧に戻してから入れる(#199)。
     // 下書きを作れなかった(読めない・編集の途中等)ときも移り、番組ページの状態をそのまま見せる。
     private async Task ShowDraftAsync(Func<ProgramsPageViewModel, bool> draft)
     {

@@ -80,6 +80,7 @@ public sealed class HomeAttentionTests : IDisposable
     private readonly List<LedgerEntry> _ledger = [];
     private readonly FakeControl _control = new();
     private int _computes;
+    private int _locates; // programs.json の場所を決めた回数(= 番組ページの読み込みと、「分けておく」の読み込みの回数)
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
@@ -120,7 +121,7 @@ public sealed class HomeAttentionTests : IDisposable
             File.WriteAllText(ProgramsPath, content, new UTF8Encoding(false));
         return new ManagementViewModel(
             _control, null, () => [], new NoPathActions(), _log.Add,
-            locateProgramsFile: () => ProgramsPath, now: () => new DateTime(2026, 9, 25, 12, 0, 0),
+            locateProgramsFile: () => { _locates++; return ProgramsPath; }, now: () => new DateTime(2026, 9, 25, 12, 0, 0),
             computeAttention: degraded ? null : compute ?? Compute);
     }
 
@@ -484,8 +485,11 @@ public sealed class HomeAttentionTests : IDisposable
         Assert.False(vm.Programs.IsSavedBasis); // 保存済みの設定での確認は終えた(「戻る」で設定ページへ移らない)
     }
 
+    // 入口から出口まで:「統合する」→ 番組ページに、読み直した一覧の上の下書き。この筋書きでは、ShowDraftAsync が先に呼ぶ
+    // OnShownAsync が(結果の画面でファイルが変わっていれば)読み直して一覧に戻すので、LeaveResultForDraftAsync の読み直しの
+    // 分岐は通らない。その分岐は、下の LeaveResultForDraftAsync を直接呼ぶテストで確かめる。
     [Fact]
-    public async Task Integrate_from_a_result_screen_after_the_file_changed_drafts_on_the_reread_list()
+    public async Task Integrate_end_to_end_after_the_file_changed_while_on_the_result_screen()
     {
         Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
         var vm = await Create();
@@ -519,11 +523,56 @@ public sealed class HomeAttentionTests : IDisposable
     {
         var vm = await Create();
         await SaveOnlyToResult(vm);
+        var loads = _locates;
 
         await vm.Programs.LeaveResultForDraftAsync();
 
         Assert.True(vm.Programs.IsListMode);
         Assert.Empty(vm.Programs.Programs); // 保存した一覧のまま
+        Assert.Equal(loads, _locates); // 読み直していない
+    }
+
+    // 保存済みの設定での確認(#164)から「適用」した結果の画面(programs.json を書かない)。
+    private static async Task SavedApplyToResult(ManagementViewModel vm)
+    {
+        await vm.Programs.LoadAsync();
+        var start = await vm.Programs.ConfirmSavedAsync(ManagementPage.Settings);
+        Assert.True(start.ShowsConfirm);
+        await vm.Programs.ApplySavedCommand.ExecuteAsync(null);
+        Assert.True(vm.Programs.IsResultMode);
+        Assert.True(vm.Programs.IsSavedBasis);
+    }
+
+    [Fact]
+    public async Task Leaving_the_saved_apply_result_for_a_draft_rereads_when_the_file_changed()
+    {
+        var vm = await Create();
+        await SavedApplyToResult(vm);
+        File.WriteAllText(ProgramsPath, Sample.Replace("パンサー向井のふらっと\" }", "パンサー向井のふらっと(新)\" }"));
+        var loads = _locates;
+        var page = vm.CurrentPage;
+
+        await vm.Programs.LeaveResultForDraftAsync();
+
+        Assert.True(vm.Programs.IsListMode);
+        Assert.False(vm.Programs.IsSavedBasis); // 確認を終えた
+        Assert.Equal(page, vm.CurrentPage); // 来たページ(設定)へは移らない
+        Assert.Equal(loads + 1, _locates); // 読み直した
+        Assert.Equal("パンサー向井のふらっと(新)", Assert.Single(vm.Programs.Programs).Album);
+    }
+
+    [Fact]
+    public async Task Leaving_the_saved_apply_result_for_a_draft_keeps_the_list_when_the_file_is_unchanged()
+    {
+        var vm = await Create();
+        await SavedApplyToResult(vm);
+        var loads = _locates;
+
+        await vm.Programs.LeaveResultForDraftAsync();
+
+        Assert.True(vm.Programs.IsListMode);
+        Assert.False(vm.Programs.IsSavedBasis);
+        Assert.Equal(loads, _locates); // 読み直していない
     }
 
     [Fact]
