@@ -90,6 +90,9 @@ internal sealed class ManagementWindowHost
                     _window = null;
             };
             _window = window;
+            // WinForms のループ(Application.Run)の上でモードレスに開く WPF ウィンドウには WM_CHAR が届かず、
+            // 半角英数字を入力できない(IME の確定入力だけが入る)。キーボードのメッセージを WPF へ回す(#169)。
+            System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(window);
             window.Show();
             window.Activate();
         }
