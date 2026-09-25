@@ -1,10 +1,8 @@
 using System.ComponentModel;
 using System.Drawing;
-using System.IO;
 using System.Windows.Forms;
 using Radirec.Gui.Core;
 using Radirec.Gui.Core.Updates;
-using Radirec.Hosting;
 using Radirec.Hosting.Control;
 
 namespace Radirec.Gui;
@@ -15,15 +13,12 @@ namespace Radirec.Gui;
 /// status はメニューを開いた瞬間(<see cref="ToolStripDropDown.Opening"/>)にスナップショットを読んで表示を
 /// 更新する。取り込みワーカー未起動(設定未読込 = <see cref="IServiceControl"/> が null)のときは
 /// 「今すぐ再スキャン」をグレーアウトし「取り込み停止中」を表示する縮退にする。
-/// 設定リロードと統合設定の再適用はトレイから外した(#154)。設定リロードは管理画面の設定ページ(#152)の「再読み込み」、
-/// 再適用は番組ページの「保存して適用」が引き継ぐ(再適用の確認ダイアログから programs.json に追記する流れ〈#144〉も
-/// 一緒に退役した。要対応〈#155〉が引き継ぐ)。
-/// 「設定ファイルを開く」(#143)は制御の項目ではなく、取り込みの状態(停止中)に依らず常に選べる
-/// (停止の原因の設定を直してから再起動・リロードするために要る。開くだけでワーカーには触れない)。その下の
-/// programs.json / stations.json だけは、場所が決まらないとき(設定を読み込めていない、または radirec.json の
-/// ProgramsFile / StationsFile が空でそのファイルを使わない)にグレーアウトし、理由をツールチップに出す。
+/// 項目は requirements §10.3 の「トレイに残すもの」だけ:版 / Radirec を開く / 今すぐ再スキャン / 状態・最終スキャン /
+/// 更新を適用して再起動(保留中のみ)/ 再読み込みして再起動(縮退時のみ)/ 終了。ほかは管理画面へ移した:
+/// 取込履歴(#151)、設定リロードと設定ファイルを開く(設定ページ。#152)、統合設定の再適用(番組ページの「保存して適用」。
+/// #154。再適用の確認ダイアログから programs.json に追記する流れ〈#144〉も一緒に退役した。要対応〈#155〉が引き継ぐ)、
+/// 今すぐ更新を確認(バージョン情報ページ。#157)。
 /// 「Radirec を開く」(#151)は管理画面を開く既定の項目(太字。アイコンのダブルクリックでも開く)で、縮退時も選べる。
-/// 取込履歴は管理画面の取込履歴ページへ移ったので、トレイには置かない。
 /// </summary>
 internal sealed class ControlTrayMenu
 {
@@ -32,10 +27,7 @@ internal sealed class ControlTrayMenu
     private readonly string? _degradedReason;
     private readonly UpdateService? _update;
     private readonly Func<Task>? _drainWorker; // 更新適用前にワーカーを graceful 停止(S6 レビュー #0)
-    private readonly string? _configPath;           // 読み込んだ(読もうとした)radirec.json。null なら「設定ファイルを開く」を出さない
-    private readonly RadirecConfig? _startupConfig; // 起動時に読めた設定。ワーカーが無いときの開く場所の出どころ(#143)
     private readonly ToolStripMenuItem _rescan;
-    private readonly ToolStripMenuItem? _openConfig; // 「設定ファイルを開く」のサブメニュー(#143)
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
     private readonly ToolStripMenuItem? _applyUpdate; // 更新保留時のみ表示(S6)
@@ -46,31 +38,17 @@ internal sealed class ControlTrayMenu
     /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
     /// <param name="update">自己更新サービス(S6)。null / 未インストール(dev)なら更新項目を出さない。</param>
     /// <param name="drainWorker">更新適用直前にワーカーを graceful 停止するコールバック(S6)。</param>
-    /// <param name="configPath">radirec.json の絶対パス(#143)。読めなかったときも渡す(直すために開く)。</param>
-    /// <param name="startupConfig">起動時に読めた設定(#143)。読めなかったときは null。</param>
     public ControlTrayMenu(
         NotifyIcon tray, Action openManagement, IServiceControl? control, string? degradedReason = null,
-        UpdateService? update = null, Func<Task>? drainWorker = null,
-        string? configPath = null, RadirecConfig? startupConfig = null)
+        UpdateService? update = null, Func<Task>? drainWorker = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
         _update = update?.IsInstalled == true ? update : null; // dev/portable では更新 UI を出さない
         _drainWorker = drainWorker;
-        _configPath = configPath;
-        _startupConfig = startupConfig;
 
         _rescan = new ToolStripMenuItem("今すぐ再スキャン", image: null, OnRescan);
-
-        // 設定ファイルを開く(#143)。項目の有効/無効とツールチップ(開く場所)は Opening で更新する(RefreshConfigFileItems)。
-        if (_configPath is not null)
-        {
-            _openConfig = new ToolStripMenuItem("設定ファイルを開く");
-            _openConfig.DropDown.ShowItemToolTips = true; // 開く場所(フルパス)をツールチップで見せる
-            foreach (var (file, label) in ConfigFileLabels)
-                _openConfig.DropDownItems.Add(new ToolStripMenuItem(label, image: null, OnOpenConfig) { Tag = file });
-        }
 
         // 状態表示は非活性のラベル項目(クリック不可)。Opening で内容を差し替える。
         _statusLine = new ToolStripMenuItem("状態: 未確認") { Enabled = false };
@@ -93,8 +71,6 @@ internal sealed class ControlTrayMenu
         Menu.Items.Add(new ToolStripSeparator());
         Menu.Items.Add(open); // モックの並び(W-601 / 区切り / W-602 / W-603)
         Menu.Items.Add(_rescan);
-        if (_openConfig is not null)
-            Menu.Items.Add(_openConfig);
         Menu.Items.Add(new ToolStripSeparator());
         Menu.Items.Add(_statusLine);
         Menu.Items.Add(_lastScanLine);
@@ -122,7 +98,6 @@ internal sealed class ControlTrayMenu
     private void OnOpening(object? sender, CancelEventArgs e)
     {
         RefreshUpdateItem(); // 直近のチェックで見つかった保留更新を反映(S6)
-        RefreshConfigFileItems(); // 取り込みの状態(停止中)に依らず更新する(#143)
 
         // 取り込みワーカー未起動(設定未読込 or 起動失敗)なら理由を、あれば in-process のスナップショットを
         // 直接・即時に読んで出す(W-101〜W-108。文言は管理画面のホームと共有する)。ワーカーが異常終了しても
@@ -142,73 +117,6 @@ internal sealed class ControlTrayMenu
         // 要求チャネルへ coalesce される冪等操作。即座に返る(スキャン完了は待たない)。
         _control?.RequestRescan();
         _tray.ShowBalloonTip(3000, "Radirec", "手動再スキャンを要求しました", ToolTipIcon.Info);
-    }
-
-    // 「設定ファイルを開く」の項目の並び(#143)。見出しは既定のファイル名(StationsFile 等で名前を変えていても。場所はツールチップ)。
-    private static readonly (ConfigFile File, string Label)[] ConfigFileLabels =
-    [
-        (ConfigFile.Radirec, "radirec.json"),
-        (ConfigFile.Programs, "programs.json"),
-        (ConfigFile.Stations, "stations.json"),
-    ];
-
-    // 開く場所 = 今読み込んでいる設定から計算した場所。ワーカーがあれば status(設定リロードの反映に追従する)、
-    // 無ければ起動時に読めた設定から。どちらも無い(設定を読めていない)なら radirec.json 以外は決まらず null。
-    private string? LocateConfigFile(ConfigFile file)
-    {
-        if (_configPath is null)
-            return null;
-
-        if (_control is not null)
-        {
-            var status = _control.GetStatus();
-            return ConfigPaths.Locate(file, _configPath, status.StationsFile, status.ProgramsFile);
-        }
-        return ConfigPaths.Locate(file, _configPath, _startupConfig?.StationsFile, _startupConfig?.ProgramsFile);
-    }
-
-    // 設定を読めているか(ワーカーがある = 読めた設定で動いている、または起動時に読めた)。
-    private bool ConfigLoaded => _control is not null || _startupConfig is not null;
-
-    private void RefreshConfigFileItems()
-    {
-        if (_openConfig is null)
-            return;
-
-        foreach (ToolStripItem item in _openConfig.DropDownItems)
-        {
-            if (item.Tag is not ConfigFile file)
-                continue;
-            var path = LocateConfigFile(file);
-            item.Enabled = path is not null;
-            // 場所が決まらない理由は 2 つ。設定を読めていないか、読めた設定でそのファイルを使わない(パスが空)か。
-            item.ToolTipText = path
-                ?? (ConfigLoaded
-                    ? "radirec.json でこのファイルを使わない設定になっています"
-                    : "設定を読み込めていないため、場所が分かりません");
-        }
-    }
-
-    private async void OnOpenConfig(object? sender, EventArgs e)
-    {
-        if (sender is not ToolStripItem { Tag: ConfigFile file })
-            return;
-
-        try
-        {
-            if (LocateConfigFile(file) is not { } path)
-                return; // 項目は伏せてある(設定を読み込めていない)
-
-            var result = await ConfigFileOpener.OpenAsync(file, path);
-            if (result.Message is { } message)
-                _tray.ShowBalloonTip(result.Ok ? 3000 : 4000, "Radirec", message, result.Ok ? ToolTipIcon.Info : ToolTipIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            // async void の例外はメッセージループへ抜けてトレイごと落とすので、ここで止める。
-            TrayLog.Warn($"設定ファイルを開くときに例外: {ex}");
-            _tray.ShowBalloonTip(4000, "Radirec", "設定ファイルを開けませんでした(gui.log 参照)", ToolTipIcon.Warning);
-        }
     }
 
     private async void OnApplyUpdate(object? sender, EventArgs e)

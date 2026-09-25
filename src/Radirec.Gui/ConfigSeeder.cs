@@ -7,7 +7,7 @@ namespace Radirec.Gui;
 /// <summary>
 /// 初回起動時に、データルート(<c>%LOCALAPPDATA%\RadirecData\</c>)へ設定ファイルを埋め込み sample から
 /// 生成する(既存は温存)。旧 <c>install.ps1</c> の seeding を per-user 移行(ADR-0013 / S5)でアプリへ移設。
-/// トレイの「設定ファイルを開く」(#143)も、開くファイルが無ければ同じ sample から作る(<see cref="SeedFileIfAbsent"/>)。
+/// 設定ページの「ファイルを開く」(#143 / #152)も、開くファイルが無ければ同じ sample から作る(<see cref="SeedFileIfAbsent"/>)。
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static class ConfigSeeder

@@ -76,13 +76,20 @@ public sealed record IngestReport
     /// <summary>ライブラリ更新に失敗したときのメッセージ(<see cref="LibraryRefreshStatus.Failed"/> 以外は null)。</summary>
     public string? RefreshError { get; init; }
 
-    /// <summary>取込要約シグナルを発行できたか(取込0件・dry-run・通知無効時は false)。</summary>
+    /// <summary>
+    /// 取込要約シグナルを発行できたか(取込0件・dry-run では false)。非発行走査(手動 CLI の ingest など)は何もしない
+    /// publisher に渡すので、取込があれば true になる。常駐で新規取込のトーストを止めていても、シグナルは発行する
+    /// (トーストを出さないのは提示側。#152)。
+    /// </summary>
     public bool NotificationPublished { get; init; }
 
     /// <summary>シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>
     public string? NotificationError { get; init; }
 
-    /// <summary>取込失敗シグナルを発行できたか(新規失敗0件・dry-run・通知無効時は false。ADR-0011)。</summary>
+    /// <summary>
+    /// 取込失敗シグナルを発行できたか(新規失敗0件・dry-run では false。ADR-0011)。非発行走査(手動 CLI の ingest など)は
+    /// 何もしない publisher に渡すので、新規失敗があれば true になる。新規取込のトーストの設定には左右されない(#152)。
+    /// </summary>
     public bool FailureNotificationPublished { get; init; }
 
     /// <summary>失敗シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>

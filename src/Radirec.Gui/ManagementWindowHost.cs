@@ -26,36 +26,35 @@ internal sealed class ManagementWindowHost
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
     private readonly string? _ledgerPath;
+    private readonly SettingsPageContext _settings;
     private readonly UpdateSupport _updateSupport;
     private readonly IAppUpdater? _updater;
     private readonly UpdateChecker? _updateChecker;
-    private readonly string? _configPath;
-    private readonly RadirecConfig? _startupConfig;
     private ManagementWindow? _window;
     private bool _closingAfterError;
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="degradedReason">control が null の理由(W-104 / W-105)。</param>
     /// <param name="ledgerPath">台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。</param>
+    /// <param name="settings">
+    /// 設定ページ(#152)に渡すもの。radirec.json の場所と起動時に読めた設定は、番組ページ(#154)の programs.json の場所の
+    /// 計算にも使う。
+    /// </param>
     /// <param name="updateSupport">バージョン情報ページで更新の項目を出せるか。出せないときの理由(W-510 / W-511。#157)。</param>
     /// <param name="updater">自己更新(#157)。作れなかった・Velopack で入れていない版なら null。</param>
     /// <param name="updateChecker">更新の確認(トレイの自動の確認と共有する。#157)。</param>
-    /// <param name="configPath">radirec.json の絶対パス。番組ページ(#154)の programs.json の場所の計算に使う。</param>
-    /// <param name="startupConfig">起動時に読めた設定。ワーカーが無いときの programs.json の場所の出どころ。読めなければ null。</param>
     public ManagementWindowHost(
-        NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath,
-        UpdateSupport updateSupport, IAppUpdater? updater = null, UpdateChecker? updateChecker = null,
-        string? configPath = null, RadirecConfig? startupConfig = null)
+        NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath, SettingsPageContext settings,
+        UpdateSupport updateSupport, IAppUpdater? updater = null, UpdateChecker? updateChecker = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
         _ledgerPath = ledgerPath;
+        _settings = settings;
         _updateSupport = updateSupport;
         _updater = updater;
         _updateChecker = updateChecker;
-        _configPath = configPath;
-        _startupConfig = startupConfig;
     }
 
     /// <summary>管理画面を開く。開いていれば前面に出す(最小化していれば元の大きさに戻してから)。</summary>
@@ -77,9 +76,12 @@ internal sealed class ManagementWindowHost
             var about = new AboutPageViewModel(
                 AppVersion.Of(typeof(ManagementWindowHost).Assembly), _updateSupport, _updater, _updateChecker,
                 ConfirmApplyUpdate, TrayLog.Warn);
+            var settings = new SettingsPageViewModel(
+                _control, _settings.ConfigPath, _settings.StartupConfig, _settings.ConfigError,
+                _settings.ToastSetting, new SettingsPageActions(), TrayLog.Warn);
             var viewModel = new ManagementViewModel(
                 _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn,
-                locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info, about: about);
+                locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info, about: about, settings: settings);
 
             var window = new ManagementWindow(viewModel);
             window.Closed += (_, _) =>
@@ -132,11 +134,11 @@ internal sealed class ManagementWindowHost
     // 返す値が null なら programs.json を使わない設定(ProgramsFile が空。W-212)。
     private Func<string?>? ProgramsFileLocator()
     {
-        if (_configPath is not { } configPath || (_control is null && _startupConfig is null))
+        if (_settings.ConfigPath is not { } configPath || (_control is null && _settings.StartupConfig is null))
             return null;
 
         var control = _control;
-        var startup = _startupConfig;
+        var startup = _settings.StartupConfig;
         return () =>
         {
             if (control is not null)

@@ -55,9 +55,10 @@ public static class CompositionRoot
 
         // 発行するか・どの publisher を使うかを純粋関数で決める(テスト可能)。取込失敗の de-dup ストアも
         // 発行経路でだけ実体を使う(非発行走査が失敗を記録して初回通知を潰さないため。ADR-0011)。
-        // 成功要約と失敗は同じゲートで揃える。
+        // 成功要約と失敗は同じゲートで揃える。新規取込のトーストを止める設定は、ここではなく提示側
+        // (トレイの publisher)で見る。失敗のトーストと失敗のストアはその設定に関係なく動かす(#152・ADR-0019)。
         var (summaryPub, failurePub, useFailureStore) = SelectPublishers(
-            notify, dryRun, config.NotificationsEnabled, summaryPublisher, failurePublisher);
+            notify, dryRun, summaryPublisher, failurePublisher);
         IIngestFailureStore failureStore = useFailureStore ? failureStoreFacet : new NullIngestFailureStore();
 
         // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> radirec.json の Genre > 既定。
@@ -102,19 +103,21 @@ public static class CompositionRoot
     /// <summary>
     /// シグナルの publisher と、失敗 de-dup ストアを使うかを決める純粋関数(テスト可能)。
     /// トレイ常駐移行(ADR-0012)後、シグナルが取込通知として提示される唯一の経路は呼び出し側が注入する
-    /// in-process publisher(トレイのトースト)。両 publisher が注入され、通知が有効で dry-run でないときだけ発行し、
-    /// それ以外(未注入・notify=false・dry-run・通知無効)は発行しない。
+    /// in-process publisher(トレイのトースト)。両 publisher が注入され、dry-run でないときだけ発行し、
+    /// それ以外(未注入・notify=false・dry-run)は発行しない。
+    /// 新規取込のトーストを止める設定(旧 <see cref="RadirecConfig.NotificationsEnabled"/>)はここでは見ない。止めても
+    /// 失敗のトーストは出て、失敗のストアにも記録されるように、止めるのは提示側で成功要約だけにする(#152・ADR-0019)。
     /// 片側だけの注入は、失敗を「記録するのに通知しない」ADR-0011 のサイレント抑制を招くため禁止する。
     /// </summary>
     public static (IIngestSummaryPublisher Summary, IIngestFailurePublisher Failure, bool UseFailureStore) SelectPublishers(
-        bool notify, bool dryRun, bool notificationsEnabled,
+        bool notify, bool dryRun,
         IIngestSummaryPublisher? injectedSummary, IIngestFailurePublisher? injectedFailure)
     {
         if (injectedSummary is null != (injectedFailure is null))
             throw new ArgumentException(
                 "summaryPublisher と failurePublisher は両方指定するか両方省略してください(片側のみの注入は不可)。");
 
-        if (injectedSummary is null || !notify || dryRun || !notificationsEnabled)
+        if (injectedSummary is null || !notify || dryRun)
             return (new NullIngestSummaryPublisher(), new NullIngestFailurePublisher(), false);
 
         return (injectedSummary, injectedFailure!, true);

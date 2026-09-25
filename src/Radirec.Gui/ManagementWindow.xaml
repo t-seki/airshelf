@@ -1,8 +1,8 @@
 <!--
   管理画面(requirements §10.3・#151)。ViewModel は Radirec.Gui.Core の ManagementViewModel。
   文言は docs/mockups/management-window.md に従い、各所に W-ID を書いておく(モックと突き合わせるため)。
-  設定のページは、まだ見出しだけ(#152 が足す)。ホームと取込履歴以外のページは Pages/ の UserControl に置く
-  (番組 = Pages/ProgramsPage.xaml〈#154〉、バージョン情報 = Pages/AboutPage.xaml〈#157〉)。
+  ホームと取込履歴以外のページは Pages/ の UserControl に置く
+  (番組 = Pages/ProgramsPage.xaml〈#154〉、設定 = Pages/SettingsPage.xaml〈#152〉、バージョン情報 = Pages/AboutPage.xaml〈#157〉)。
 -->
 <Window x:Class="Radirec.Gui.ManagementWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -224,10 +224,10 @@
                 <pages:ProgramsPage DataContext="{Binding Programs}" />
             </Grid>
 
-            <!-- ========== 設定(中身は #152) ========== -->
-            <StackPanel Margin="18,14" Visibility="{Binding IsSettingsPage, Converter={StaticResource Visible}}">
-                <TextBlock Style="{StaticResource PageHeading}" Text="設定" />
-            </StackPanel>
+            <!-- ========== 設定(#152)。Visibility は外側で結ぶ(ホームと同じ理由) ========== -->
+            <Grid Visibility="{Binding IsSettingsPage, Converter={StaticResource Visible}}">
+                <pages:SettingsPage DataContext="{Binding Settings}" />
+            </Grid>
             <!-- ========== バージョン情報(#157)。Visibility は外側で結ぶ(ホームと同じ理由) ========== -->
             <Grid Visibility="{Binding IsAboutPage, Converter={StaticResource Visible}}">
                 <pages:AboutPage DataContext="{Binding About}" />

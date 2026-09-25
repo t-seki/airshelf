@@ -625,7 +625,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
     <div data-if="run:noconfig" class="panel-degraded">
       <h3 style="margin-top: 0;" data-w="W-401">設定を読めません</h3>
       <p class="msg err" data-w="W-402">設定の読み込みに失敗しました: '}' is invalid after a property name. Expected a ':'. Path: $.RadioRoot | LineNumber: 2 | BytePositionInLine: 14.</p>
-      <p class="an" data-w="W-403">取り込みは止まっています。ファイルを直して保存してから「再読み込みして再起動」を押してください。</p>
+      <p data-w="W-403">取り込みは止まっています。ファイルを直して保存してから「再読み込みして再起動」を押してください。</p>
       <p class="sub">C:\Users\me\AppData\Local\RadirecData\radirec.json</p>
       <div class="row">
         <button class="btn" data-w="W-404">ファイルを開く</button>
@@ -644,13 +644,15 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
     <div data-if="run:watching,polling,noscan,crashed,startfail">
       <div data-if="set:normal,opened,reloadconfirm,reloaded,nostations">
         <div class="card">
-          <h3 style="margin-top: 0;" class="an" data-w="W-301">取り込みの知らせ</h3>
+          <h3 style="margin-top: 0;" data-w="W-301">取り込みの知らせ</h3>
           <label><input type="checkbox" checked> <span data-w="W-302">新規取込のトーストを出す</span></label>
           <div class="sub" style="margin-left: 22px;" data-w="W-303">取込失敗のトーストは、この設定に関係なく出ます。</div>
+          <div class="mocknote">切り替えはすぐ効き、gui-settings.json に保存する(ADR-0019)。保存できなかったときはチェックを戻して
+            <span class="an" data-w="W-314">設定を保存できませんでした(gui.log 参照)</span>。</div>
         </div>
 
-        <h3 class="an" data-w="W-304">設定ファイル</h3>
-        <p class="sub an" data-w="W-304">読み取り専用です。直すときは「ファイルを開く」でエディタで開き、保存してから「再読み込み」を押してください。ファイルを保存しただけでは反映しません。</p>
+        <h3 data-w="W-304">設定ファイル</h3>
+        <p class="sub" data-w="W-304">読み取り専用です。直すときは「ファイルを開く」でエディタで開き、保存してから「再読み込み」を押してください。ファイルを保存しただけでは反映しません。</p>
 
         <div class="card readonly">
           <div class="row" style="justify-content: space-between;">
@@ -667,10 +669,10 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
   "StationsFile": "stations.json",
   "ProgramsFile": "programs.json",
   "JellyfinUrl": "http://nas:8096",
-  "JellyfinApiKey": <span class="an" data-w="W-306">(設定済み・表示しません)</span>,
+  "JellyfinApiKey": <span data-w="W-306">(設定済み・表示しません)</span>,
   "ScanIntervalSeconds": 120,
   "UpdatePrerelease": false,
-  "UpdateToken": <span class="an" data-w="W-306">(設定済み・表示しません)</span>
+  "UpdateToken": <span data-w="W-306">(設定済み・表示しません)</span>
   …
 }</pre>
           <div class="msg info" data-if="set:reloaded" data-w="W-310">設定リロードを受理しました(反映は取込完了後)</div>
@@ -701,7 +703,13 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
           <div class="mocknote" data-if="set:opened">ほかに <span data-w="W-308">stations.json が無く、見本から作れませんでした(gui.log 参照)</span>。
             開けたときは何も出さない(エディタが開くので分かる)。</div>
         </div>
-        <p class="sub an" data-if="pf:used" data-w="W-313">programs.json は「番組」ページで編集します</p>
+        <p class="sub" data-if="pf:used" data-w="W-313">programs.json は「番組」ページで編集します</p>
+        <div class="mocknote">中身を読めなかったときは中身の代わりに
+          <span class="an" data-w="W-315">stations.json を読めませんでした(gui.log 参照)</span>、まだ無いときは
+          <span class="an" data-w="W-317">stations.json はまだありません(「ファイルを開く」で見本から作ります)</span>。
+          取り込みが止まっているときは radirec.json の「再読み込み」を押せず、横に
+          <span class="an" data-w="W-316">取り込みが止まっているため、再読み込みできません</span>。
+          stations.json の「再読み込み」(下の確認へ進む流れ)は #164 で足す。</div>
         <p class="sub" data-if="pf:unused" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
       </div>
 
@@ -723,7 +731,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
           <button class="btn" data-go="set:normal" data-w="W-312" style="outline: 2px solid var(--accent);">戻る</button>
         </div>
         <div class="mocknote">W-253 の「今の programs.json の設定で」は、stations.json を直したときには少しずれる。旧トレイ(#154 で退役)の文言のまま残すか、
-          ここだけ言い換えるかは #154 で決める。</div>
+          ここだけ言い換えるかは #164 で決める。</div>
       </div>
     </div>
 

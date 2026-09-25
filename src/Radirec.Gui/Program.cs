@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Radirec.Core.Ingestion;
 using Radirec.Gui.Core;
+using Radirec.Gui.Core.Management;
 using Radirec.Gui.Core.Updates;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
@@ -67,8 +68,10 @@ internal static class Program
         IServiceControl? control = null;
         string? degradedReason = null; // control==null の理由(縮退メニュー表示用)。
         string? ledgerPath = null;     // 管理画面の取込履歴(S4 / #151)。設定が読めていれば worker 起動可否に依らず参照可。
-        string? configPath = null;          // 設定ファイルを開く(#143)。読めなかったときも開ける(直すため)。
+        string? configPath = null;          // 設定ページで開く(#143 / #152)。読めなかったときも開ける(直すため)。
         RadirecConfig? startupConfig = null; // 同上。ワーカーが無いときの programs/stations の場所の出どころ。
+        string? configError = null;          // radirec.json を読めなかった理由(設定ページの縮退パネル W-402。#152)。
+        var toastSetting = IngestToastSetting.Fixed(true); // 新規取込のトースト(#152)。下で設定ファイルから読む。
         UpdateService? updateService = null;       // 自己更新(S6)。設定が読めたときだけ。
         UpdateChecker? updateChecker = null;       // 更新の確認。トレイの自動の確認と管理画面で共有する(#157)。
         UpdateCoordinator? updateCoordinator = null;
@@ -85,7 +88,15 @@ internal static class Program
             ConfigSeeder.SeedIfAbsent(ConfigPaths.DataRoot);
 
             configPath = ConfigPaths.Resolve(null);
-            if (ConfigLoading.TryLoad(configPath, out var config, out var error))
+            var loaded = ConfigLoading.TryLoad(configPath, out var config, out var error);
+            // 新規取込のトーストを出すか(#152・ADR-0019)。管理画面用の設定ファイル(radirec.json と同じフォルダ)に持ち、
+            // まだ値が無ければ radirec.json の旧設定 NotificationsEnabled を初期値にする。読めない・書けないときも起動は続ける。
+            var guiSettingsPath = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(configPath)) ?? ConfigPaths.DataRoot,
+                GuiSettingsStore.FileName);
+            toastSetting = IngestToastSetting.Load(
+                new GuiSettingsStore(guiSettingsPath, TrayLog.Warn), loaded ? config!.NotificationsEnabled : null, TrayLog.Warn);
+            if (loaded)
             {
                 startupConfig = config;
                 // 設定が読めた時点で台帳パスは判る。worker の起動可否に依らず取込履歴は参照できる。
@@ -103,7 +114,7 @@ internal static class Program
                 }
                 try
                 {
-                    host = BuildHost(config!, configPath);
+                    host = BuildHost(config!, configPath, toastSetting);
                     // ワーカーを解決(ctor = 台帳オープン。ローカルディスクで速い)。ここで throw すれば縮退。
                     control = host.Services.GetRequiredService<RadioMonitorWorker>();
                     // ★ host の起動は UI スレッドで走らせない。BackgroundService の同期プレフィックス
@@ -128,6 +139,7 @@ internal static class Program
             else
             {
                 TrayLog.Warn($"設定の読み込みに失敗しました({error})。取り込みは起動せずトレイのみ表示します");
+                configError = error;
                 degradedReason = ServiceStatusText.DegradedConfigUnreadable; // W-105
             }
 
@@ -169,20 +181,19 @@ internal static class Program
 
             // 管理画面(#151)。トレイの「Radirec を開く」とアイコンのダブルクリックで開く。縮退時も開ける。
             // バージョン情報ページ(#157)は、更新の確認が作れたとき(Velopack で入れた版)だけ更新の項目を出す。
-            // 番組ページ(#154)は、radirec.json の場所と起動時に読めた設定から programs.json の場所を求める。
+            // 番組ページ(#154)は、設定ページと同じ radirec.json の場所と起動時に読めた設定から programs.json の場所を求める。
             var windowHost = new ManagementWindowHost(
                 trayIcon, control, degradedReason, ledgerPath,
+                new SettingsPageContext(configPath, startupConfig, configError, toastSetting),
                 DecideUpdateSupport(updateService, configLoaded: startupConfig is not null),
-                updateChecker is null ? null : updateService, updateChecker,
-                configPath, startupConfig);
+                updateChecker is null ? null : updateService, updateChecker);
             managementHost = windowHost;
             trayIcon.DoubleClick += (_, _) => windowHost.Show();
 
-            // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
+            // 制御(rescan/status)を in-process でトレイメニューに載せる(ADR-0012。reload と再適用は管理画面。#152 / #154)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
             trayIcon.ContextMenuStrip = new ControlTrayMenu(
-                trayIcon, windowHost.Show, control, degradedReason, updateService, drainWorker,
-                configPath, startupConfig).Menu;
+                trayIcon, windowHost.Show, control, degradedReason, updateService, drainWorker).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
         }
@@ -234,7 +245,7 @@ internal static class Program
     }
 
     /// <summary>取り込みワーカー + in-process トースト publisher + ファイルログを載せた汎用ホストを組む。</summary>
-    private static IHost BuildHost(RadirecConfig config, string configPath)
+    private static IHost BuildHost(RadirecConfig config, string configPath, IngestToastSetting toastSetting)
     {
         var builder = Host.CreateApplicationBuilder();
 
@@ -242,9 +253,11 @@ internal static class Program
         builder.Services.AddSingleton(new ServiceRuntimeOptions(configPath));
 
         // 取込通知は EventLog を経ず in-process のトーストで発行する(ADR-0012)。成功要約・失敗の
-        // 両インタフェースを同一インスタンスで満たし、ワーカーへ両方注入する。
+        // 両インタフェースを同一インスタンスで満たし、ワーカーへ両方注入する。新規取込(成功要約)のトーストだけは
+        // 設定ページで止められる(#152)。失敗のトーストはこの設定を通さないので常に出る。
         var toastPublisher = new ToastNotificationPublisher(new ToastPresenter());
-        builder.Services.AddSingleton<IIngestSummaryPublisher>(toastPublisher);
+        builder.Services.AddSingleton<IIngestSummaryPublisher>(
+            new GatedIngestSummaryPublisher(toastPublisher, () => toastSetting.Enabled));
         builder.Services.AddSingleton<IIngestFailurePublisher>(toastPublisher);
 
         // worker は取込ワーカー兼 in-process 制御の IServiceControl。同一インスタンスを

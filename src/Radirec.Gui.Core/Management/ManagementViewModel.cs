@@ -16,7 +16,7 @@ public enum ManagementPage
 
 /// <summary>
 /// 管理画面(requirements §10.3・#151)の ViewModel。5 ページの枠と、いま出しているページを持つ。
-/// 設定のページは、まだ中身が無い(#152 が足す)。
+/// 各ページの ViewModel:ホームと取込履歴は #151、番組ページは #154、設定ページは #152、バージョン情報ページは #157。
 /// <para>
 /// 管理画面を開くたびに作り直す(開いた時点の状態・取込履歴から始める)。閉じても常駐は続く。
 /// </para>
@@ -47,6 +47,7 @@ public sealed class ManagementViewModel : ObservableObject
     /// <param name="logInfo">gui.log への記録(保存したこと等)。</param>
     /// <param name="now">番組ページの保存でバックアップの名前に使う時刻(テスト用)。</param>
     /// <param name="about">バージョン情報ページ(#157)。省略すると、このアセンブリの版で、更新の項目の無いページ(W-510)にする。</param>
+    /// <param name="settings">設定ページ(#152)。null なら見出しだけ。</param>
     public ManagementViewModel(
         IServiceControl? control,
         string? degradedReason,
@@ -57,7 +58,8 @@ public sealed class ManagementViewModel : ObservableObject
         Func<string?>? locateProgramsFile = null,
         Action<string>? logInfo = null,
         Func<DateTime>? now = null,
-        AboutPageViewModel? about = null)
+        AboutPageViewModel? about = null,
+        SettingsPageViewModel? settings = null)
     {
         _logWarn = logWarn;
         var applyGate = new ProgramsApplyGate();
@@ -68,6 +70,7 @@ public sealed class ManagementViewModel : ObservableObject
         About = about ?? new AboutPageViewModel(
             AppVersion.Of(typeof(ManagementViewModel).Assembly), UpdateSupport.NotInstalled,
             updater: null, checker: null, _ => false, logWarn);
+        Settings = settings;
     }
 
     public HomeViewModel Home { get; }
@@ -76,6 +79,9 @@ public sealed class ManagementViewModel : ObservableObject
 
     /// <summary>番組ページ(#154)。</summary>
     public ProgramsPageViewModel Programs { get; }
+
+    /// <summary>設定ページ(#152)。</summary>
+    public SettingsPageViewModel? Settings { get; }
 
     public AboutPageViewModel About { get; }
 
@@ -95,6 +101,9 @@ public sealed class ManagementViewModel : ObservableObject
             OnPropertyChanged(nameof(IsAboutPage));
             if (value == ManagementPage.Programs)
                 _ = ShowProgramsAsync();
+            // 設定ページは開くたびにファイルの中身と開く場所を読み直す(読み込みの失敗は中で握る)。
+            if (value == ManagementPage.Settings && Settings is { } settings)
+                _ = settings.RefreshAsync();
         }
     }
 

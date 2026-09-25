@@ -64,7 +64,7 @@ public class ConfigPathsTests
     }
 
     /// <summary>
-    /// トレイの「設定ファイルを開く」(#143)が開く場所。実際の読み込み(<see cref="ConfigLoading.TryLoad"/> の rebase)を
+    /// 設定ページの「ファイルを開く」(#143 / #152)が開く場所。実際の読み込み(<see cref="ConfigLoading.TryLoad"/> の rebase)を
     /// 通した設定から求め、相対は radirec.json のディレクトリ基準・絶対は素通りになることを確かめる。
     /// </summary>
     [Fact]
