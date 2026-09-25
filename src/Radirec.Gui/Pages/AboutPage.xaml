@@ -1,0 +1,59 @@
+<!--
+  管理画面のバージョン情報ページ(#157)。DataContext は Radirec.Gui.Core の AboutPageViewModel(ManagementWindow.xaml が渡す)。
+  文言は docs/mockups/management-window.md の「バージョン情報」に従い、各所に W-ID を書いておく。
+  見出しなどのスタイルは ManagementWindow.xaml の Window.Resources にあるので DynamicResource で引く
+  (UserControl の中身は InitializeComponent の時点ではまだ Window の下に無く、StaticResource では見つからない)。
+-->
+<UserControl x:Class="Radirec.Gui.Pages.AboutPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:u="clr-namespace:Radirec.Gui.Core.Updates;assembly=Radirec.Gui.Core">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="Visible" />
+    </UserControl.Resources>
+
+    <StackPanel Margin="18,14">
+        <TextBlock Style="{DynamicResource PageHeading}" Text="バージョン情報" />
+
+        <Border Padding="14,10" CornerRadius="4" BorderThickness="1"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+            <StackPanel>
+                <!-- W-501 -->
+                <TextBlock Text="{Binding VersionText}" FontSize="16" Margin="0,0,0,10" />
+
+                <!-- W-502 / W-507(保留中だけ)。Velopack で入れた版だけ -->
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding CanUpdate, Converter={StaticResource Visible}}">
+                    <Button Content="{x:Static u:UpdateTexts.CheckButton}" Padding="14,5"
+                            Command="{Binding CheckCommand}" />
+                    <Button Content="{Binding ApplyButtonText}" Padding="14,5" Margin="10,0,0,0"
+                            Command="{Binding ApplyCommand}"
+                            Visibility="{Binding HasPending, Converter={StaticResource Visible}}" />
+                </StackPanel>
+
+                <!-- W-510(Velopack で入れていない版 = 開発版・portable) -->
+                <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap"
+                           Text="{x:Static u:UpdateTexts.NotUpdatable}"
+                           Visibility="{Binding IsNotInstalled, Converter={StaticResource Visible}}" />
+                <!-- W-511(Velopack で入れた版で、設定を読めない) -->
+                <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap"
+                           Text="{x:Static u:UpdateTexts.ConfigUnreadable}"
+                           Visibility="{Binding IsConfigUnreadable, Converter={StaticResource Visible}}" />
+
+                <!-- W-503〜W-506 / W-509。結果はバルーンではなくここに出す -->
+                <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Text="{Binding Message}"
+                           Visibility="{Binding HasMessage, Converter={StaticResource Visible}}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding MessageIsWarning}" Value="True">
+                                    <Setter Property="Foreground" Value="Firebrick" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

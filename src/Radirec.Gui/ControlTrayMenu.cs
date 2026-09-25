@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows.Forms;
 using Radirec.Core.Reapply;
 using Radirec.Gui.Core;
+using Radirec.Gui.Core.Updates;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
 
@@ -27,7 +28,6 @@ internal sealed class ControlTrayMenu
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
     private readonly UpdateService? _update;
-    private readonly UpdateCoordinator? _updateCoordinator;
     private readonly Func<Task>? _drainWorker; // 更新適用前にワーカーを graceful 停止(S6 レビュー #0)
     private readonly string? _configPath;           // 読み込んだ(読もうとした)radirec.json。programs.json の場所の計算に使う(#144)
     private readonly RadirecConfig? _startupConfig; // 起動時に読めた設定。ワーカーが無いときの場所の出どころ(#143)
@@ -37,26 +37,25 @@ internal sealed class ControlTrayMenu
     private readonly ToolStripMenuItem _statusLine;
     private readonly ToolStripMenuItem _lastScanLine;
     private readonly ToolStripMenuItem? _applyUpdate; // 更新保留時のみ表示(S6)
+    private readonly ToolStripSeparator? _updateSeparator; // _applyUpdate の上の区切り線。同じく保留時のみ(#157)
     private bool _reapplyBusy; // 再適用の確認〜完了表示の間は制御の項目を伏せる(UI スレッドだけが読み書きする)
 
     /// <param name="openManagement">管理画面を開く(#151)。「Radirec を開く」で呼ぶ。</param>
     /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
     /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
     /// <param name="update">自己更新サービス(S6)。null / 未インストール(dev)なら更新項目を出さない。</param>
-    /// <param name="updateCoordinator">手動チェック用(S6)。</param>
     /// <param name="drainWorker">更新適用直前にワーカーを graceful 停止するコールバック(S6)。</param>
     /// <param name="configPath">radirec.json の絶対パス(#143)。再適用の確認から programs.json に追記するときの場所の計算に使う。</param>
     /// <param name="startupConfig">起動時に読めた設定(#143)。読めなかったときは null。</param>
     public ControlTrayMenu(
         NotifyIcon tray, Action openManagement, IServiceControl? control, string? degradedReason = null,
-        UpdateService? update = null, UpdateCoordinator? updateCoordinator = null, Func<Task>? drainWorker = null,
+        UpdateService? update = null, Func<Task>? drainWorker = null,
         string? configPath = null, RadirecConfig? startupConfig = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
         _update = update?.IsInstalled == true ? update : null; // dev/portable では更新 UI を出さない
-        _updateCoordinator = updateCoordinator;
         _drainWorker = drainWorker;
         _configPath = configPath;
         _startupConfig = startupConfig;
@@ -92,11 +91,12 @@ internal sealed class ControlTrayMenu
         Menu.Items.Add(new ToolStripSeparator());
         Menu.Items.Add(_statusLine);
         Menu.Items.Add(_lastScanLine);
-        // 更新(S6 / #68)。Velopack インストール時のみ。適用項目は保留中だけ表示する。
+        // 更新(S6 / #68)。Velopack インストール時のみ。適用項目(W-605)は保留中だけ、上の区切り線ごと表示する。
+        // 「今すぐ更新を確認」は管理画面のバージョン情報ページへ移した(#157)。
         if (_update is not null)
         {
-            Menu.Items.Add(new ToolStripSeparator());
-            Menu.Items.Add("今すぐ更新を確認", image: null, OnCheckUpdate);
+            _updateSeparator = new ToolStripSeparator { Visible = false };
+            Menu.Items.Add(_updateSeparator);
             _applyUpdate = new ToolStripMenuItem("更新を適用して再起動", image: null, OnApplyUpdate) { Visible = false };
             Menu.Items.Add(_applyUpdate);
         }
@@ -435,14 +435,6 @@ internal sealed class ControlTrayMenu
         return ConfigPaths.Locate(file, _configPath, _startupConfig?.StationsFile, _startupConfig?.ProgramsFile);
     }
 
-    private async void OnCheckUpdate(object? sender, EventArgs e)
-    {
-        if (_updateCoordinator is null)
-            return;
-        await _updateCoordinator.CheckAndNotifyAsync(manual: true); // 結果はバルーンで返る
-        RefreshUpdateItem();
-    }
-
     private async void OnApplyUpdate(object? sender, EventArgs e)
     {
         if (_update is null)
@@ -453,17 +445,18 @@ internal sealed class ControlTrayMenu
         var version = _update.PendingVersion;
         if (version is null)
         {
-            _tray.ShowBalloonTip(3000, "Radirec", "適用できる更新はありません(最新か、取り下げられました)。", ToolTipIcon.Info);
+            _tray.ShowBalloonTip(3000, "Radirec", UpdateTexts.NothingToApply, ToolTipIcon.Info); // W-509
             RefreshUpdateItem();
             return;
         }
 
+        // W-508。既定はキャンセル側(再起動を Enter の押し間違いで始めない。管理画面の確認と揃える。#157 の設計の決定 3)。
         var confirm = MessageBox.Show(
-            $"更新 v{version} を適用してアプリを再起動します。取り込み中の走査は完了を待ってから安全に再起動します。よろしいですか?",
-            "更新の適用",
+            UpdateTexts.ApplyConfirm(version),
+            UpdateTexts.ApplyConfirmCaption,
             MessageBoxButtons.OKCancel,
             MessageBoxIcon.Question,
-            MessageBoxDefaultButton.Button1);
+            MessageBoxDefaultButton.Button2);
         if (confirm != DialogResult.OK)
             return;
 
@@ -475,25 +468,21 @@ internal sealed class ControlTrayMenu
         catch (Exception ex)
         {
             TrayLog.Warn($"更新の適用に失敗しました: {ex}");
-            _tray.ShowBalloonTip(4000, "Radirec", "更新の適用に失敗しました(gui.log 参照)。", ToolTipIcon.Warning);
+            _tray.ShowBalloonTip(4000, "Radirec", UpdateTexts.ApplyFailed, ToolTipIcon.Warning); // W-509
         }
     }
 
-    // 保留中の更新があれば「更新 vX を適用…」項目を出す。無ければ隠す。Opening と手動チェック後に呼ぶ。
+    // 保留中の更新があれば「更新 vX を適用…」項目(W-605)を上の区切り線ごと出す。無ければ隠す。Opening で呼ぶ。
     private void RefreshUpdateItem()
     {
         if (_applyUpdate is null || _update is null)
             return;
 
         var version = _update.PendingVersion;
-        if (version is null)
-        {
-            _applyUpdate.Visible = false;
-        }
-        else
-        {
-            _applyUpdate.Text = $"更新 v{version} を適用して再起動";
-            _applyUpdate.Visible = true;
-        }
+        if (version is not null)
+            _applyUpdate.Text = UpdateTexts.ApplyButton(version);
+        _applyUpdate.Visible = version is not null;
+        if (_updateSeparator is not null)
+            _updateSeparator.Visible = version is not null;
     }
 }

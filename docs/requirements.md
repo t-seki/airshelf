@@ -569,7 +569,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - Jellyfin 連携: REST API(`HttpClient`)。
 - 設定: JSON/YAML(`appsettings.json` + 個別 config)。
 - 配布: **Velopack の per-user インストーラ(Setup.exe)+ アプリ内自己更新**([ADR-0013](adr/0013-velopack-per-user-updates.md))。
-  非 admin で入り、GitHub Releases をフィードにトレイから更新する。GUI 枠組みは **WPF に確定**(ADR-0009)。
+  非 admin で入り、GitHub Releases をフィードに管理画面(バージョン情報)とトレイから更新する。GUI 枠組みは **WPF に確定**(ADR-0009)。
 - **開発/実行環境**:
   - **開発・ビルド・実行は Windows**(.NET SDK / Visual Studio or `dotnet` CLI)。リポジトリは
     Windows 側(例 `C:\dev\radirec-tool`)に置く。WSL からは `/mnt/c/...` で編集可能。

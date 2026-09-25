@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Radirec.Gui.Core.Updates;
 using Radirec.Hosting.Control;
 
 namespace Radirec.Gui.Core.Management;
@@ -15,7 +16,7 @@ public enum ManagementPage
 
 /// <summary>
 /// 管理画面(requirements §10.3・#151)の ViewModel。5 ページの枠と、いま出しているページを持つ。
-/// 番組 / バージョン情報のページは、まだ中身が無い(#154 / #157 が足す)。設定ページは #152。
+/// 番組のページは、まだ中身が無い(#154 が足す)。設定ページは #152、バージョン情報ページは #157。
 /// <para>
 /// 管理画面を開くたびに作り直す(開いた時点の状態・取込履歴から始める)。閉じても常駐は続く。
 /// </para>
@@ -38,6 +39,7 @@ public sealed class ManagementViewModel : ObservableObject
     /// <param name="pathActions">取込履歴の行をエクスプローラーで開く / コピーする。</param>
     /// <param name="logWarn">gui.log への記録。</param>
     /// <param name="zone">時刻を表示する時間帯(既定はローカル。テスト用)。</param>
+    /// <param name="about">バージョン情報ページ(#157)。省略すると、このアセンブリの版で、更新の項目の無いページ(W-510)にする。</param>
     /// <param name="settings">設定ページ(#152)。null なら見出しだけ。</param>
     public ManagementViewModel(
         IServiceControl? control,
@@ -46,19 +48,26 @@ public sealed class ManagementViewModel : ObservableObject
         IHistoryPathActions pathActions,
         Action<string> logWarn,
         TimeZoneInfo? zone = null,
+        AboutPageViewModel? about = null,
         SettingsPageViewModel? settings = null)
     {
         Home = new HomeViewModel(control, degradedReason, loadHistory, logWarn,
             showAll: () => CurrentPage = ManagementPage.History, zone);
         History = new IngestHistoryViewModel(loadHistory, pathActions, logWarn);
+        About = about ?? new AboutPageViewModel(
+            AppVersion.Of(typeof(ManagementViewModel).Assembly), UpdateSupport.NotInstalled,
+            updater: null, checker: null, _ => false, logWarn);
         Settings = settings;
     }
 
     public HomeViewModel Home { get; }
 
     public IngestHistoryViewModel History { get; }
+
     /// <summary>設定ページ(#152)。</summary>
     public SettingsPageViewModel? Settings { get; }
+
+    public AboutPageViewModel About { get; }
 
     /// <summary>いま出しているページ。</summary>
     public ManagementPage CurrentPage
@@ -101,7 +110,11 @@ public sealed class ManagementViewModel : ObservableObject
 
     /// <summary>
     /// 管理画面が開いている間、シェルのタイマーが 2 秒ごとに呼ぶ。ホームの状態を読み直す(取込履歴ページの全件は
-    /// 「更新」でだけ読み直すので、ここでは触らない)。
+    /// 「更新」でだけ読み直すので、ここでは触らない)。バージョン情報ページは保留中の更新を読み直す(#157)。
     /// </summary>
-    public void Tick() => Home.Refresh();
+    public void Tick()
+    {
+        Home.Refresh();
+        About.Refresh();
+    }
 }

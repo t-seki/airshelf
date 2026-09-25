@@ -1,14 +1,16 @@
 using System.Runtime.Versioning;
 using System.Windows.Forms;
+using Radirec.Gui.Core.Updates;
 // UI スレッドのメッセージループで発火する WinForms タイマーを使う(コールバックからトレイを直接触れる)。
 using Timer = System.Windows.Forms.Timer;
 
 namespace Radirec.Gui;
 
 /// <summary>
-/// 更新チェックの自動スケジュール(S6 / #68)。**起動 10 秒後 + 以降 24h ごと**に <see cref="UpdateService"/> で
-/// 照会し、初めて更新を見つけたときだけバルーンで知らせる(適用はトレイメニューから)。UI スレッドの
-/// WinForms タイマーを使うので、コールバック内でトレイ操作を直接呼べる。
+/// 更新チェックの自動スケジュール(S6 / #68)。**起動 10 秒後 + 以降 24h ごと**に <see cref="UpdateChecker"/> で
+/// 照会し、初めて更新を見つけたときだけバルーンで知らせる(W-609。適用は管理画面のバージョン情報ページかトレイから)。
+/// 手動の確認は管理画面のバージョン情報ページが同じ <see cref="UpdateChecker"/> で行う(#157。重なりの判定を共有する)。
+/// UI スレッドの WinForms タイマーを使うので、コールバック内でトレイ操作を直接呼べる。
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal sealed class UpdateCoordinator : IDisposable
@@ -16,15 +18,13 @@ internal sealed class UpdateCoordinator : IDisposable
     private const int InitialDelayMs = 10_000;
     private const int PeriodicMs = 24 * 60 * 60 * 1000; // 24h(int に収まる)
 
-    private readonly UpdateService _update;
+    private readonly UpdateChecker _checker;
     private readonly NotifyIcon _tray;
     private readonly Timer _timer;
-    private bool _notified;
-    private bool _checking; // 自動 tick と手動チェックの同時実行(二重照会)を防ぐ。UI スレッド上なので bool で足りる。
 
-    public UpdateCoordinator(UpdateService update, NotifyIcon tray)
+    public UpdateCoordinator(UpdateChecker checker, NotifyIcon tray)
     {
-        _update = update;
+        _checker = checker;
         _tray = tray;
         _timer = new Timer { Interval = InitialDelayMs };
         _timer.Tick += OnTick;
@@ -34,54 +34,17 @@ internal sealed class UpdateCoordinator : IDisposable
     private async void OnTick(object? sender, EventArgs e)
     {
         _timer.Interval = PeriodicMs; // 初回以降は 24h 周期
-        await CheckAndNotifyAsync(manual: false);
-    }
-
-    /// <summary>
-    /// 更新を照会する。更新があれば(自動時は初回のみ)バルーン通知。<paramref name="manual"/>=true
-    /// (メニューの「今すぐ更新を確認」)は結果を必ずバルーンで返す(最新/更新あり/失敗)。
-    /// </summary>
-    public async Task CheckAndNotifyAsync(bool manual)
-    {
-        // 自動 tick と手動チェックが重なると同一 UpdateManager へ二重照会になる。既に照会中なら、
-        // 手動はその旨を返し、自動は黙って諦める(次回 tick で拾う)。
-        if (_checking)
-        {
-            if (manual)
-                _tray.ShowBalloonTip(3000, "Radirec", "更新を確認中です。少し待って再度お試しください。", ToolTipIcon.Info);
-            return;
-        }
-
-        _checking = true;
         try
         {
-            var found = await _update.CheckAsync();
-            if (found && (manual || !_notified))
-            {
-                _notified = true;
-                _tray.ShowBalloonTip(
-                    5000, "Radirec",
-                    $"更新があります(v{_update.PendingVersion})。トレイメニューから適用できます。",
-                    ToolTipIcon.Info);
-            }
-            else if (manual && !found)
-            {
-                _tray.ShowBalloonTip(3000, "Radirec", "最新版です。", ToolTipIcon.Info);
-            }
-
-            // 更新が無い状態に戻ったら通知フラグをリセット(適用/取り下げ後、次の新版で再通知できる)。
-            if (!found)
-                _notified = false;
+            // 手動の確認と重なったら(Busy)黙って諦める(次回 tick で拾う)。失敗は UpdateChecker が gui.log に書く。
+            var result = await _checker.CheckAsync(manual: false);
+            if (result.NotifyBalloon)
+                _tray.ShowBalloonTip(5000, "Radirec", UpdateTexts.FoundBalloon(result.Version), ToolTipIcon.Info);
         }
         catch (Exception ex)
         {
-            TrayLog.Warn($"更新チェックに失敗しました: {ex.Message}");
-            if (manual)
-                _tray.ShowBalloonTip(4000, "Radirec", "更新チェックに失敗しました(gui.log 参照)。", ToolTipIcon.Warning);
-        }
-        finally
-        {
-            _checking = false;
+            // async void の例外はメッセージループへ抜けるので、ここで止める(UpdateChecker は照会の例外を握るので、ここはバルーンの失敗など)。
+            TrayLog.Warn($"更新の自動チェックで例外: {ex}");
         }
     }
 
