@@ -272,13 +272,17 @@
                 <TextBlock TextWrapping="Wrap" Text="{Binding CheckingText}" MinHeight="18" />
             </Border>
 
-            <!-- ========== 確認(W-241〜W-250) ========== -->
+            <!-- ========== 確認(W-241〜W-250。保存済みの設定で確かめたときは W-252 / W-253 / W-312。#164) ========== -->
             <DockPanel Visibility="{Binding IsConfirmMode, Converter={StaticResource Visible}}">
-                <!-- W-249。既定のボタン(Enter)は「戻る」(ファイルを動かす側を既定にしない) -->
+                <!-- W-249 / W-312。既定のボタン(Enter)は「戻る」(ファイルを動かす側を既定にしない) -->
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                    <Button Style="{StaticResource Button}" Content="保存して適用" Command="{Binding SaveAndApplyCommand}" />
+                    <Button Style="{StaticResource Button}" Content="保存して適用" Command="{Binding SaveAndApplyCommand}"
+                            Visibility="{Binding IsDraftBasis, Converter={StaticResource Visible}}" />
                     <Button Style="{StaticResource Button}" Content="保存だけ" Command="{Binding SaveOnlyCommand}"
                             Visibility="{Binding HasChanges, Converter={StaticResource Visible}}" />
+                    <!-- W-312(保存するものが無いので「保存だけ」は無い) -->
+                    <Button Style="{StaticResource Button}" Content="適用" Command="{Binding ApplySavedCommand}"
+                            Visibility="{Binding IsSavedBasis, Converter={StaticResource Visible}}" />
                     <Button Style="{StaticResource Button}" Content="戻る"
                             IsDefault="{Binding IsConfirmBackDefault}" IsCancel="{Binding IsConfirmBackDefault}"
                             Command="{Binding BackCommand}" />
@@ -304,9 +308,10 @@
 
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <!-- W-241 -->
-                        <TextBlock Style="{StaticResource SectionHeading}" Text="設定の変更" />
-                        <Grid Margin="0,6,0,0">
+                        <!-- W-241(保存済みの設定で確かめたときは、変えた設定が無いので出さない) -->
+                        <TextBlock Style="{StaticResource SectionHeading}" Text="設定の変更"
+                                   Visibility="{Binding IsDraftBasis, Converter={StaticResource Visible}}" />
+                        <Grid Margin="0,6,0,0" Visibility="{Binding IsDraftBasis, Converter={StaticResource Visible}}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="12" />
@@ -322,7 +327,7 @@
                             </StackPanel>
                         </Grid>
 
-                        <!-- W-242〜W-248 -->
+                        <!-- W-242〜W-248 / W-252 / W-253 -->
                         <Border Style="{StaticResource Card}" Margin="0,12,0,0">
                             <StackPanel>
                                 <TextBlock Style="{StaticResource SectionHeading}" TextWrapping="Wrap"
