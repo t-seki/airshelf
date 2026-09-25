@@ -64,6 +64,27 @@ public sealed class AttentionLoaderTests : IDisposable
     }
 
     [Fact]
+    public void Lists_failures_from_the_ledger_and_drift_from_the_programs_file()
+    {
+        Ingested("X(1)", "X(2)"); // 台帳は統合設定の無いときの記録(アルバム X(1) / X(2))
+        var at = new DateTimeOffset(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
+        using (var ledger = new SqliteLedger(LedgerPath))
+            ledger.Record(Path.Combine(_dir, "radio", "bad.m4a"), new FileFingerprint(1, 2), "bad.m4a を読めません", at);
+        File.WriteAllText(ProgramsPath, """
+            { "Programs": [ { "Match": { "Station": "TBSラジオ", "Folders": [ "X(1)", "X(2)" ] },
+                              "Canonical": { "Album": "X" } } ] }
+            """);
+
+        var items = AttentionLoader.Load(LedgerPath, stationsFile: null, ProgramsPath, ["TimeFree"]);
+
+        var failure = Assert.Single(items.UnresolvedFailures);
+        Assert.Equal("bad.m4a を読めません", failure.Reason);
+        Assert.Equal(at, failure.FailedAtUtc);
+        Assert.Equal(["X(1)", "X(2)"], items.SettingsDrift.Select(d => d.FromAlbum));
+        Assert.All(items.SettingsDrift, d => Assert.Equal("X", d.ToAlbum));
+    }
+
+    [Fact]
     public void Broken_programs_file_throws()
     {
         File.WriteAllText(ProgramsPath, "{ \"Programs\": [ ");

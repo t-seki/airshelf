@@ -179,4 +179,82 @@ public sealed class AttentionCalculatorTests
         Assert.Equal(new ProgramFolder(Tbs, "X(1)"), drifted.Folder);
         Assert.Null(resolver.Resolve(Entry(Tbs, "Z") with { SourcePath = "/radikool/Z.mp3" }));
     }
+
+    // ---- 番組の設定と食い違ったままの回(#172・W-134 / W-135)----
+
+    [Fact]
+    public void Drift_groups_episodes_by_station_and_album_change()
+    {
+        var programs = new ProgramMasterConfig { Programs = [Merged(Tbs, "X", "X(1)", "X(2)")] };
+        var ledger = new[]
+        {
+            Entry(Tbs, "X(1)", "20240923083000"),
+            Entry(Tbs, "X(1)", "20240930083000"),
+            Entry(Tbs, "X(2)", "20240923100000"),
+            Entry(Tbs, "Y"),
+        };
+
+        var items = Compute(ledger, programs);
+
+        // 取込元・出力先のファイルは MockFileSystem に 1 つも無い(再適用の dry-run なら出力先を File.Exists で見る)。
+        Assert.Equal(
+            [
+                new SettingsDriftGroup(Tbs, "X(1)", Tbs, "X", 2),
+                new SettingsDriftGroup(Tbs, "X(2)", Tbs, "X", 1),
+            ],
+            items.SettingsDrift);
+    }
+
+    [Fact]
+    public void No_drift_when_every_episode_is_as_recorded()
+    {
+        var items = Compute([Entry(Tbs, "X(1)"), Entry(Tbs, "Y")], new ProgramMasterConfig());
+
+        Assert.Empty(items.SettingsDrift);
+    }
+
+    [Fact]
+    public void Drift_is_listed_even_when_programs_file_is_unused()
+    {
+        // programs.json を使わない設定でも、stations.json の変更などで食い違いうる。台帳の記録は統合番組のまま。
+        var items = Compute([Entry(Tbs, "X(1)") with { Program = "X", PartIndex = 1 }], programs: null);
+
+        Assert.Equal([new SettingsDriftGroup(Tbs, "X", Tbs, "X(1)", 1)], items.SettingsDrift);
+    }
+
+    [Fact]
+    public void Unparsable_and_non_rajireko_entries_are_not_drift()
+    {
+        var ledger = new[]
+        {
+            Entry(Tbs, "X") with { SourcePath = $"/radio/{Tbs}/X/壊れた名前.m4a" },
+            Entry(Tbs, "Z") with { SourcePath = "/radikool/Z.mp3", Program = "違う名前" },
+        };
+
+        Assert.Empty(Compute(ledger, new ProgramMasterConfig()).SettingsDrift);
+    }
+
+    // ---- 解決していない取込失敗(#172)----
+
+    [Fact]
+    public void Failures_are_listed_newest_first_with_undated_ones_last()
+    {
+        var older = new IngestFailureRecord("/radio/a.m4a", "理由 a", DateTimeOffset.UnixEpoch.AddDays(1));
+        var newer = new IngestFailureRecord("/radio/b.m4a", "理由 b", DateTimeOffset.UnixEpoch.AddDays(2));
+        var undated = new IngestFailureRecord("/radio/c.m4a", null, null); // #172 の移行前の行
+
+        var resolver = new LedgerEpisodeResolver(
+            new MockFileSystem().Path, new RajirekoImporter(),
+            new StationResolver(new StationMasterConfig()), new ProgramResolver(new ProgramMasterConfig()));
+        var items = AttentionCalculator.Compute(
+            [], resolver, new AttentionPrograms(new ProgramMasterConfig()), [undated, older, newer]);
+
+        Assert.Equal([newer, older, undated], items.UnresolvedFailures);
+    }
+
+    [Fact]
+    public void No_failures_when_omitted()
+    {
+        Assert.Empty(Compute([Entry(Tbs, "Y")], new ProgramMasterConfig()).UnresolvedFailures);
+    }
 }

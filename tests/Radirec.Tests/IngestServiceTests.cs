@@ -23,6 +23,17 @@ public sealed class IngestServiceTests
         public IEnumerable<RecordingFile> Enumerate() => files;
     }
 
+    // 列挙の途中で投げる取込元(NAS に届かなくなった等)。先に渡したファイルを返してから投げる。
+    private sealed class ThrowingRecordingSource(params RecordingFile[] files) : IRecordingSource
+    {
+        public IEnumerable<RecordingFile> Enumerate()
+        {
+            foreach (var file in files)
+                yield return file;
+            throw new IOException("取込元に届きません(テスト)");
+        }
+    }
+
     private sealed class FakeLedger : ILedger
     {
         private readonly List<(string Key, TimeOnly? Time, int Part)> _entries = [];
@@ -132,7 +143,7 @@ public sealed class IngestServiceTests
 
     private sealed class FakeFailureStore : IIngestFailureStore
     {
-        private readonly Dictionary<string, FileFingerprint> _known = [];
+        private readonly Dictionary<string, (FileFingerprint Fingerprint, string Reason, DateTimeOffset At)> _known = [];
         public List<string> Cleared { get; } = [];
         public Exception? ThrowOnIsKnown { get; set; }
         public Exception? ThrowOnRecord { get; set; }
@@ -140,20 +151,30 @@ public sealed class IngestServiceTests
         public bool IsKnown(string sourcePath, FileFingerprint fingerprint)
         {
             if (ThrowOnIsKnown is not null) throw ThrowOnIsKnown;
-            return _known.TryGetValue(sourcePath, out var fp) && fp == fingerprint;
+            return _known.TryGetValue(sourcePath, out var known) && known.Fingerprint == fingerprint;
         }
 
-        public void Record(string sourcePath, FileFingerprint fingerprint)
+        public void Record(string sourcePath, FileFingerprint fingerprint, string reason, DateTimeOffset failedAtUtc)
         {
             if (ThrowOnRecord is not null) throw ThrowOnRecord;
-            _known[sourcePath] = fingerprint;
+            _known[sourcePath] = (fingerprint, reason, failedAtUtc);
         }
+
+        // 前もって記録しておく(以前の走査で失敗して記録済み、を作る)。
+        public void Seed(string sourcePath, FileFingerprint fingerprint)
+            => _known[sourcePath] = (fingerprint, "以前の失敗", Now);
 
         public void Clear(string sourcePath)
         {
             Cleared.Add(sourcePath);
             _known.Remove(sourcePath);
         }
+
+        public IReadOnlyList<IngestFailureRecord> List()
+            => _known.Select(k => new IngestFailureRecord(k.Key, k.Value.Reason, k.Value.At)).ToList();
+
+        public IngestFailureRecord? Get(string sourcePath)
+            => _known.TryGetValue(sourcePath, out var k) ? new IngestFailureRecord(sourcePath, k.Reason, k.At) : null;
 
         public int Count => _known.Count;
     }
@@ -177,9 +198,9 @@ public sealed class IngestServiceTests
 
     private IngestService Build(
         IEnumerable<RecordingFile> files, IEnumerable<string>? skipPatterns = null,
-        IOutputTarget? target = null, ILibraryRefresher? refresher = null)
+        IOutputTarget? target = null, ILibraryRefresher? refresher = null, IRecordingSource? source = null)
         => new(
-            new FakeRecordingSource(files.ToArray()),
+            source ?? new FakeRecordingSource(files.ToArray()),
             new RajirekoImporter(),
             new StabilityChecker(new FixedClock(Now), TimeSpan.FromSeconds(15)),
             new RecordingSkipPolicy(skipPatterns ?? []),
@@ -375,13 +396,121 @@ public sealed class IngestServiceTests
     public async Task 取込成功はそのパスの失敗記録を解除する()
     {
         var good = Rec(StandardName);
-        _failureStore.Record(good.FilePath, FileFingerprint.Of(good)); // 以前失敗して記録済みと仮定
+        _failureStore.Seed(good.FilePath, FileFingerprint.Of(good)); // 以前失敗して記録済みと仮定
 
         await Build([good]).RunOnceAsync(dryRun: false);
 
         Assert.Contains(good.FilePath, _failureStore.Cleared);
         Assert.False(_failureStore.IsKnown(good.FilePath, FileFingerprint.Of(good)));
     }
+
+    // ---- 要対応の「解決していない取込失敗」(#172)----
+
+    [Fact]
+    public async Task 失敗は整形した理由と記録した時刻を持つ()
+    {
+        var file = Rec("[J-WAVE]番組(TimeFree)_20260612223000.m4a");
+
+        await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false);
+
+        var record = _failureStore.Get(file.FilePath);
+        Assert.NotNull(record);
+        Assert.Equal(_failurePublisher.Last!.Files.Single().Reason, record.Reason); // トーストと同じ文言
+        Assert.DoesNotContain(file.FilePath, record.Reason);
+        Assert.Equal(Now, record.FailedAtUtc);
+    }
+
+    [Fact]
+    public async Task 取込元から消えたファイルの失敗記録は走査で消える()
+    {
+        var gone = Rec("[X局]番組(TimeFree)_20250101120000.m4a", program: "消えた番組");
+        _failureStore.Seed(gone.FilePath, FileFingerprint.Of(gone)); // 以前失敗したが、今は取込元に無い
+        var bad = BadFile();
+
+        await Build([Rec(StandardName), bad]).RunOnceAsync(dryRun: false);
+
+        Assert.Null(_failureStore.Get(gone.FilePath));
+        Assert.NotNull(_failureStore.Get(bad.FilePath)); // まだ取込元にある失敗は残る
+    }
+
+    [Fact]
+    public async Task 列挙が0件の走査では失敗記録を消さない()
+    {
+        // 取込元が一時的に見えない(NAS に届かない・フォルダが無い)と、列挙は 0 件で終わる。
+        var bad = BadFile();
+        _failureStore.Seed(bad.FilePath, FileFingerprint.Of(bad));
+
+        await Build([]).RunOnceAsync(dryRun: false);
+
+        Assert.NotNull(_failureStore.Get(bad.FilePath));
+        Assert.Empty(_failureStore.Cleared);
+    }
+
+    [Fact]
+    public async Task 列挙が例外で終わった走査では失敗記録を消さない()
+    {
+        var gone = Rec("[X局]番組(TimeFree)_20250101120000.m4a", program: "消えた番組");
+        _failureStore.Seed(gone.FilePath, FileFingerprint.Of(gone));
+        var service = Build([], source: new ThrowingRecordingSource(Rec(StandardName)));
+
+        await Assert.ThrowsAsync<IOException>(() => service.RunOnceAsync(dryRun: false));
+
+        Assert.NotNull(_failureStore.Get(gone.FilePath));
+    }
+
+    [Fact]
+    public async Task DryRunでは失敗記録を消さない()
+    {
+        var gone = Rec("[X局]番組(TimeFree)_20250101120000.m4a", program: "消えた番組");
+        _failureStore.Seed(gone.FilePath, FileFingerprint.Of(gone));
+
+        await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true);
+
+        Assert.NotNull(_failureStore.Get(gone.FilePath));
+    }
+
+    [Fact]
+    public async Task パスの表記が変わっても_同じファイルの失敗記録は1行だけ残る()
+    {
+        // 実物の台帳で確かめる(ストアの主キーは大文字小文字を区別する)。前の走査では大文字の表記で失敗を記録し、
+        // 今の走査では小文字の表記で同じファイルが列挙された。古い表記の行が残り続けないこと。
+        var dir = Directory.CreateTempSubdirectory("radirec-ingest-failures-").FullName;
+        try
+        {
+            using var store = new SqliteLedger(Path.Combine(dir, "ledger.db"));
+            var bad = BadFile();
+            store.Record(bad.FilePath.ToUpperInvariant(), FileFingerprint.Of(bad), "前の走査の理由", Now);
+
+            await BuildWithStore(store, [bad]).RunOnceAsync(dryRun: false);
+
+            var record = Assert.Single(store.List());
+            Assert.Equal(bad.FilePath, record.SourcePath);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private IngestService BuildWithStore(IIngestFailureStore store, IEnumerable<RecordingFile> files)
+        => new(
+            new FakeRecordingSource(files.ToArray()),
+            new RajirekoImporter(),
+            new StabilityChecker(new FixedClock(Now), TimeSpan.FromSeconds(15)),
+            new RecordingSkipPolicy([]),
+            _tagReader,
+            new EpisodeAssembler(
+                new StationResolver(new StationMasterConfig()),
+                new ProgramResolver(new ProgramMasterConfig())),
+            _target,
+            _ledger,
+            new FixedClock(Now),
+            genre: "ラジオ",
+            _refresher,
+            _publisher,
+            store,
+            _failurePublisher);
 
     [Fact]
     public async Task DryRun_失敗があっても発行しない()
