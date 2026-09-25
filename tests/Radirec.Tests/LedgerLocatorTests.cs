@@ -58,6 +58,36 @@ public sealed class LedgerLocatorTests : IDisposable
     }
 
     [Fact]
+    public void Resolve_takes_the_ledger_and_the_settings_files_from_the_same_status()
+    {
+        // ワーカーは 3 つを 1 回の状態の差し替えで変える。1 回の計算では、その 1 つの状態から 3 つをそろえて取る。
+        var status = Snapshot("/new/ledger.db") with { StationsFile = "/new/stations.json", ProgramsFile = "/new/programs.json" };
+
+        var at = LedgerLocator.Resolve(status, "/old/ledger.db", "/old/stations.json", "/old/programs.json");
+
+        Assert.Equal(new ManagementDataLocations("/new/ledger.db", "/new/stations.json", "/new/programs.json"), at);
+    }
+
+    [Fact]
+    public void Resolve_without_a_worker_takes_all_three_from_the_startup_settings_W104()
+    {
+        var at = LedgerLocator.Resolve(null, "/old/ledger.db", "/old/stations.json", "/old/programs.json");
+
+        Assert.Equal(new ManagementDataLocations("/old/ledger.db", "/old/stations.json", "/old/programs.json"), at);
+    }
+
+    [Fact]
+    public void Resolve_keeps_empty_settings_files_as_unused_but_not_an_empty_ledger()
+    {
+        // programs.json / stations.json の空は「使わない設定」なのでそのまま。台帳の空は起動時の台帳へ戻る。
+        var status = Snapshot("") with { StationsFile = "", ProgramsFile = "" };
+
+        var at = LedgerLocator.Resolve(status, "/old/ledger.db", "/old/stations.json", "/old/programs.json");
+
+        Assert.Equal(new ManagementDataLocations("/old/ledger.db", "", ""), at);
+    }
+
+    [Fact]
     public void After_reload_the_attention_is_computed_from_the_new_ledger()
     {
         var oldLedger = Path.Combine(_dir, "old.db");

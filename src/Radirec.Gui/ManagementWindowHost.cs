@@ -86,7 +86,7 @@ internal sealed class ManagementWindowHost
             var viewModel = new ManagementViewModel(
                 _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn,
                 locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info, about: about, settings: settings,
-                computeAttention: AttentionComputer(ledger));
+                computeAttention: AttentionComputer());
 
             var window = new ManagementWindow(viewModel);
             window.Closed += (_, _) =>
@@ -159,24 +159,23 @@ internal sealed class ManagementWindowHost
     }
 
     // ホームの要対応(#155・ADR-0018)。台帳と、ディスクの programs.json / stations.json から計算する(取り込みが読み込んだ設定では
-    // なく、「統合する」「分けておく」が書く先と同じもの)。場所は台帳も含めて番組ページと同じく、ワーカーがあれば status(設定リロード
-    // に追従。#196)、無ければ起動時に読めた設定から。設定を読めていなければ(縮退)null(W-137)。
-    private Func<Radirec.Core.Attention.AttentionItems>? AttentionComputer(Func<string>? ledger)
+    // なく、「統合する」「分けておく」が書く先と同じもの)。場所は、ワーカーがあれば status(設定リロードに追従。台帳も #196)、無ければ
+    // 起動時に読めた設定から。1 回の計算では状態を 1 回だけ読み、3 つの場所を同じ状態から取る(LedgerLocator.Resolve)。
+    // 設定を読めていなければ(縮退)null(W-137)。
+    private Func<Radirec.Core.Attention.AttentionItems>? AttentionComputer()
     {
-        if (ledger is null || _settings.ConfigPath is not { } configPath
+        if (_ledgerPath is not { } startupLedger || _settings.ConfigPath is not { } configPath
             || _settings.StartupConfig is not { } startup)
             return null;
 
         var control = _control;
         return () =>
         {
-            var (stationsFile, programsFile) = control?.GetStatus() is { } status
-                ? (status.StationsFile, status.ProgramsFile)
-                : (startup.StationsFile, startup.ProgramsFile);
+            var at = LedgerLocator.Resolve(control?.GetStatus(), startupLedger, startup.StationsFile, startup.ProgramsFile);
             return AttentionLoader.Load(
-                ledger(),
-                ConfigPaths.Locate(ConfigFile.Stations, configPath, stationsFile, programsFile),
-                ConfigPaths.Locate(ConfigFile.Programs, configPath, stationsFile, programsFile),
+                at.LedgerPath,
+                ConfigPaths.Locate(ConfigFile.Stations, configPath, at.StationsFile, at.ProgramsFile),
+                ConfigPaths.Locate(ConfigFile.Programs, configPath, at.StationsFile, at.ProgramsFile),
                 startup.KnownRecordingKinds);
         };
     }
