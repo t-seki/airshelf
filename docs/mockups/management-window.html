@@ -747,13 +747,14 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       <p style="font-size: 16px; margin-top: 0;" data-if="upd:none,pending" data-w="W-501">Radirec 0.12.0</p>
       <p style="font-size: 16px; margin-top: 0;" data-if="upd:dev" data-w="W-501">Radirec 0.0.0-dev</p>
 
-      <div data-if="upd:none,pending" class="row">
+      <div data-if="upd:none,pending run:watching,polling,noscan,crashed,startfail" class="row">
         <button class="btn" data-go="ver:latest" data-w="W-502">今すぐ更新を確認</button>
         <button class="btn primary" data-if="upd:pending" data-go="ver:applyconfirm" data-w="W-507">更新 v0.13.0 を適用して再起動</button>
       </div>
-      <p class="sub an" data-if="upd:dev" data-w="W-510">この版は自己更新の対象外です(開発版・portable)</p>
+      <p class="sub" data-if="upd:dev" data-w="W-510">この版は自己更新の対象外です(開発版・portable)</p>
+      <p class="sub an" data-if="upd:none,pending run:noconfig" data-w="W-511">設定を読めないため、更新を確認できません</p>
 
-      <div data-if="upd:none,pending">
+      <div data-if="upd:none,pending run:watching,polling,noscan,crashed,startfail">
         <div class="msg info" data-if="ver:latest" data-w="W-503">最新版です。</div>
         <div class="msg info" data-if="ver:found" data-w="W-504">更新があります(v0.13.0)。</div>
         <div class="msg info" data-if="ver:busy" data-w="W-505">更新を確認中です。少し待って再度お試しください。</div>
@@ -761,7 +762,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <div class="msg info" data-if="ver:applyfail" data-w="W-509">適用できる更新はありません(最新か、取り下げられました)。</div>
         <div class="msg warn" data-if="ver:applyfail" data-w="W-509">更新の適用に失敗しました(gui.log 参照)。</div>
       </div>
-      <div class="mocknote">「更新を適用して再起動」は保留中だけ出す(トレイにも同じ項目が出る)。開発版・portable では更新の項目を出さない。</div>
+      <div class="mocknote">「更新を適用して再起動」は保留中だけ出す(トレイにも同じ項目が出る)。開発版・portable では更新の項目を出さない。
+        Velopack で入れた版でも、設定を読めない(縮退)ときは更新の項目を出さず、その理由を出す(上の「状態」を縮退にすると見える)。</div>
     </div>
 
     <div class="overlay" data-if="page:version ver:applyconfirm upd:pending">
@@ -769,8 +771,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <div class="dh">更新の適用</div>
         <div class="db"><p data-w="W-508">更新 v0.13.0 を適用してアプリを再起動します。取り込み中の走査は完了を待ってから安全に再起動します。よろしいですか?</p></div>
         <div class="df">
-          <button class="btn primary" style="outline: 2px solid var(--accent);">OK</button>
-          <button class="btn" data-go="ver:idle">キャンセル</button>
+          <button class="btn primary">OK</button>
+          <button class="btn" data-go="ver:idle" style="outline: 2px solid var(--accent);">キャンセル</button>
         </div>
       </div>
     </div>
@@ -832,7 +834,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 
     <h3>バルーン(トレイに残した操作)</h3>
     <div class="toast"><div class="app">Radirec</div><div data-w="W-608">手動再スキャンを要求しました</div></div>
-    <div class="toast"><div class="app">Radirec</div><div class="an" data-w="W-609">更新があります(v0.13.0)。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。</div></div>
+    <div class="toast"><div class="app">Radirec</div><div data-w="W-609">更新があります(v0.13.0)。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。</div></div>
 
     <h3>バルーン(管理画面が開けない・閉じた)</h3>
     <div class="toast"><div class="app">Radirec</div><div data-w="W-004">管理画面でエラーが起きたため閉じました(gui.log 参照)</div></div>

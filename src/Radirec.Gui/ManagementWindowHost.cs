@@ -2,8 +2,12 @@ using System.Runtime.Versioning;
 using System.Windows.Forms;
 using Radirec.Gui.Core;
 using Radirec.Gui.Core.Management;
+using Radirec.Gui.Core.Updates;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
 using WindowState = System.Windows.WindowState;
 
 namespace Radirec.Gui;
@@ -22,6 +26,9 @@ internal sealed class ManagementWindowHost
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
     private readonly string? _ledgerPath;
+    private readonly UpdateSupport _updateSupport;
+    private readonly IAppUpdater? _updater;
+    private readonly UpdateChecker? _updateChecker;
     private readonly string? _configPath;
     private readonly RadirecConfig? _startupConfig;
     private ManagementWindow? _window;
@@ -30,16 +37,23 @@ internal sealed class ManagementWindowHost
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="degradedReason">control が null の理由(W-104 / W-105)。</param>
     /// <param name="ledgerPath">台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。</param>
+    /// <param name="updateSupport">バージョン情報ページで更新の項目を出せるか。出せないときの理由(W-510 / W-511。#157)。</param>
+    /// <param name="updater">自己更新(#157)。作れなかった・Velopack で入れていない版なら null。</param>
+    /// <param name="updateChecker">更新の確認(トレイの自動の確認と共有する。#157)。</param>
     /// <param name="configPath">radirec.json の絶対パス。番組ページ(#154)の programs.json の場所の計算に使う。</param>
     /// <param name="startupConfig">起動時に読めた設定。ワーカーが無いときの programs.json の場所の出どころ。読めなければ null。</param>
     public ManagementWindowHost(
         NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath,
+        UpdateSupport updateSupport, IAppUpdater? updater = null, UpdateChecker? updateChecker = null,
         string? configPath = null, RadirecConfig? startupConfig = null)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
         _ledgerPath = ledgerPath;
+        _updateSupport = updateSupport;
+        _updater = updater;
+        _updateChecker = updateChecker;
         _configPath = configPath;
         _startupConfig = startupConfig;
     }
@@ -60,9 +74,12 @@ internal sealed class ManagementWindowHost
 
             var ledgerPath = _ledgerPath;
             Func<IReadOnlyList<IngestHistoryRow>>? loadHistory = ledgerPath is null ? null : () => IngestHistory.Load(ledgerPath);
+            var about = new AboutPageViewModel(
+                AppVersion.Of(typeof(ManagementWindowHost).Assembly), _updateSupport, _updater, _updateChecker,
+                ConfirmApplyUpdate, TrayLog.Warn);
             var viewModel = new ManagementViewModel(
                 _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn,
-                locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info);
+                locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info, about: about);
 
             var window = new ManagementWindow(viewModel);
             window.Closed += (_, _) =>
@@ -129,6 +146,17 @@ internal sealed class ManagementWindowHost
             }
             return ConfigPaths.Locate(ConfigFile.Programs, configPath, startup?.StationsFile, startup?.ProgramsFile);
         };
+    }
+
+    // W-508 の確認(#157)。管理画面を持ち主にして出す。既定はキャンセル側(#157 の設計の決定 3)。
+    private bool ConfirmApplyUpdate(string message)
+    {
+        var result = _window is { } owner
+            ? System.Windows.MessageBox.Show(owner, message, UpdateTexts.ApplyConfirmCaption,
+                MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel)
+            : System.Windows.MessageBox.Show(message, UpdateTexts.ApplyConfirmCaption,
+                MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        return result == MessageBoxResult.OK;
     }
 
     private static void TryClose(ManagementWindow? window)

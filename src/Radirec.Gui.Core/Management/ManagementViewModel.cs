@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Radirec.Gui.Core.Updates;
 using Radirec.Hosting.Control;
 
 namespace Radirec.Gui.Core.Management;
@@ -15,7 +16,7 @@ public enum ManagementPage
 
 /// <summary>
 /// 管理画面(requirements §10.3・#151)の ViewModel。5 ページの枠と、いま出しているページを持つ。
-/// 設定 / バージョン情報のページは、まだ中身が無い(#152・#157 が足す)。
+/// 設定のページは、まだ中身が無い(#152 が足す)。
 /// <para>
 /// 管理画面を開くたびに作り直す(開いた時点の状態・取込履歴から始める)。閉じても常駐は続く。
 /// </para>
@@ -45,6 +46,7 @@ public sealed class ManagementViewModel : ObservableObject
     /// </param>
     /// <param name="logInfo">gui.log への記録(保存したこと等)。</param>
     /// <param name="now">番組ページの保存でバックアップの名前に使う時刻(テスト用)。</param>
+    /// <param name="about">バージョン情報ページ(#157)。省略すると、このアセンブリの版で、更新の項目の無いページ(W-510)にする。</param>
     public ManagementViewModel(
         IServiceControl? control,
         string? degradedReason,
@@ -54,7 +56,8 @@ public sealed class ManagementViewModel : ObservableObject
         TimeZoneInfo? zone = null,
         Func<string?>? locateProgramsFile = null,
         Action<string>? logInfo = null,
-        Func<DateTime>? now = null)
+        Func<DateTime>? now = null,
+        AboutPageViewModel? about = null)
     {
         _logWarn = logWarn;
         var applyGate = new ProgramsApplyGate();
@@ -62,6 +65,9 @@ public sealed class ManagementViewModel : ObservableObject
             showAll: () => CurrentPage = ManagementPage.History, zone, applyGate);
         History = new IngestHistoryViewModel(loadHistory, pathActions, logWarn);
         Programs = new ProgramsPageViewModel(control, locateProgramsFile, applyGate, logWarn, logInfo, now);
+        About = about ?? new AboutPageViewModel(
+            AppVersion.Of(typeof(ManagementViewModel).Assembly), UpdateSupport.NotInstalled,
+            updater: null, checker: null, _ => false, logWarn);
     }
 
     public HomeViewModel Home { get; }
@@ -70,6 +76,8 @@ public sealed class ManagementViewModel : ObservableObject
 
     /// <summary>番組ページ(#154)。</summary>
     public ProgramsPageViewModel Programs { get; }
+
+    public AboutPageViewModel About { get; }
 
     /// <summary>いま出しているページ。</summary>
     public ManagementPage CurrentPage
@@ -112,11 +120,13 @@ public sealed class ManagementViewModel : ObservableObject
     /// <summary>
     /// 管理画面が開いている間、シェルのタイマーが 2 秒ごとに呼ぶ。ホームの状態と、番組ページの「確認」を押せるか
     /// (取り込みが動いているか)を読み直す(取込履歴ページの全件は「更新」でだけ読み直すので、ここでは触らない)。
+    /// バージョン情報ページは保留中の更新を読み直す(#157)。
     /// </summary>
     public void Tick()
     {
         Home.Refresh();
         Programs.RefreshStatus();
+        About.Refresh();
     }
 
     // 番組ページを出したら programs.json を読む(まだ読んでいない・変更が無いときだけ)。例外は gui.log に書いて握る
