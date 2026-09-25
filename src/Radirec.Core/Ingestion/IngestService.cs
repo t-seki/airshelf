@@ -72,6 +72,8 @@ public sealed class IngestService(
             foreach (var imported in items.Where(i => i.Outcome == IngestOutcome.Imported))
                 failureStore.Clear(imported.SourcePath);
 
+            ClearFailuresMissingFromSource(items);
+
             // 新しく現れた失敗だけを抽出(de-dup)。記録は全件、表示は有界(IngestFailureSignal.From)。
             newFailures = items
                 .Where(i => i.Outcome == IngestOutcome.Failed)
@@ -102,8 +104,9 @@ public sealed class IngestService(
         // 通知自体は届いている(取りこぼしより重複を選ぶ)。
         try
         {
+            var failedAt = clock.GetUtcNow();
             foreach (var failure in newFailures)
-                failureStore.Record(failure.SourcePath, failure.Fingerprint);
+                failureStore.Record(failure.SourcePath, failure.Fingerprint, failure.Reason, failedAt);
         }
         catch
         {
@@ -111,6 +114,27 @@ public sealed class IngestService(
         }
 
         return (true, null);
+    }
+
+    // 取込元から消えた録音ファイルの失敗記録を消す(#172)。消えたファイルは「原因が解消した」扱いにして、要対応に
+    // 残し続けない(表示のたびに File.Exists で確かめない)。この走査で列挙したパスに無い記録だけを消す。
+    // 列挙が例外で終わった走査はここまで来ない(RunOnceAsync ごと失敗する)。列挙が 0 件の走査でも消さない
+    // (取込元が一時的に見えない〈NAS に届かない・フォルダが無い〉ときに、記録をまとめて消さないため)。
+    private void ClearFailuresMissingFromSource(IReadOnlyList<IngestItemResult> items)
+    {
+        if (items.Count == 0)
+            return;
+
+        // ストア(failures の主キー・IsKnown・Record・Clear)と同じく、大文字小文字を区別して比べる。区別しないと、
+        // 走査の間でパスの表記(大文字小文字)が変わったとき、古い表記の行がここでも成功時の Clear でも消えず、
+        // 要対応に残り続ける。区別すれば古い表記の行は消え、新しい表記で記録し直される(IsKnown も区別するので、
+        // 表記が変われば今でも再通知される)。
+        var enumerated = new HashSet<string>(items.Select(i => i.SourcePath), StringComparer.Ordinal);
+        foreach (var failure in failureStore.List())
+        {
+            if (!enumerated.Contains(failure.SourcePath))
+                failureStore.Clear(failure.SourcePath);
+        }
     }
 
     // 失敗理由(例外メッセージ)を提示向けに整える。例外メッセージにフルパスが埋まっている場合があり

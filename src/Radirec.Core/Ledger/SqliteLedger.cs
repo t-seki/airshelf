@@ -14,13 +14,16 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
     private const string DateFormat = "yyyy-MM-dd";
 
     // 取込失敗の de-dup テーブル。鍵 = ソースパス。フィンガープリント(サイズ + 最終更新 ticks)が
-    // 一致するときだけ「通知済み」とみなす(内容変化で再通知)。
+    // 一致するときだけ「通知済み」とみなす(内容変化で再通知)。理由(reason)と記録した時刻(failed_at。ISO 8601)は
+    // 要対応に出すため(#172)。後から足した列なので NULL を許す(移行前の行は理由も時刻も持たない)。
     private const string CreateFailuresTableSql =
         """
         CREATE TABLE IF NOT EXISTS failures (
             source_path TEXT NOT NULL PRIMARY KEY,
             size_bytes  INTEGER NOT NULL,
-            last_write  INTEGER NOT NULL
+            last_write  INTEGER NOT NULL,
+            reason      TEXT NULL,
+            failed_at   TEXT NULL
         );
         """;
 
@@ -59,6 +62,10 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
 
     // failures テーブルが使えるか(readOnly の旧 DB でテーブル欠如時に throw させないためのガード)。
     private readonly bool _failuresUsable;
+
+    // failures に理由・時刻の列(#172)があるか。readOnly で未移行の台帳を開いたとき、List が列を SELECT して
+    // 落ちないためのガード(無ければ理由・時刻を null で返す)。
+    private readonly bool _failureDetailsUsable;
 
     // content ゲート(size_bytes/last_write 列)が使えるか。readOnly で列を持たない旧/現行スキーマを
     // 開いたときに ContainsContent が例外を出さず未取込扱いにするためのガード(#79 / ADR-0014)。
@@ -99,14 +106,19 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
             {
                 MigrateOrCreate();
                 Exec(CreateFailuresTableSql); // 冪等。失敗 de-dup テーブルを保証する。
+                EnsureFailureDetailColumns();
                 _usable = true;
                 _failuresUsable = true;
+                _failureDetailsUsable = true;
                 _contentUsable = true; // MigrateOrCreate が content 列を保証する。
             }
             else
             {
                 _usable = TableExists("imports") && ColumnExists("imports", "part_index");
                 _failuresUsable = TableExists("failures");
+                // 列の追加は 2 本の ALTER で、1 本ずつ確定する。途中で止まった台帳(reason だけある)も未移行として扱う。
+                _failureDetailsUsable = _failuresUsable
+                    && ColumnExists("failures", "reason") && ColumnExists("failures", "failed_at");
                 _contentUsable = _usable && ColumnExists("imports", "size_bytes");
             }
         }
@@ -161,6 +173,16 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         }
 
         Exec(CreateContentIndexSql);
+    }
+
+    // 理由・時刻の列を持たない failures(#172 より前の台帳)に列を後付けする。PK に関与しないので ALTER ADD COLUMN で足せる。
+    // 既存の行は理由も時刻も NULL のまま(要対応は「理由の記録なし」〈W-130〉を出す)。
+    private void EnsureFailureDetailColumns()
+    {
+        if (!ColumnExists("failures", "reason"))
+            Exec("ALTER TABLE failures ADD COLUMN reason TEXT NULL;");
+        if (!ColumnExists("failures", "failed_at"))
+            Exec("ALTER TABLE failures ADD COLUMN failed_at TEXT NULL;");
     }
 
     // 旧 imports を退避し、新スキーマへ移送する。<paramref name="timeExpr"/> は移送元の
@@ -413,22 +435,53 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         return cmd.ExecuteScalar() is not null;
     }
 
-    public void Record(string sourcePath, FileFingerprint fingerprint)
+    public void Record(string sourcePath, FileFingerprint fingerprint, string reason, DateTimeOffset failedAtUtc)
     {
         if (!_failuresUsable)
             return;
 
-        // パスが PK。同じパスで内容が変わった(fingerprint 更新)場合は置き換える。
+        // パスが PK。同じパスで内容が変わった(fingerprint 更新)場合は、理由・時刻ごと置き換える。
         using var cmd = _connection.CreateCommand();
         cmd.CommandText =
             """
-            INSERT OR REPLACE INTO failures (source_path, size_bytes, last_write)
-            VALUES ($p, $s, $t);
+            INSERT OR REPLACE INTO failures (source_path, size_bytes, last_write, reason, failed_at)
+            VALUES ($p, $s, $t, $r, $at);
             """;
         cmd.Parameters.AddWithValue("$p", sourcePath);
         cmd.Parameters.AddWithValue("$s", fingerprint.SizeBytes);
         cmd.Parameters.AddWithValue("$t", fingerprint.LastWriteUtcTicks);
+        cmd.Parameters.AddWithValue("$r", reason);
+        cmd.Parameters.AddWithValue("$at", failedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
         cmd.ExecuteNonQuery();
+    }
+
+    public IReadOnlyList<IngestFailureRecord> List()
+    {
+        if (!_failuresUsable)
+            return [];
+
+        using var cmd = _connection.CreateCommand();
+        // 理由・時刻の列は後付け(#172)。read-only で未移行の台帳を開いたときは列を SELECT しない。
+        cmd.CommandText = _failureDetailsUsable
+            ? "SELECT source_path, reason, failed_at FROM failures;"
+            : "SELECT source_path FROM failures;";
+
+        using var reader = cmd.ExecuteReader();
+        var results = new List<IngestFailureRecord>();
+        while (reader.Read())
+        {
+            string? reason = null;
+            DateTimeOffset? failedAt = null;
+            if (_failureDetailsUsable)
+            {
+                reason = reader.IsDBNull(1) ? null : reader.GetString(1);
+                failedAt = reader.IsDBNull(2)
+                    ? null
+                    : DateTimeOffset.Parse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+            }
+            results.Add(new IngestFailureRecord(reader.GetString(0), reason, failedAt));
+        }
+        return results;
     }
 
     public void Clear(string sourcePath)

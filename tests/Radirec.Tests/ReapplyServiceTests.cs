@@ -178,6 +178,30 @@ public sealed class ReapplyServiceTests : IDisposable
             .Select(p => Path.GetRelativePath(root, p)).Order(StringComparer.Ordinal).ToArray()
         : [];
 
+    // ---- 要対応の「設定と食い違った回」との一致(#172)----
+
+    [Fact]
+    public async Task AttentionDrift_counts_the_same_episodes_that_reapply_would_align()
+    {
+        // 要対応の食い違いは、再適用の「記録どおりか」の判定を共有する。同じ台帳・同じ設定で、再適用が揃える回
+        // (対象外を除く)と、要対応が数える回が一致すること。揃えた後にパートの順だけを入れ替えると、アルバムは同じで
+        // パートだけが食い違う。
+        var ledger = await IngestSplitAsync();
+        await Reapply(ledger, Merged()).RunAsync(dryRun: false); // いったん揃える
+        var reordered = Merged(folders: [Folder2, Folder1]);    // パートの順だけを入れ替える
+
+        var plan = await Reapply(ledger, reordered).RunAsync(dryRun: true);
+        var resolver = new LedgerEpisodeResolver(
+            new FileSystem().Path, new RajirekoImporter(),
+            new StationResolver(new StationMasterConfig()), new ProgramResolver(reordered));
+        var attention = Radirec.Core.Attention.AttentionCalculator.Compute(
+            ledger.ListAll(), resolver, new Radirec.Core.Attention.AttentionPrograms(reordered));
+
+        var aligned = plan.Items.Count(i => i.Action != ReapplyAction.Excluded);
+        Assert.True(aligned > 0);
+        Assert.Equal(aligned, attention.SettingsDrift.Sum(d => d.Count));
+    }
+
     // ---- 確認した予定と実行直前の予定の照合(トレイ #126)----
 
     [Fact]
