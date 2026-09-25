@@ -42,12 +42,13 @@ public sealed class AttentionCalculatorTests
         Match = new ProgramMatch { Station = station, Folders = [.. folders] },
     };
 
-    private static AttentionItems Compute(IEnumerable<LedgerEntry> ledger, ProgramMasterConfig? programs)
+    private static AttentionItems Compute(
+        IEnumerable<LedgerEntry> ledger, ProgramMasterConfig? programs, StationMasterConfig? stations = null)
     {
         var resolver = new LedgerEpisodeResolver(
             new MockFileSystem().Path,
             new RajirekoImporter(),
-            new StationResolver(new StationMasterConfig()),
+            new StationResolver(stations ?? new StationMasterConfig()),
             new ProgramResolver(programs ?? new ProgramMasterConfig()));
         return AttentionCalculator.Compute(ledger, resolver, new AttentionPrograms(programs));
     }
@@ -199,10 +200,34 @@ public sealed class AttentionCalculatorTests
         // 取込元・出力先のファイルは MockFileSystem に 1 つも無い(再適用の dry-run なら出力先を File.Exists で見る)。
         Assert.Equal(
             [
-                new SettingsDriftGroup(Tbs, "X(1)", Tbs, "X", 2),
-                new SettingsDriftGroup(Tbs, "X(2)", Tbs, "X", 1),
+                new SettingsDriftGroup(Tbs, "X(1)", "X", 2),
+                new SettingsDriftGroup(Tbs, "X(2)", "X", 1),
             ],
             items.SettingsDrift);
+    }
+
+    [Fact]
+    public void Episodes_whose_station_changes_are_not_drift()
+    {
+        // stations.json で局の正規名を変えた。再適用は局の変更を揃えない(対象外。ADR-0016)ので、要対応にも出さない
+        // (再適用で解消できないものは、利用者の判断を待っているものではない。#156)。アルバムが食い違う回は今までどおり出す。
+        var stations = new StationMasterConfig
+        {
+            Stations = [new StationAlias { Canonical = "TBS", Aliases = [Tbs] }],
+        };
+        var programs = new ProgramMasterConfig
+        {
+            Programs = [Merged("TBS", "X", "X(1)", "X(2)"), Merged(Qr, "Z", "Z(1)", "Z(2)")],
+        };
+        var ledger = new[]
+        {
+            Entry(Tbs, "X(1)"), // 局が変わる(アルバムも変わる)
+            Entry(Qr, "Z(1)"),  // 局は変わらない。アルバムが変わる
+        };
+
+        var items = Compute(ledger, programs, stations);
+
+        Assert.Equal([new SettingsDriftGroup(Qr, "Z(1)", "Z", 1)], items.SettingsDrift);
     }
 
     [Fact]
@@ -219,7 +244,7 @@ public sealed class AttentionCalculatorTests
         // programs.json を使わない設定でも、stations.json の変更などで食い違いうる。台帳の記録は統合番組のまま。
         var items = Compute([Entry(Tbs, "X(1)") with { Program = "X", PartIndex = 1 }], programs: null);
 
-        Assert.Equal([new SettingsDriftGroup(Tbs, "X", Tbs, "X(1)", 1)], items.SettingsDrift);
+        Assert.Equal([new SettingsDriftGroup(Tbs, "X", "X(1)", 1)], items.SettingsDrift);
     }
 
     [Fact]

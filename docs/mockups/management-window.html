@@ -286,29 +286,27 @@
         <h4 data-w="W-128">解決していない取込失敗</h4>
         <div class="sub an" data-w="W-133">録音ファイルを直すか置き直して、取り込みに成功すると消えます</div>
         <div class="item">
-          <div data-w="W-129" class="an"><div>[ニッポン放送]オードリーのオールナイトニッポン(TimeFree)_20270229010000.m4a</div>
+          <div data-w="W-129"><div>[ニッポン放送]オードリーのオールナイトニッポン(TimeFree)_20270229010000.m4a</div>
                <div class="sub">放送日時が不正です (20270229010000): [ニッポン放送]オードリーのオールナイトニッポン(TimeFree)_20270229010000.m4a</div>
                <div class="sub">失敗: 2026-09-25 10:40</div></div>
           <div><button class="btn small" data-w="W-132">取込元をエクスプローラーで開く</button></div>
         </div>
         <div class="item">
-          <div><div data-w="W-129" class="an">[J-WAVE]TOKYO M.A.A.D SPIN(TimeFree)_2026091.m4a</div>
-               <div class="sub an" data-w="W-130">(理由の記録なし)</div></div>
+          <div><div data-w="W-129">[J-WAVE]TOKYO M.A.A.D SPIN(TimeFree)_2026091.m4a</div>
+               <div class="sub" data-w="W-130">(理由の記録なし)</div></div>
           <div><button class="btn small" data-w="W-132">取込元をエクスプローラーで開く</button></div>
         </div>
-        <div class="item">
-          <div><div data-w="W-129" class="an">[文化放送]レコメン!(TimeFree)_20260801220000.m4a</div>
-               <div class="sub an" data-w="W-131">取込元のファイルがありません</div></div>
-          <div><button class="btn small" disabled data-w="W-132">取込元をエクスプローラーで開く</button></div>
-        </div>
+        <div class="mocknote">2 件目は、理由と日時を持つ前(#172 の移行前)に記録された失敗。日時の記録も無いので、日時の行は出さない。取込元から消えたファイルの失敗は、次の走査が記録を消すので、ここには並ばない(#172)。そのため「取込元をエクスプローラーで開く」はいつでも押せる。押した結果(W-146 / W-147)は、見出しの説明の下に 1 行で出す。</div>
       </div>
 
       <div class="attn mis">
         <div class="row" style="justify-content: space-between;">
           <h4 data-w="W-134">再適用が要る番組</h4>
-          <button class="btn small an" data-go="page:programs prog:reapply" data-w="W-136">再適用の確認へ</button>
+          <button class="btn small" data-go="page:programs prog:reapply" data-w="W-136">再適用の確認へ</button>
         </div>
-        <div class="item"><div class="an" data-w="W-135">TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」 24 回</div></div>
+        <div class="item"><div data-w="W-135">TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」 24 回</div></div>
+        <div class="item"><div class="an" data-w="W-135">TBSラジオ「伊集院光 深夜の馬鹿力」 パートの番号が変わる 3 回</div></div>
+        <div class="mocknote">今の設定で放送局が変わる回(stations.json で局の正規名を変えた等)は、再適用で揃えないので、ここには出さない(#156)。局の変更は、再適用の確認の「対象外 N 回」で知らせる。「再適用の確認へ」は、番組ページの確認の画面(W-252 / W-253 / W-312)へ移り、「戻る」でホームへ戻る(設定ページの stations.json の「再読み込み」と同じ入口。#164)。押せないときは理由をボタンの下に出す:取り込みが止まっている → <span class="an" data-w="W-119">取り込みが止まっているため、再適用を確かめられません</span>、番組ページに保存していない変更がある → W-256。確かめている間は W-240 を出す。揃う回が無ければ移らずに W-254、確かめられなければ W-255 を、同じくボタンの下に 1 行で出す。この 1 行は、要対応を計算し直して食い違いの中身が変わったら消す。</div>
       </div>
     </div>
 

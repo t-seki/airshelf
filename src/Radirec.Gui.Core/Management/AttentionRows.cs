@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Radirec.Core.Attention;
+using Radirec.Core.Ledger;
 using Radirec.Core.Normalization;
 using Radirec.Core.Reapply;
 
@@ -25,6 +26,40 @@ public static class AttentionText
     /// <summary>W-125。分けておく組に記録した組に、フォルダが加わった。</summary>
     public static string KeptApartGrown(IReadOnlyList<string> folders)
         => $"分けておく組に、新しいフォルダ{Quoted(folders)}が加わりました";
+
+    /// <summary>W-128(種類の見出し)。</summary>
+    public const string FailuresHeading = "解決していない取込失敗";
+
+    /// <summary>W-129 の 3 行目。記録した時刻(ローカル)。</summary>
+    public static string FailedAt(DateTimeOffset failedAt, TimeZoneInfo? zone)
+        => $"失敗: {TimeZoneInfo.ConvertTime(failedAt, zone ?? TimeZoneInfo.Local):yyyy-MM-dd HH:mm}";
+
+    /// <summary>W-130。理由を持つ前(#172 の移行前)に記録された失敗。</summary>
+    public const string NoReason = "(理由の記録なし)";
+
+    /// <summary>W-132(ボタン)。</summary>
+    public const string RevealSource = "取込元をエクスプローラーで開く";
+
+    /// <summary>W-133(W-128 の説明)。</summary>
+    public const string FailuresHint = "録音ファイルを直すか置き直して、取り込みに成功すると消えます";
+
+    /// <summary>W-134(種類の見出し)。</summary>
+    public const string DriftHeading = "再適用が要る番組";
+
+    /// <summary>
+    /// W-135。番組の設定と食い違ったままの回の 1 まとまり。パートだけが違う回(アルバムは同じ)は 2 つ目の形にする。
+    /// 放送局が変わる回は、再適用で揃えないので要対応に出さない(<see cref="AttentionItems.SettingsDrift"/>)。
+    /// </summary>
+    public static string DriftLine(SettingsDriftGroup group)
+        => group.ToAlbum == group.FromAlbum
+            ? $"{group.Station}「{group.FromAlbum}」 パートの番号が変わる {group.Count} 回"
+            : $"{group.Station}「{group.FromAlbum}」→「{group.ToAlbum}」 {group.Count} 回";
+
+    /// <summary>W-136(ボタン)。</summary>
+    public const string ReapplyConfirm = "再適用の確認へ";
+
+    /// <summary>W-119。取り込みが止まっている(W-103〜W-105)ので、W-136 を押せない。</summary>
+    public const string ReapplyUnavailable = "取り込みが止まっているため、再適用を確かめられません";
 
     /// <summary>W-137。縮退(radirec.json を読めない)。</summary>
     public const string Unavailable = "設定を読めないため、要対応を出せません";
@@ -75,6 +110,51 @@ public interface IAttentionActions
     /// 「分けておく」をいま押せないなら、その理由(W-138。番組ページに保存していない変更がある)。押せるなら null。
     /// </summary>
     string? KeepApartBlockedReason { get; }
+}
+
+/// <summary>要対応の「解決していない取込失敗」の 1 件(W-129〜W-132)。</summary>
+public sealed class FailureAttentionRow
+{
+    public FailureAttentionRow(IngestFailureRecord failure, TimeZoneInfo? zone, Func<FailureAttentionRow, Task> reveal)
+    {
+        Failure = failure;
+        FileName = FileNameOf(failure.SourcePath);
+        Reason = string.IsNullOrWhiteSpace(failure.Reason) ? AttentionText.NoReason : failure.Reason;
+        FailedAt = failure.FailedAtUtc is { } at ? AttentionText.FailedAt(at, zone) : null;
+        RevealCommand = new AsyncRelayCommand(() => reveal(this));
+    }
+
+    public IngestFailureRecord Failure { get; }
+
+    /// <summary>W-129 の 1 行目。</summary>
+    public string FileName { get; }
+
+    /// <summary>W-129 の 2 行目。理由の記録が無ければ W-130。</summary>
+    public string Reason { get; }
+
+    /// <summary>W-129 の 3 行目。日時の記録が無い(#172 の移行前の)失敗は null(この行を出さない)。</summary>
+    public string? FailedAt { get; }
+
+    public bool HasFailedAt => FailedAt is not null;
+
+    /// <summary>W-132。取込元から消えた失敗は走査が記録を消す(#172)ので、いつでも押せる。</summary>
+    public IAsyncRelayCommand RevealCommand { get; }
+
+    // 台帳のパスは Windows の形(\ 区切り)。WSL のテストでも同じに切れるよう、両方の区切りで切る。
+    private static string FileNameOf(string path)
+    {
+        var cut = path.LastIndexOfAny(['\\', '/']);
+        return cut < 0 ? path : path[(cut + 1)..];
+    }
+}
+
+/// <summary>要対応の「再適用が要る番組」の 1 まとまり(W-135)。</summary>
+public sealed class DriftAttentionRow(SettingsDriftGroup drift)
+{
+    public SettingsDriftGroup Drift { get; } = drift;
+
+    /// <summary>W-135。</summary>
+    public string Line { get; } = AttentionText.DriftLine(drift);
 }
 
 /// <summary>要対応の「統合設定の無い兄弟フォルダ」の 1 組(W-123〜W-127)。</summary>
