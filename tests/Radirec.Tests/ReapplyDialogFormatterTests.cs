@@ -90,7 +90,7 @@ public sealed class ReapplyDialogFormatterTests
         Assert.Equal("3 回を編集した設定に揃えます", draft.Heading); // W-242
         Assert.StartsWith("まだ保存していない設定で、取り込み済みの回を次のように揃えます。", draft.Body); // W-243
         Assert.Equal("3 回を今の設定に揃えます", saved.Heading); // W-252
-        Assert.StartsWith("今の programs.json の設定で、取り込み済みの回を次のように揃えます。", saved.Body); // W-253
+        Assert.StartsWith("今の programs.json と stations.json の設定で、取り込み済みの回を次のように揃えます。", saved.Body); // W-253(#164)
         Assert.Equal(3, ReapplyDialogFormatter.ChangeCount(plan));
 
         var aligned = ReapplyDialogFormatter.BuildAligned(Report(true, []), ReapplyBasis.Draft);

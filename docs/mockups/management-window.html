@@ -165,7 +165,7 @@
       <option value="writefail">保存できない(書き込み失敗)</option>
       <option value="stale">実行しない(確認の後に設定が変わった)</option>
       <option value="abort">再適用を中止</option>
-      <option value="reapply">再適用の確認(要対応から)</option>
+      <option value="reapply">再適用の確認(保存済みの設定。要対応・stations.json から)</option>
     </select></label>
   <label>設定ページ
     <select data-key="set">
@@ -173,7 +173,7 @@
       <option value="opened">ファイルを開いた結果</option>
       <option value="reloadconfirm">radirec.json の再読み込み(確認)</option>
       <option value="reloaded">再読み込みの結果</option>
-      <option value="stations">stations.json の再読み込み → 確認</option>
+      <option value="stations">stations.json の再読み込み(確かめている間)</option>
       <option value="nostations">stations.json を使わない設定</option>
     </select></label>
   <label>programs.json
@@ -549,11 +549,11 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         旧トレイの確認にあった「統合設定の無い兄弟フォルダ」の段と「統合設定を追記して開く」は出さない(要対応へ移る)。</div>
     </div>
 
-    <!-- 再適用の確認(要対応から) -->
+    <!-- 保存済みの設定での再適用の確認(要対応の「再適用の確認へ」・設定ページの stations.json の「再読み込み」から。#164) -->
     <div data-if="prog:reapply">
       <div class="card confirm-body">
         <h3 style="margin-top: 0;" data-w="W-252">24 回を今の設定に揃えます</h3>
-        <p data-w="W-253">今の programs.json の設定で、取り込み済みの回を次のように揃えます。</p>
+        <p data-w="W-253">今の programs.json と stations.json の設定で、取り込み済みの回を次のように揃えます。</p>
         <p data-w="W-244">合計: 移動・リネーム 24 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 0 回</p>
         <div class="albums" data-w="W-245">
           <div>・TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」</div>
@@ -565,7 +565,11 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <button class="btn primary" data-go="prog:applying" data-w="W-312">適用</button>
         <button class="btn" data-go="page:home prog:list" data-w="W-312" style="outline: 2px solid var(--accent);">戻る</button>
       </div>
-      <div class="mocknote">保存するものが無いので「保存だけ」は出さない。設定ページの stations.json の「再読み込み」からも、同じ確認に来る。</div>
+      <div class="mocknote">保存するものが無いので「保存だけ」は出さない。変更前 → 変更後(W-241)も出さない(変えた設定が無い)。
+        設定ページの stations.json の「再読み込み」からも、同じ確認に来る。「戻る」と、実行した結果からの「戻る」は、来たページ
+        (要対応ならホーム、stations.json なら設定ページ)へ戻る。W-253 は、どちらから来ても同じ言い方にした(再適用は両方のファイルを読み直す)。
+        実行する前に設定が変わっていれば実行せず、
+        <span class="an" data-w="W-278">確認した後に設定が変わったため、実行していません。もう一度確かめ直してください</span>(番組ページに「確認」が無いので W-278 の 2 つ目の形)。</div>
     </div>
 
     <!-- 結果 -->
@@ -665,7 +669,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
     </div>
 
     <div data-if="run:watching,polling,noscan,crashed,startfail">
-      <div data-if="set:normal,opened,reloadconfirm,reloaded,nostations">
+      <div data-if="set:normal,opened,reloadconfirm,reloaded,stations,nostations">
         <div class="card">
           <h3 style="margin-top: 0;" data-w="W-301">取り込みの知らせ</h3>
           <label><input type="checkbox" checked> <span data-w="W-302">新規取込のトーストを出す</span></label>
@@ -705,15 +709,15 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 
         <div class="card readonly">
           <div class="row" style="justify-content: space-between;">
-            <div><b>stations.json</b> <span class="sub" data-if="set:normal,opened,reloadconfirm,reloaded">C:\Users\me\AppData\Local\RadirecData\stations.json</span></div>
+            <div><b>stations.json</b> <span class="sub" data-if="set:normal,opened,reloadconfirm,reloaded,stations">C:\Users\me\AppData\Local\RadirecData\stations.json</span></div>
             <div class="row">
-              <button class="btn small" data-if="set:normal,opened,reloadconfirm,reloaded" data-go="set:opened" data-w="W-305">ファイルを開く</button>
-              <button class="btn small" data-if="set:normal,opened,reloadconfirm,reloaded" data-go="set:stations" data-w="W-305">再読み込み</button>
+              <button class="btn small" data-if="set:normal,opened,reloadconfirm,reloaded,stations" data-go="set:opened" data-w="W-305">ファイルを開く</button>
+              <button class="btn small" data-if="set:normal,opened,reloadconfirm,reloaded,stations" data-go="set:stations" data-w="W-305">再読み込み</button>
               <button class="btn small" disabled data-if="set:nostations" data-w="W-305">ファイルを開く</button>
               <button class="btn small" disabled data-if="set:nostations" data-w="W-305">再読み込み</button>
             </div>
           </div>
-          <pre data-if="set:normal,opened,reloadconfirm,reloaded">{
+          <pre data-if="set:normal,opened,reloadconfirm,reloaded,stations">{
   "Stations": [
     { "Canonical": "ニッポン放送", "Aliases": [ "LFR" ] },
     { "Canonical": "文化放送", "Aliases": [ "QRR" ] },
@@ -723,6 +727,16 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 }</pre>
           <p class="sub" data-if="set:nostations" data-w="W-307">radirec.json でこのファイルを使わない設定になっています</p>
           <div class="msg warn" data-if="set:opened" data-w="W-308">stations.json を開けませんでした(gui.log 参照)</div>
+          <!-- stations.json の再読み込み(#164)。確かめている間はこの段に W-311 を出し、揃える回があれば番組ページの確認(W-252)へ移る -->
+          <div class="msg info" data-if="set:stations" data-w="W-311">stations.json を読み込み直し、取り込み済みの回を今の設定と比べます</div>
+          <div class="mocknote" data-if="set:stations">W-309 の確認は出さない(次の確認の画面が確認を兼ねる)。確かめ終わったら:
+            揃える回があれば <button class="btn small" data-go="page:programs prog:reapply">番組ページの確認へ</button>(「戻る」で設定ページに戻る)。
+            揃える回が無ければ移らずに、この段に
+            <span class="an" data-w="W-254">取り込み済みの回は今の設定と揃っています</span>
+            (対象外の回があれば <span class="an" data-w="W-254">…(対象外の回が 1 回あります。動かしません)</span>)。
+            確かめられなかったら <span class="an" data-w="W-255">統合設定の再適用を中止しました: {理由}</span>。
+            番組ページに保存していない変更があるときは「再読み込み」を押せず、横に
+            <span class="an" data-w="W-256">番組ページに保存していない変更があるため、再適用を確かめられません</span>(下書きは消さない)。</div>
           <div class="mocknote" data-if="set:opened">ほかに <span data-w="W-308">stations.json が無く、見本から作れませんでした(gui.log 参照)</span>。
             開けたときは何も出さない(エディタが開くので分かる)。</div>
         </div>
@@ -730,32 +744,11 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <div class="mocknote">中身を読めなかったときは中身の代わりに
           <span class="an" data-w="W-315">stations.json を読めませんでした(gui.log 参照)</span>、まだ無いときは
           <span class="an" data-w="W-317">stations.json はまだありません(「ファイルを開く」で見本から作ります)</span>。
-          取り込みが止まっているときは radirec.json の「再読み込み」を押せず、横に
-          <span class="an" data-w="W-316">取り込みが止まっているため、再読み込みできません</span>。
-          stations.json の「再読み込み」(下の確認へ進む流れ)は #164 で足す。</div>
+          取り込みが止まっているときは radirec.json と stations.json の「再読み込み」を押せず、横に
+          <span class="an" data-w="W-316">取り込みが止まっているため、再読み込みできません</span>。</div>
         <p class="sub" data-if="pf:unused" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
       </div>
 
-      <!-- stations.json の再読み込み → 確認 -->
-      <div data-if="set:stations">
-        <p class="msg info an" data-w="W-311">stations.json を読み込み直し、取り込み済みの回を今の設定と比べます</p>
-        <div class="card confirm-body">
-          <h3 style="margin-top: 0;" data-w="W-252">3 回を今の設定に揃えます</h3>
-          <p data-w="W-253">今の programs.json の設定で、取り込み済みの回を次のように揃えます。</p>
-          <p data-w="W-244">合計: 移動・リネーム 0 回 / 台帳とタグを直す 3 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 0 回</p>
-          <div class="albums" data-w="W-245">
-            <div>・InterFM897「Daisy Holiday!」→「Daisy Holiday!」</div>
-            <div class="cnt">台帳とタグを直す 3</div>
-          </div>
-          <p data-w="W-246">台帳とタグを直す回は、ファイル名はそのままで、ファイルのタグ(album / title / track)を書き換えます。</p>
-        </div>
-        <div class="row" style="justify-content: flex-end;">
-          <button class="btn primary" data-w="W-312">適用</button>
-          <button class="btn" data-go="set:normal" data-w="W-312" style="outline: 2px solid var(--accent);">戻る</button>
-        </div>
-        <div class="mocknote">W-253 の「今の programs.json の設定で」は、stations.json を直したときには少しずれる。旧トレイ(#154 で退役)の文言のまま残すか、
-          ここだけ言い換えるかは #164 で決める。</div>
-      </div>
     </div>
 
     <!-- radirec.json の再読み込みの確認 -->

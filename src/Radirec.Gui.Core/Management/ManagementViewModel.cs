@@ -70,7 +70,8 @@ public sealed class ManagementViewModel : ObservableObject
         _logWarn = logWarn;
         var applyGate = new ProgramsApplyGate();
         // 番組ページを先に作る(ホームの要対応の「統合する」「分けておく」が使う)。
-        Programs = new ProgramsPageViewModel(control, locateProgramsFile, applyGate, logWarn, logInfo, now);
+        Programs = new ProgramsPageViewModel(control, locateProgramsFile, applyGate, logWarn, logInfo, now,
+            navigate: page => CurrentPage = page);
         Home = new HomeViewModel(control, degradedReason, loadHistory, logWarn,
             showAll: () => CurrentPage = ManagementPage.History, zone, applyGate,
             computeAttention is null ? null : new AttentionActions(this, computeAttention));
@@ -79,7 +80,16 @@ public sealed class ManagementViewModel : ObservableObject
             AppVersion.Of(typeof(ManagementViewModel).Assembly), UpdateSupport.NotInstalled,
             updater: null, checker: null, _ => false, logWarn);
         Settings = settings;
+        // 設定ページの stations.json の「再読み込み」は、番組ページの確認の画面で再適用を確かめる(#164)。
+        if (settings is not null)
+            settings.SavedReapply = SavedReapplyEntry(ManagementPage.Settings);
     }
+
+    /// <summary>
+    /// 保存済みの設定で再適用を確かめる入口(#164)。<paramref name="origin"/> は来たページで、確認の画面の「戻る」でそこへ戻る。
+    /// 設定ページの stations.json の「再読み込み」と、ホームの要対応の「再適用の確認へ」(W-136。#156)が使う。
+    /// </summary>
+    public ISavedReapplyEntry SavedReapplyEntry(ManagementPage origin) => new SavedReapply(this, origin);
 
     public HomeViewModel Home { get; }
 
@@ -147,6 +157,32 @@ public sealed class ManagementViewModel : ObservableObject
         Home.Refresh();
         Programs.RefreshStatus();
         About.Refresh();
+        // stations.json の「再読み込み」を押せるか(番組ページに保存していない変更があれば押せない。W-256)。
+        Settings?.RefreshSavedReapply();
+    }
+
+    // 保存済みの設定での再適用の確認(#164)。揃える回があれば番組ページの確認の画面へ移る。例外は gui.log に書いて握る
+    // (呼び出し元はボタンのハンドラ。漏らすと UI スレッドの最後の網が管理画面を閉じる)。
+    private sealed class SavedReapply(ManagementViewModel owner, ManagementPage origin) : ISavedReapplyEntry
+    {
+        public string? BlockedReason => owner.Programs.SavedConfirmBlockedReason;
+
+        public async Task<SavedReapplyStart> StartAsync()
+        {
+            SavedReapplyStart start;
+            try
+            {
+                start = await owner.Programs.ConfirmSavedAsync(origin);
+            }
+            catch (Exception ex)
+            {
+                owner._logWarn($"管理画面: 再適用の確認(保存済みの設定)を始められませんでした: {ex}");
+                return SavedReapplyStart.Stay(ProgramsPageViewModel.SavedAborted($"{ex.Message}(gui.log 参照)"), isWarning: true);
+            }
+            if (start.ShowsConfirm)
+                owner.CurrentPage = ManagementPage.Programs;
+            return start;
+        }
     }
 
     // 要対応の「統合する」「分けておく」(#155)。下書きは番組ページに作り、そのページへ移る。

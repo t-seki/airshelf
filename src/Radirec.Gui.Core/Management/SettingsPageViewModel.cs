@@ -69,7 +69,10 @@ public sealed class SettingsFileRow : ObservableObject
     /// <summary>中身の代わりに出す 1 行(W-307 / W-315 / W-317)。</summary>
     public string? Note { get => _note; internal set => SetProperty(ref _note, value); }
 
-    /// <summary>操作の結果(W-308 / W-310)。</summary>
+    /// <summary>
+    /// 操作の結果(W-308 / W-310)。stations.json の段では、「再読み込み」で確かめている途中(W-311)と、番組ページへ移らなかったときの
+    /// 1 行(W-254 / W-255 / W-256。#164)も出す。
+    /// </summary>
     public string? Message { get => _message; internal set => SetProperty(ref _message, value); }
 
     /// <summary><see cref="Message"/> が失敗・拒否か(警告の色で出す)。</summary>
@@ -81,8 +84,8 @@ public sealed class SettingsFileRow : ObservableObject
 /// <list type="bullet">
 ///   <item>新規取込のトーストの切り替え(W-301〜W-303)。値は管理画面用の設定ファイルに持つ(ADR-0019)</item>
 ///   <item>radirec.json・stations.json を読み取り専用で見せ、「ファイルを開く」を付ける(W-304〜W-308)。
-///     radirec.json には「再読み込み」(設定リロード。W-309 / W-310)も付ける。stations.json の「再読み込み」
-///     (再適用の確認へ進む流れ)は #164 で足す</item>
+///     radirec.json には「再読み込み」(設定リロード。W-309 / W-310)も付ける。stations.json の「再読み込み」は、設定リロードの後に
+///     保存済みの設定で再適用を確かめ、揃える回があれば番組ページの確認の画面へ進む(W-311・W-312。#164)</item>
 ///   <item>radirec.json を読めない(縮退)ときは、代わりに縮退パネル(W-401〜W-405)</item>
 ///   <item>radirec.json は読めたが取り込みを起動できなかった(W-104)ときは、ページの先頭に起動の失敗のパネル(W-406〜W-409。#168)。
 ///     原因になりうる programs.json・stations.json を開いて直し、「再読み込みして再起動」で戻れるようにする</item>
@@ -132,6 +135,9 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// <summary>W-316。取り込みが止まっていて、設定リロードを受け付けられないときの「再読み込み」の横。</summary>
     public const string ReloadUnavailable = "取り込みが止まっているため、再読み込みできません";
 
+    /// <summary>W-311。stations.json の「再読み込み」を押してから、確かめ終わるまで(stations.json の段に出す)。</summary>
+    public const string StationsReloadChecking = "stations.json を読み込み直し、取り込み済みの回を今の設定と比べます";
+
     /// <summary>W-401。</summary>
     public const string DegradedHeading = "設定を読めません";
 
@@ -162,6 +168,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     private string? _toastMessage;
     private bool _canReload;
     private string? _programsNote;
+    private ISavedReapplyEntry? _savedReapply;
+    private bool _stationsChecking; // stations.json の「再読み込み」で確かめている途中
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="configPath">radirec.json の絶対パス(読めなかったときも渡す。直すために開く)。</param>
@@ -207,6 +215,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         OpenProgramsCommand = new AsyncRelayCommand(() => OpenAsync(Programs, StartFailedPanel), () => Programs.HasPath);
         OpenStationsFromPanelCommand = new AsyncRelayCommand(() => OpenAsync(Stations, StartFailedPanel), () => Stations.HasPath);
         ReloadCommand = new AsyncRelayCommand(ReloadAsync, () => CanReload);
+        ReloadStationsCommand = new AsyncRelayCommand(ReloadStationsAsync, () => CanReloadStations);
         RestartCommand = new RelayCommand(Restart);
 
         UpdateLocations();
@@ -283,12 +292,51 @@ public sealed partial class SettingsPageViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(ReloadNote));
                 ReloadCommand.NotifyCanExecuteChanged();
+                RefreshSavedReapply();
             }
         }
     }
 
     /// <summary>W-316。「再読み込み」を押せないときの説明。</summary>
     public string? ReloadNote => CanReload ? null : ReloadUnavailable;
+
+    /// <summary>
+    /// 保存済みの設定で再適用を確かめる入口(#164)。管理画面(<see cref="ManagementViewModel"/>)がつなぐ。つながっていなければ
+    /// stations.json の「再読み込み」は押せない。
+    /// </summary>
+    public ISavedReapplyEntry? SavedReapply
+    {
+        get => _savedReapply;
+        set
+        {
+            _savedReapply = value;
+            RefreshSavedReapply();
+        }
+    }
+
+    /// <summary>
+    /// stations.json の「再読み込み」を押せるか。取り込みが止まっている(W-316)・stations.json を使わない設定・番組ページに保存して
+    /// いない変更がある(W-256)・確かめている途中なら押せない。
+    /// </summary>
+    public bool CanReloadStations =>
+        CanReload && Stations.HasPath && _savedReapply is { BlockedReason: null } && !_stationsChecking;
+
+    /// <summary>W-316 / W-256。stations.json の「再読み込み」を押せない理由(stations.json の段に出す)。押せるなら null。</summary>
+    public string? StationsReloadNote =>
+        !Stations.HasPath ? null
+        : !CanReload ? ReloadUnavailable
+        : _savedReapply?.BlockedReason;
+
+    /// <summary>
+    /// stations.json の「再読み込み」を押せるかを計算し直す(番組ページで編集を始めた・やめた等に追従する)。管理画面のタイマーが
+    /// 2 秒ごとに呼ぶ。
+    /// </summary>
+    public void RefreshSavedReapply()
+    {
+        OnPropertyChanged(nameof(CanReloadStations));
+        OnPropertyChanged(nameof(StationsReloadNote));
+        ReloadStationsCommand?.NotifyCanExecuteChanged();
+    }
 
     public IAsyncRelayCommand OpenRadirecCommand { get; }
     public IAsyncRelayCommand OpenStationsCommand { get; }
@@ -299,6 +347,12 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// <summary>W-409「stations.json を開く」(起動の失敗のパネル)。結果は下の stations.json の段ではなく、パネルの 1 行に出す。</summary>
     public IAsyncRelayCommand OpenStationsFromPanelCommand { get; }
     public IAsyncRelayCommand ReloadCommand { get; }
+
+    /// <summary>
+    /// W-305 の stations.json の「再読み込み」。設定リロード → 保存済みの設定で再適用を確かめ(W-311)、揃える回があれば番組ページの
+    /// 確認の画面へ移る(W-252 / W-253 / W-312)。無ければ移らずに、結果の 1 行(W-254 / W-255)を stations.json の段に出す。
+    /// </summary>
+    public IAsyncRelayCommand ReloadStationsCommand { get; }
 
     /// <summary>W-404 / W-409「再読み込みして再起動」(縮退パネル・起動の失敗のパネル)。</summary>
     public IRelayCommand RestartCommand { get; }
@@ -355,6 +409,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
             Stations.Path = null;
             Programs.Path = null;
             ProgramsNote = null;
+            RefreshSavedReapply();
             return;
         }
 
@@ -367,6 +422,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         OpenStationsCommand.NotifyCanExecuteChanged();
         OpenProgramsCommand.NotifyCanExecuteChanged();
         OpenStationsFromPanelCommand.NotifyCanExecuteChanged();
+        RefreshSavedReapply();
     }
 
     private async Task LoadContentAsync(SettingsFileRow row, bool mask)
@@ -447,6 +503,39 @@ public sealed partial class SettingsPageViewModel : ObservableObject
             SetMessage(Radirec, ReloadRejected(result.Error), warning: true);
 
         await RefreshAsync();
+    }
+
+    // stations.json の「再読み込み」(#164)。設定リロード → 保存済みの設定で再適用を確かめる。揃える回があれば番組ページの確認の
+    // 画面へ移り(この段の 1 行は消す)、無ければ結果の 1 行をこの段に出す。W-309 の確認は出さない(次の確認の画面が確認を兼ねる)。
+    private async Task ReloadStationsAsync()
+    {
+        if (!CanReloadStations || _savedReapply is not { } entry)
+            return;
+
+        _stationsChecking = true;
+        RefreshSavedReapply();
+        SetMessage(Stations, StationsReloadChecking, warning: false); // W-311
+        SavedReapplyStart start;
+        try
+        {
+            start = await entry.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            // 入口は投げない約束だが、ボタンのハンドラから漏らさない。
+            _logWarn($"管理画面: stations.json の再読み込みで例外: {ex}");
+            start = SavedReapplyStart.Stay(ProgramsPageViewModel.SavedAborted($"{ex.Message}(gui.log 参照)"), isWarning: true);
+        }
+        finally
+        {
+            _stationsChecking = false;
+        }
+
+        SetMessage(Stations, start.Message, start.IsWarning); // W-254 / W-255 / W-256(移ったときは消す)
+        RefreshSavedReapply();
+        // 設定リロードで場所が変わりうるので、開く場所と中身を読み直す(番組ページへ移ったときは、戻ってきたときに読み直す)。
+        if (!start.ShowsConfirm)
+            await RefreshAsync();
     }
 
     private void Restart()
