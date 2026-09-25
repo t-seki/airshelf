@@ -73,12 +73,15 @@ Radirec.Cli ──> Radirec.Cli.Core ──> Radirec.Hosting / Radirec.Core
 - `Radirec.Hosting` は **CLI(`radirec.exe`)と常駐トレイの 2 フロントエンドが共有する合成層**。
   だから Hosting は Cli に畳まず独立を保つ。
 - 両ツリーを繋いでいた EventLog の JSON 契約(EventID 1001/1002)と named pipe は**どちらも撤去済み**。
+  ただし named pipe は #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、CLI → トレイの制御チャネルとして
+  形を変えて戻った(ユーザーごとの名前・`PipeOptions.CurrentUserOnly`。受け口・型・接続は `Hosting/Control/`)。
   `IngestSummaryPayload` / `IngestFailurePayload` という**型は `Gui.Core` に残っているが、跨プロセスの
   バージョン付き JSON 契約としてではなく、ワーカーから文面整形へ渡す in-process の受け渡し型**として
   生き残っている(シリアライズは無い)。
 - **制御(rescan/reload/status)は `Radirec.Hosting/Control/` に残り**(`IServiceControl` /
-  `ServiceStatusSnapshot` 等)、トレイが in-process で叩く。跨プロセスの窓口が消えただけで、
-  制御の実装は Hosting 側にある — ここでも Hosting が 2 フロントエンドの共有合成層として効いている。
+  `ServiceStatusSnapshot` 等)、トレイが in-process で叩く。CLI の `status` / `reload` は、トレイの受け口
+  (`ControlPipeServer`)を通って同じ `IServiceControl` に届く(#179)。制御の実装は Hosting 側にある — ここでも
+  Hosting が 2 フロントエンドの共有合成層として効いている。
 
 **`Radirec.Gui.Core` は分離を維持しているが、役割が変わった**: EventLog subscriber 契約の置き場ではなく、
 **CI で走らせられない WinRT/WPF/WinForms シェルから隔離した「テスト可能な提示ロジック」**

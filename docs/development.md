@@ -102,7 +102,7 @@ Git for Windows を PATH に置く、こと。
 ```
 src/Radirec.Core/     ドメインロジック(OS 非依存・テスト可能)
 src/Radirec.Hosting/  合成ルート + 環境設定・パス解決 + 制御(Control/)。Cli と Gui が共有する
-src/Radirec.Cli/      単一 exe radirec.exe。dev/batch の単発 CLI(ingest / reapply / refresh / history)。Program.cs だけの薄い入口
+src/Radirec.Cli/      単一 exe radirec.exe。dev/batch の単発 CLI(ingest / reapply / refresh / history / status / reload)。Program.cs だけの薄い入口
 src/Radirec.Cli.Core/ Cli のテスト可能な核(コマンド・--json の形・終了コード・CommandApp の設定。net10.0)
 src/Radirec.Gui/      本番の常駐本体 Radirec.Gui.exe。取り込みワーカー + トレイ + 通知 + 管理画面(XAML)+ 自己更新
 src/Radirec.Gui.Core/ Gui のテスト可能な提示ロジックと管理画面の ViewModel(WinRT/WPF/WinForms シェルから隔離)
@@ -135,7 +135,9 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core / Radire
   WSL の CI でテストし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
   XAML(`ManagementWindow.xaml`)も `EnableWindowsTargeting` により Linux でコンパイルされる(起動はしない)。
 - `Radirec.Hosting` は **CLI と常駐トレイの 2 フロントエンドが共有する合成層**。だから Cli に畳まず
-  独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。
+  独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。CLI の
+  `status` / `reload` は、同じ `Hosting/Control/` の制御チャネル(named pipe。`ControlPipeServer` / `ControlPipeClient`)で
+  トレイへ頼む(#179・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
 - `Radirec.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux CI でビルド/テスト可能)、
   `Cli` は `net10.0-windows`、`Gui` は `net10.0-windows10.0.x`。ワーカーが Windows 専用 API
   (`SystemEvents.PowerModeChanged`)に依存するため、ワーカーは Hosting ではなく Gui に置いてある。

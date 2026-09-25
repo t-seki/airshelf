@@ -14,7 +14,7 @@
 常駐は **トレイ常駐 per-user モデル**(`Radirec.Gui`)で、取り込みワーカーをトレイプロセスが内包し、
 取込通知は in-process トースト、制御はトレイメニュー、状態と取込履歴・番組の設定(編集と再適用)・設定ファイル・更新の確認は管理画面(トレイの「Radirec を開く」)、更新は Velopack のアプリ内自己更新で行う
 ([ADR-0012](docs/adr/0012-retire-service-for-tray-resident-per-user.md) /
-[ADR-0013](docs/adr/0013-velopack-per-user-updates.md)。旧 Windows サービス/EventLog/named pipe は退役)。
+[ADR-0013](docs/adr/0013-velopack-per-user-updates.md)。旧 Windows サービス/EventLog は退役。named pipe は、CLI の `radirec status` / `reload` がトレイへ頼む経路として形を変えて戻した:[ADR-0020](docs/adr/0020-cli-as-agent-front-via-control-channel.md))。
 配布は **Velopack の per-user インストーラ(非 admin)+ タグ駆動 Release**
 ([最新リリース](https://github.com/t-seki/radirec-tool/releases))。
 ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装。

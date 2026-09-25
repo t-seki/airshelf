@@ -1,6 +1,6 @@
 # GUI→サービス制御は named pipe の要求/応答チャネルで行い、CLI クライアントで先行実装する
 
-Status: accepted / superseded by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#33 GUI→サービス制御チャネル・サービス側先行実装。#41・#42・#47 でマージ済み)。トレイ常駐 per-user 移行で named pipe 制御チャネルは退役し、rescan/reload/status はトレイメニューからの in-process 呼び出しになった(CLI 制御 verb は廃止。**手動再スキャンの移設先はトレイメニュー**であって `radirec ingest` ではない — #113 で訂正)。**#72 まで named pipe が現行の生きた制御チャネルだった**(実機検証スクリプト `deploy/verify-control-channel.ps1` も #72 で削除)。
+Status: accepted / superseded by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#33 GUI→サービス制御チャネル・サービス側先行実装。#41・#42・#47 でマージ済み)。トレイ常駐 per-user 移行で named pipe 制御チャネルは退役し、rescan/reload/status はトレイメニューからの in-process 呼び出しになった(CLI 制御 verb は廃止。**手動再スキャンの移設先はトレイメニュー**であって `radirec ingest` ではない — #113 で訂正)。**#72 まで named pipe が現行の生きた制御チャネルだった**(実機検証スクリプト `deploy/verify-control-channel.ps1` も #72 で削除)。**[ADR-0020](0020-cli-as-agent-front-via-control-channel.md)(2026-09-26)で、named pipe の制御チャネルを CLI 向けに形を変えて戻した(#179。ユーザーごとの名前・`PipeOptions.CurrentUserOnly`。ADR-0020 の注記を参照)**
 
 [ADR-0008](0008-ingest-notification-via-eventlog-signal.md) で取込通知を**サービス発・一方向**の EventLog シグナルに確定した。その設計中に、将来 GUI が**逆方向**にサービスへ指示を出す需要(手動再スキャン・設定リロード・ライブ状態取得)が判明した。EventLog は一方向のため、この用途には別チャネルが要る。ADR-0008 の非閉塞性(通知は EventLog のまま、制御は別チャネルで足せる)を前提に、本 ADR で GUI→サービスの制御チャネルを設計する。
 
