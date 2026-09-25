@@ -40,7 +40,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # 全 6 プロジェクト(Windows 専用の Cli / Gui を含む)をビルドする。
+      # Radirec.slnx の全プロジェクト(Windows 専用の Cli / Gui を含む)をビルドする。
       # 警告は現状 0 なので -warnaserror で 0 を維持する。SDK 更新で新アナライザが増えて落ちた場合は
       # その指摘を潰すか、必要なら個別に抑制する(release.yml には入れない — リリースを警告で止めないため)。
       - name: Build
