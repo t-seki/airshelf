@@ -1,15 +1,19 @@
 using System.ComponentModel;
-using Radirec.Hosting;
+using Radirec.Cli.Core.Output;
 using Radirec.Core.Ingestion;
+using Radirec.Hosting;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace Radirec.Cli.Commands;
+namespace Radirec.Cli.Core.Commands;
 
 /// <summary>らじれこ録音を正規化して取り込む(1 回走査)。</summary>
-public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
+public sealed class IngestCommand(IAnsiConsole console, ICliConfigSource configSource)
+    : AsyncCommand<IngestCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public const string Name = "ingest";
+
+    public sealed class Settings : CliSettings
     {
         [CommandOption("--dry-run")]
         [Description("副作用なしで取り込み予定を表示する")]
@@ -19,9 +23,9 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var config = ConfigLoading.Load();
+        var config = CommandSupport.LoadConfig(configSource, console, Name, settings.Json);
         if (config is null)
-            return 1;
+            return ExitCodes.UsageOrConfig;
 
         IngestService service;
         IDisposable? disposable;
@@ -32,21 +36,24 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
         catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
         {
             // 台帳オープンや stations/programs の読み込みで失敗した場合(radirec.json 本体の
-            // 解析失敗は ConfigLoading.Load 側で処理済み)。
-            AnsiConsole.MarkupLineInterpolated($"[red]設定の読み込みに失敗しました:[/] {ex.Message}");
-            return 1;
+            // 解析失敗は LoadConfig 側で処理済み)。
+            return CommandSupport.Fail(
+                console, Name, settings.Json, ExitCodes.UsageOrConfig, $"設定の読み込みに失敗しました: {ex.Message}");
         }
 
+        IngestReport report;
         using (disposable)
-        {
-            var report = await service.RunOnceAsync(settings.DryRun, cancellationToken);
-            Render(report);
-        }
+            report = await service.RunOnceAsync(settings.DryRun, cancellationToken);
 
-        return 0;
+        var exitCode = ExitCodeRules.For(report);
+        if (settings.Json)
+            CliJson.Write(console, CliJson.Result(Name, exitCode, IngestJson.From(report)));
+        else
+            Render(report);
+        return exitCode;
     }
 
-    private static void Render(IngestReport report)
+    private void Render(IngestReport report)
     {
         var table = new Table().Border(TableBorder.Rounded);
         table.AddColumn("結果");
@@ -63,10 +70,10 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
                 new Markup(Markup.Escape(Detail(item))));
         }
 
-        AnsiConsole.Write(table);
+        console.Write(table);
 
         var mode = report.DryRun ? "[cyan](dry-run)[/]" : string.Empty;
-        AnsiConsole.MarkupLine(
+        console.MarkupLine(
             $"取込 {report.Count(IngestOutcome.Imported)} / 予定 {report.Count(IngestOutcome.Planned)} / " +
             $"済 {report.Count(IngestOutcome.SkippedAlreadyImported)} / 未安定 {report.Count(IngestOutcome.SkippedUnstable)} / " +
             $"ジャンク {report.Count(IngestOutcome.SkippedJunk)} / 対象外 {report.Count(IngestOutcome.SkippedUnsupported)} / " +
@@ -76,13 +83,13 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
         switch (report.LibraryRefresh)
         {
             case LibraryRefreshStatus.Started:
-                AnsiConsole.MarkupLine("[green]Jellyfin ライブラリ更新: 起動しました[/]");
+                console.MarkupLine("[green]Jellyfin ライブラリ更新: 起動しました[/]");
                 break;
             case LibraryRefreshStatus.NotConfigured:
-                AnsiConsole.MarkupLine("[grey]Jellyfin ライブラリ更新: 未設定のため行いません[/]");
+                console.MarkupLine("[grey]Jellyfin ライブラリ更新: 未設定のため行いません[/]");
                 break;
             case LibraryRefreshStatus.Failed:
-                AnsiConsole.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新に失敗:[/] {report.RefreshError}");
+                console.MarkupLineInterpolated($"[yellow]Jellyfin ライブラリ更新に失敗:[/] {report.RefreshError}");
                 break;
         }
     }
