@@ -3,7 +3,7 @@
 らじれこで録音した M4A を、Jellyfin 音楽ライブラリ向けに整理・取り込みする CLI の使い方。
 
 > 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M4-A**(radikool MP3 の
-> 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)/ 取込履歴の表示(`radirec history`。§3・ADR-0020)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
+> 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)/ 取込履歴の表示(`radirec history`。§3・ADR-0020)/ 要対応の表示(`radirec attention`。§3・ADR-0020)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
 > ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装です。
 >
 > この §1–§5 は主に **dev/batch の CLI(`radirec.exe`)** の使い方。常駐運用は §6 を参照。
@@ -96,6 +96,7 @@ dotnet run --project src/Radirec.Cli -- ingest
 | `reapply` | `dryRun`、`aligned`(揃っているか)、`counts`(`move` / `ledgerAndTags` / `ledgerOnly` / `duplicateLeft` / `excluded` / `failed`)、`duplicatesRewritingTags`、`albums[]`(アルバム単位のまとめ)、`items[]`(明細。`action`・`broadcastDate`・`fromPath`・`toPath`・`reason` など)、`unintegratedSiblings[]`(統合設定の無い兄弟フォルダの組)、`libraryRefresh` |
 | `refresh` | `status`(`started` / `notConfigured` / `misconfigured` / `failed`)、`error` |
 | `history` | `entries[]`(新しい順。`program`・`station`・`broadcastDate`・`broadcastTime`(時刻の無い録音は null)・`part`・`importedAt`(ISO 8601、時差つき)・`outputPath`・`sourcePath`) |
+| `attention` | `count`(要対応の件数)、`unintegratedSiblings[]`(`station`・`folders`・`foldersWithoutSetting`・`mergedAlbum`・`foldersNewToKeptApart`)、`unresolvedFailures[]`(`sourcePath`・`reason`・`failedAt`。記録の無い古い失敗は null)、`settingsDrift[]`(`station`・`fromAlbum`・`toAlbum`・`count`) |
 
 列挙の値(`outcome`・`action`・`status`)は camelCase の文字列です(`skippedAlreadyImported` など)。日本語は
 エスケープせずにそのまま出し、出力は UTF-8 です。
@@ -157,6 +158,22 @@ radirec history --since 2026-09-01 --json     # 取込日時が 9/1 以降のも
 - `--since` は取込日時で絞ります。`2026-09-01` や `2026-09-01T12:00` のように時差の無い値はローカル時刻として
   読みます。読めない値や、`--limit` が負のときは使い方の誤り(終了コード 1)です
 - まだ何も取り込んでいない(台帳が無い)ときは、空のまま成功(0)で終わります
+
+### 要対応を見る(`attention`)
+
+管理画面のホームの**要対応**(§6「管理画面」)と同じものを出します。計算も同じで、台帳(読み取り専用)とディスクの
+`programs.json` / `stations.json` から毎回計算し直すので、常駐(トレイ)が動いていなくても使えます(#183)。
+
+```powershell
+radirec attention           # 統合設定の無い兄弟フォルダ・解決していない取込失敗・再適用が要る番組
+radirec attention --json    # エージェント・スクリプト向け(result の形は上の表)
+```
+
+- 何も無ければ「要対応はありません」(`--json` なら `count` が 0 で配列が空)で、成功(0)で終わります。
+  あるときも終了コードは 0 です(要対応は失敗ではないため)。件数は `count` か表の見出しで見ます
+- 要対応を CLI から解決する操作(「統合する」「分けておく」)はありません。`programs.json` を直してから
+  `radirec reapply --dry-run` で確かめます(§5)。再適用が要る番組は `reapply` で揃うと消えます
+- 台帳・`programs.json` / `stations.json` を読めない(壊れた JSON など)ときは 1 です
 
 ### 統合設定を取り込み済みの回へ再適用する(`reapply`)
 
