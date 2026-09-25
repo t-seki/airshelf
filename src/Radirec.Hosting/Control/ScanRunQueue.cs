@@ -5,8 +5,8 @@ namespace Radirec.Hosting.Control;
 
 /// <summary>
 /// 走査の実行(CONTEXT.md。ADR-0020 / #180)の待ち行列。頼む側(制御チャネル)が <see cref="Enqueue"/> で積み、常駐の直列ループが
-/// <see cref="RunPendingAsync"/> で処理する。頼む側は走査を自分で走らせないので、走査は取り込みの走査・再適用と同じループの上で
-/// 1 つずつ走り、取り込み中に頼んだら、その走査が終わってから始まる。
+/// <see cref="TakePending"/> で取り出して(保留中の設定リロードを反映してから)<see cref="RunAsync"/> で走査する。頼む側は走査を
+/// 自分で走らせないので、走査は取り込みの走査・再適用と同じループの上で 1 つずつ走り、取り込み中に頼んだら、その走査が終わってから始まる。
 /// <para>
 /// 結果を返す非冪等の要求なので、トリガのチャネル(容量 1・満杯なら書き捨て)には乗せず、取りこぼさないキューで運ぶ
 /// (再適用のジョブと同じ理屈)。ループを起こすのは頼む側の責任(トリガのチャネルへの書き込み)。
@@ -24,17 +24,6 @@ public sealed class ScanRunQueue(ScanRunSummaryGate summaryGate)
         var completion = new TaskCompletionSource<ScanRunResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending.Enqueue(completion);
         return completion.Task;
-    }
-
-    /// <summary>
-    /// 積まれている走査の実行を処理する(<see cref="TakePending"/> → <see cref="RunAsync"/>)。無ければ何もせず false を返す。
-    /// </summary>
-    public async Task<bool> RunPendingAsync(Func<CancellationToken, Task<IngestReport>> scan, CancellationToken cancellationToken)
-    {
-        if (TakePending() is not { } batch)
-            return false;
-        await RunAsync(batch, scan, cancellationToken).ConfigureAwait(false);
-        return true;
     }
 
     /// <summary>

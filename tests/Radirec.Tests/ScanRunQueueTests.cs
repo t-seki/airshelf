@@ -6,7 +6,8 @@ namespace Radirec.Tests;
 
 /// <summary>
 /// 走査の実行(CLI から頼んだ走査。#180 / ADR-0020)の待ち行列。頼む側は走査を自分で走らせず、常駐の直列ループが
-/// <see cref="ScanRunQueue.RunPendingAsync"/> で処理する(トーストの扱いは <see cref="IngestServiceTests"/>)。
+/// <see cref="ScanRunQueue.TakePending"/> で取り出して <see cref="ScanRunQueue.RunAsync"/> で走査する。テストもワーカーと同じ
+/// 取り出し → 走査の形で呼ぶ(トーストの扱いは <see cref="IngestServiceTests"/>)。
 /// </summary>
 public sealed class ScanRunQueueTests
 {
@@ -33,13 +34,15 @@ public sealed class ScanRunQueueTests
         var triggerScan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var triggerScanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // 常駐の直列ループと同じ順:トリガの走査(取り込み中)→ 次の反復で走査の実行。
+        // 常駐の直列ループと同じ順:トリガの走査(取り込み中)→ 次の反復で取り出して走査の実行。
         var loop = Task.Run(async () =>
         {
             triggerScanStarted.SetResult();
             await triggerScan.Task;
             lock (order) order.Add("トリガの走査が終わった");
-            await queue.RunPendingAsync(_ =>
+            var batch = queue.TakePending();
+            Assert.NotNull(batch);
+            await queue.RunAsync(batch, _ =>
             {
                 lock (order) order.Add("走査の実行");
                 return Task.FromResult(Report(IngestOutcome.Imported));
@@ -68,31 +71,23 @@ public sealed class ScanRunQueueTests
         var second = queue.Enqueue();
         var scans = 0;
 
-        var ran = await queue.RunPendingAsync(_ =>
+        var batch = queue.TakePending()!;
+        await queue.RunAsync(batch, _ =>
         {
             scans++;
             return Task.FromResult(Report(IngestOutcome.Imported, IngestOutcome.Failed));
         }, CancellationToken.None);
 
-        Assert.True(ran);
+        Assert.Equal(2, batch.Count);
         Assert.Equal(1, scans);
         Assert.Same((await first).Report, (await second).Report);
         Assert.Equal(1, (await first).Report!.Count(IngestOutcome.Failed));
     }
 
     [Fact]
-    public async Task 積まれていなければ走査しない()
+    public void 積まれていなければ取り出すものは無い()
     {
-        var scans = 0;
-
-        var ran = await NewQueue().RunPendingAsync(_ =>
-        {
-            scans++;
-            return Task.FromResult(Report());
-        }, CancellationToken.None);
-
-        Assert.False(ran);
-        Assert.Equal(0, scans);
+        Assert.Null(NewQueue().TakePending());
     }
 
     [Fact]
@@ -100,10 +95,10 @@ public sealed class ScanRunQueueTests
     {
         var queue = NewQueue();
         var external = queue.Enqueue();
-        await queue.RunPendingAsync(_ => throw new IOException("NAS に届きません"), CancellationToken.None);
+        await queue.RunAsync(queue.TakePending()!, _ => throw new IOException("NAS に届きません"), CancellationToken.None);
 
         var internalFailure = queue.Enqueue();
-        await queue.RunPendingAsync(_ => throw new InvalidOperationException("想定外"), CancellationToken.None);
+        await queue.RunAsync(queue.TakePending()!, _ => throw new InvalidOperationException("想定外"), CancellationToken.None);
 
         Assert.Equal(ScanRunFailure.External, (await external).Failure);
         Assert.Contains("NAS に届きません", (await external).Error);
@@ -120,7 +115,7 @@ public sealed class ScanRunQueueTests
         await stopping.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            queue.RunPendingAsync(ct => Task.FromCanceled<IngestReport>(ct), stopping.Token));
+            queue.RunAsync(queue.TakePending()!, ct => Task.FromCanceled<IngestReport>(ct), stopping.Token));
 
         Assert.Equal(ScanRunFailure.Stopped, (await pending).Failure);
     }
@@ -132,9 +127,8 @@ public sealed class ScanRunQueueTests
         var queue = NewQueue();
         var pending = queue.Enqueue();
 
-        var ran = await queue.RunPendingAsync(_ => throw new TaskCanceledException("時間切れ"), CancellationToken.None);
+        await queue.RunAsync(queue.TakePending()!, _ => throw new TaskCanceledException("時間切れ"), CancellationToken.None);
 
-        Assert.True(ran);
         var result = await pending;
         Assert.Equal(ScanRunFailure.Internal, result.Failure);
         Assert.Contains("時間切れ", result.Error);
@@ -155,7 +149,10 @@ public sealed class ScanRunQueueTests
         Assert.Equal(1, batch.Count);
         Assert.True(first.IsCompleted);
         Assert.False(late.IsCompleted);
-        Assert.True(await queue.RunPendingAsync(_ => Task.FromResult(Report()), CancellationToken.None));
+
+        var next = queue.TakePending()!;
+        await queue.RunAsync(next, _ => Task.FromResult(Report()), CancellationToken.None);
+        Assert.Equal(1, next.Count);
         Assert.Empty((await late).Report!.Items);
         Assert.Null(queue.TakePending());
     }

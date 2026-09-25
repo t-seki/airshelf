@@ -795,7 +795,7 @@ public sealed class IngestServiceTests
         var service = Build([Rec(StandardName), bad], publisher: gate);
 
         var pending = queue.Enqueue();
-        Assert.True(await queue.RunPendingAsync(ct => service.RunOnceAsync(dryRun: false, ct), CancellationToken.None));
+        await queue.RunAsync(queue.TakePending()!, ct => service.RunOnceAsync(dryRun: false, ct), CancellationToken.None);
         var result = await pending;
 
         Assert.Equal(0, _publisher.Calls);                   // 新規取込のトーストは出さない(結果は CLI に返る)
@@ -814,7 +814,8 @@ public sealed class IngestServiceTests
 
         // 走査の実行を 1 回済ませた後でも、止めたままにならない。
         var scanRun = queue.Enqueue();
-        await queue.RunPendingAsync(ct => Build([], publisher: gate).RunOnceAsync(dryRun: false, ct), CancellationToken.None);
+        await queue.RunAsync(
+            queue.TakePending()!, ct => Build([], publisher: gate).RunOnceAsync(dryRun: false, ct), CancellationToken.None);
         await scanRun;
         await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
 
