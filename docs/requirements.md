@@ -459,7 +459,7 @@ stations:
 radirec-tool/
   core/   # ドメインロジック: パース(importer) / 正規化ルール / 放送局・番組解決 /
           #   タグ書込(TagLib#) / import-once 台帳 / Jellyfin リフレッシュ。GUI 非依存・テスト可能
-  cli/    # 薄い入口(dev/batch の単発)。radirec ingest / reapply / refresh
+  cli/    # 薄い入口(dev/batch の単発)。radirec ingest / reapply / refresh / history
   gui/    # 本番の常駐本体。取り込みワーカー + トレイ + 取込通知 + 管理画面(取込履歴を含む。§10.3)+ 制御 + 自己更新。
           #   取込後編集グリッド(§10.1)は同プロジェクトに後載せ・保留
   docs/  tests/
@@ -471,7 +471,7 @@ radirec-tool/
 
 - **原則**: ドメインロジックは全て `core/` に置き、CLI/GUI は薄いアダプタ。
 - **CLI で提供する編集操作**(GUI 前でも運用可能。**いずれも M4 / #4 のスコープで未実装** —
-  現行のコマンドは `ingest` / `reapply` / `refresh` の 3 つ):
+  現行のコマンドは `ingest` / `reapply` / `refresh` / `history` の 4 つ):
   → **#4 は not planned で閉じた(2026-09-25・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))**。
   下の 2 つは作らない。統合と正規名の揃え直しは再適用(`reapply`。ADR-0016)と管理画面が引き取った。
   - **一括正規化**: alias/放送局マスタ更新 → 該当アルバム全回へ再適用(`radirec apply-alias`)。
@@ -557,7 +557,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   - `Radirec.Hosting` — 合成ルート + 環境設定・パス解決 + 制御(`Control/`)。**`Radirec.Cli` と
     `Radirec.Gui` の 2 フロントエンドが共有する合成層**なので Cli に畳まず独立を保つ([ADR-0012])。
   - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。**dev/batch の単発 CLI**
-    (`ingest`/`reapply`/`refresh`)。TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
+    (`ingest`/`reapply`/`refresh`/`history`)。TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
     `Radirec.Cli.Core` にある(#178)。
     ※ かつては常駐サービス(`service` verb)と制御チャネル窓口(`status`/`rescan`/`reload`)も
     1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
