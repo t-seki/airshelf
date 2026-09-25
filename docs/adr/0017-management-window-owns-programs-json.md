@@ -2,6 +2,10 @@
 
 Status: accepted(#5 の GUI 設計、2026-09-25。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、#144 / #148 の追記と関連)
 
+> **[ADR-0020](0020-cli-as-agent-front-via-control-channel.md) で一部を改めた**:エディタや AI エージェントが `programs.json` を直接編集して
+> から `radirec reapply` を叩くのも、正式な使い方として認める(「エディタで直すのは逃げ道」ではなくなった)。管理画面が主な書き手であること、
+> 書くときに全体を書き直すこと、読み込んだ後に変わっていれば書かないことは変わらない。
+
 管理画面(requirements §10.3)で番組の設定を編集できるようにするにあたり、`programs.json` を誰がどう書くかを決める。
 いまの `programs.json` は利用者がエディタで直すファイルで、`//` コメント付きの JSON(JSONC)として読まれている。
 #148 の追記(`ProgramsFileAppender`)は、コメントと並びをバイト単位で残したまま、提案を配列の末尾に**挿入するだけ**に

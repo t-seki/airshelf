@@ -9,6 +9,10 @@ Status: accepted(常駐モデルの構造転換。ADR-0003/0005/0006/0007/0008/0
 > `radirec ingest` は移行前から在る dev/batch の単発 CLI で、制御コマンドの移設先ではない。
 > 現行の姿は [requirements.md](../requirements.md) §7.2 の「現在地」を参照。
 
+> **[ADR-0020](0020-cli-as-agent-front-via-control-channel.md) で改めた(2026-09-25)**:`radirec.exe` を普段の運用と AI エージェントの窓口にする。
+> 台帳を書き換える `ingest` / `reapply` と `status` / `reload` は、named pipe の制御チャネル(トレイのプロセスが受け口)で常駐に頼む。
+> 本 ADR の「`radirec.exe` は dev/batch の単発 CLI」「named pipe は退役」はこれで置き換わる。常駐はトレイ、という決定は変わらない。
+
 本番の実行形態を **Windows サービス(Session 0 常駐)** から **トレイ常駐(ユーザーセッション自動起動・非 admin の per-user)** へ移行する。取り込みワーカーを `Radirec.Gui`(トレイ)プロセスに畳み込み、`Radirec.Gui → Radirec.Core` を直接参照する。EventLog シグナル・named pipe 制御チャネル・run-as-user 資格情報という **Session 0 を橋渡しするための機構一式を撤去**する。
 
 ## 背景
