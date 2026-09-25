@@ -65,17 +65,37 @@ public sealed class HistoryCommandTests : IDisposable
         Assert.Equal(["p0", "p1"], HistoryCommand.Select(entries, limit: 2, since: Base.AddMinutes(-25)).Entries.Select(e => e.Program));
     }
 
+    // CI のローカルは UTC なので、UTC として読む誤りでも通ってしまわないよう、UTC 以外のゾーンで確かめる。
+    private static readonly TimeZoneInfo Tokyo =
+        TimeZoneInfo.CreateCustomTimeZone("Test+09", TimeSpan.FromHours(9), "Test+09", "Test+09");
+
     [Fact]
-    public void sinceの時差の無い値はローカル時刻として読む()
+    public void sinceの時差の無い値は渡したゾーンの時刻として読む()
     {
-        Assert.True(HistoryCommand.TryParseSince("2026-09-01", out var date));
-        Assert.Equal(new DateTimeOffset(new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Local)), date);
+        Assert.True(HistoryCommand.TryParseSince("2026-09-01", Tokyo, out var date));
+        Assert.Equal(new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.FromHours(9)), date);
 
-        Assert.True(HistoryCommand.TryParseSince("2026-09-01T12:00", out var dateTime));
-        Assert.Equal(new DateTimeOffset(new DateTime(2026, 9, 1, 12, 0, 0, DateTimeKind.Local)), dateTime);
+        Assert.True(HistoryCommand.TryParseSince("2026-09-01T12:00", Tokyo, out var dateTime));
+        Assert.Equal(new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.FromHours(9)), dateTime);
+        Assert.Equal(new DateTimeOffset(2026, 9, 1, 3, 0, 0, TimeSpan.Zero), dateTime.ToUniversalTime()); // UTC なら 03:00
+    }
 
-        Assert.True(HistoryCommand.TryParseSince("2026-09-01T12:00+09:00", out var withOffset));
-        Assert.Equal(new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.FromHours(9)), withOffset);
+    [Theory]
+    [InlineData("2026-09-01T12:00+02:00", 2)]
+    [InlineData("2026-09-01T12:00-05:00", -5)]
+    [InlineData("2026-09-01T12:00Z", 0)]
+    public void sinceの時差つきの値はそのまま読む(string value, int offsetHours)
+    {
+        Assert.True(HistoryCommand.TryParseSince(value, Tokyo, out var since));
+        Assert.Equal(new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.FromHours(offsetHours)), since);
+    }
+
+    [Fact]
+    public void sinceの既定はマシンのローカル時刻()
+    {
+        Assert.True(HistoryCommand.TryParseSince("2026-09-01T12:00", out var since));
+        var expected = new DateTime(2026, 9, 1, 12, 0, 0, DateTimeKind.Unspecified);
+        Assert.Equal(new DateTimeOffset(expected, TimeZoneInfo.Local.GetUtcOffset(expected)), since);
     }
 
     // ---- コマンドとして ----
@@ -109,6 +129,32 @@ public sealed class HistoryCommandTests : IDisposable
         Assert.EndsWith("新しい回.m4a", first.GetProperty("outputPath").GetString());
         Assert.EndsWith("新しい回_src.m4a", first.GetProperty("sourcePath").GetString());
         Assert.Equal(JsonValueKind.Null, entries[1].GetProperty("broadcastTime").ValueKind);
+    }
+
+    [Fact]
+    public async Task limitを付けなければ既定の5件()
+    {
+        Record(Enumerable.Range(0, 7).Select(i => Entry($"p{i}", minutes: -i)).ToArray());
+
+        var (exitCode, output) = await Run(["history", "--json"]);
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        using var json = JsonDocument.Parse(output);
+        var entries = json.RootElement.GetProperty("result").GetProperty("entries");
+        Assert.Equal(HistoryCommand.DefaultLimit, entries.GetArrayLength());
+        Assert.Equal(5, entries.GetArrayLength());
+        Assert.Equal("p0", entries[0].GetProperty("program").GetString());
+    }
+
+    [Fact]
+    public async Task limit0を付ければ全件()
+    {
+        Record(Enumerable.Range(0, 7).Select(i => Entry($"p{i}", minutes: -i)).ToArray());
+
+        var (_, output) = await Run(["history", "--limit", "0", "--json"]);
+
+        using var json = JsonDocument.Parse(output);
+        Assert.Equal(7, json.RootElement.GetProperty("result").GetProperty("entries").GetArrayLength());
     }
 
     [Fact]

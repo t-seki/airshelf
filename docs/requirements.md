@@ -471,7 +471,7 @@ radirec-tool/
 
 - **原則**: ドメインロジックは全て `core/` に置き、CLI/GUI は薄いアダプタ。
 - **CLI で提供する編集操作**(GUI 前でも運用可能。**いずれも M4 / #4 のスコープで未実装** —
-  現行のコマンドは `ingest` / `reapply` / `refresh` の 3 つ):
+  現行のコマンドは `ingest` / `reapply` / `refresh` / `history` の 4 つ):
   → **#4 は not planned で閉じた(2026-09-25・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))**。
   下の 2 つは作らない。統合と正規名の揃え直しは再適用(`reapply`。ADR-0016)と管理画面が引き取った。
   - **一括正規化**: alias/放送局マスタ更新 → 該当アルバム全回へ再適用(`radirec apply-alias`)。

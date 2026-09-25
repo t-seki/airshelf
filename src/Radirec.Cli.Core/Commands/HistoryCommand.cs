@@ -61,7 +61,37 @@ public sealed class HistoryCommand(IAnsiConsole console, ICliConfigSource config
     /// <c>--since</c> の値を読む。時差の無い値(<c>2026-09-01</c> / <c>2026-09-01T12:00</c>)はローカル時刻、時差つきはそのまま。
     /// </summary>
     public static bool TryParseSince(string value, out DateTimeOffset since) =>
-        DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out since);
+        TryParseSince(value, TimeZoneInfo.Local, out since);
+
+    /// <summary>
+    /// <see cref="TryParseSince(string, out DateTimeOffset)"/> の、時差の無い値を読むタイムゾーンを渡せる形
+    /// (テストで UTC 以外のゾーンを確かめるため。CI のローカルは UTC)。
+    /// </summary>
+    public static bool TryParseSince(string value, TimeZoneInfo zone, out DateTimeOffset since)
+    {
+        since = default;
+        if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+            return false;
+
+        // 時差を書いていなければ、その壁時計の時刻を zone の時刻として読み直す(TryParse は時差が無いとき
+        // マシンのローカルの時差を付けるので、書いてあったかどうかは文字列で判断する)。
+        since = HasOffset(value)
+            ? parsed
+            : new DateTimeOffset(parsed.DateTime, zone.GetUtcOffset(DateTime.SpecifyKind(parsed.DateTime, DateTimeKind.Unspecified)));
+        return true;
+    }
+
+    // 末尾に Z か ±hh:mm / ±hhmm があるか(日付の「-」と取り違えないよう、時刻の後ろだけを見る)。
+    private static bool HasOffset(string value)
+    {
+        var t = value.IndexOf('T');
+        if (t < 0)
+            t = value.IndexOf(' ');
+        if (t < 0)
+            return false; // 日付だけ
+        var time = value[(t + 1)..];
+        return time.EndsWith('Z') || time.EndsWith('z') || time.Contains('+') || time.Contains('-');
+    }
 
     /// <summary>
     /// 新しい順の記録を、取込日時が <paramref name="since"/> 以降のものに絞り、<paramref name="limit"/> 件まで返す

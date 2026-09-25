@@ -3,7 +3,7 @@
 らじれこで録音した M4A を、Jellyfin 音楽ライブラリ向けに整理・取り込みする CLI の使い方。
 
 > 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M4-A**(radikool MP3 の
-> 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
+> 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)/ 取込履歴の表示(`radirec history`。§3・ADR-0020)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
 > ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装です。
 >
 > この §1–§5 は主に **dev/batch の CLI(`radirec.exe`)** の使い方。常駐運用は §6 を参照。
