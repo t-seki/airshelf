@@ -94,6 +94,15 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <summary>W-278。</summary>
     public const string Stale = "確認した後に設定が変わったため、実行していません。もう一度「確認」を押してください";
 
+    /// <summary>W-278 の、保存済みの設定で確かめたときの形(番組ページに「確認」が無いので、来たページからやり直す)。</summary>
+    public const string SavedStale = "確認した後に設定が変わったため、実行していません。もう一度確かめ直してください";
+
+    /// <summary>
+    /// W-256。番組ページに保存していない作業があるので、保存済みの設定で再適用を確かめられない(確かめると確認の画面に
+    /// 替わり、下書きが見えなくなるため。下書きは消さない)。
+    /// </summary>
+    public const string SavedConfirmBlocked = "番組ページに保存していない変更があるため、再適用を確かめられません";
+
     /// <summary>W-279。</summary>
     public const string SavedOnly = "保存しました。揃っていない回は要対応の「再適用が要る番組」に出ます";
 
@@ -118,6 +127,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     private readonly Action<string> _logWarn;
     private readonly Action<string> _logInfo;
     private readonly ProgramsApplyGate _applyGate;
+    private readonly Action<ManagementPage> _navigate;
 
     private readonly List<ProgramAlias> _removedPrograms = [];
     private readonly List<KeptApartSiblings> _removedKeeps = [];
@@ -148,6 +158,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
     // 確認
     private ReapplyReport? _plan;
     private ProgramMasterConfig? _planDraft;
+    private bool _isSavedBasis;                          // 保存済みの設定で確かめている(W-252 / W-253。#164)
+    private ManagementPage _savedOrigin = ManagementPage.Programs; // その確認に来たページ(「戻る」で戻る先)
     private string _checkingText = "";
     private string _diffBefore = "";
     private string _diffAfter = "";
@@ -173,13 +185,17 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// </param>
     /// <param name="applyGate">保存と適用の途中か(ホームの再スキャンと共有する)。</param>
     /// <param name="now">バックアップの名前に使う時刻(テスト用)。</param>
+    /// <param name="navigate">
+    /// 管理画面のページを移る。保存済みの設定での確認(<see cref="ConfirmSavedAsync"/>)の「戻る」で、来たページへ戻るのに使う。
+    /// </param>
     public ProgramsPageViewModel(
         IServiceControl? control,
         Func<string?>? locateProgramsFile,
         ProgramsApplyGate applyGate,
         Action<string> logWarn,
         Action<string>? logInfo = null,
-        Func<DateTime>? now = null)
+        Func<DateTime>? now = null,
+        Action<ManagementPage>? navigate = null)
     {
         _control = control;
         _locateProgramsFile = locateProgramsFile;
@@ -187,6 +203,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         _logWarn = logWarn;
         _logInfo = logInfo ?? (_ => { });
         _now = now ?? (() => DateTime.Now);
+        _navigate = navigate ?? (_ => { });
 
         AddProgramCommand = new RelayCommand(AddProgram, () => IsListMode && IsReady);
         EditProgramCommand = new RelayCommand(EditProgram, () => IsListMode && SelectedProgram is not null);
@@ -198,8 +215,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
         CommitFormCommand = new RelayCommand(CommitForm);
         CancelFormCommand = new RelayCommand(() => Mode = ProgramsPageMode.List);
         ConfirmCommand = new AsyncRelayCommand(ConfirmAsync, () => CanConfirm);
-        SaveAndApplyCommand = new AsyncRelayCommand(() => SaveAsync(apply: true), () => IsConfirmMode);
-        SaveOnlyCommand = new AsyncRelayCommand(() => SaveAsync(apply: false), () => IsConfirmMode && HasChanges);
+        SaveAndApplyCommand = new AsyncRelayCommand(() => SaveAsync(apply: true), () => IsConfirmMode && !IsSavedBasis);
+        SaveOnlyCommand = new AsyncRelayCommand(() => SaveAsync(apply: false), () => IsConfirmMode && !IsSavedBasis && HasChanges);
+        ApplySavedCommand = new AsyncRelayCommand(ApplySavedAsync, () => IsConfirmMode && IsSavedBasis);
         BackCommand = new AsyncRelayCommand(BackToListAsync);
         ProceedAfterCommentsCommand = new AsyncRelayCommand(ProceedAfterCommentsAsync);
         CancelCommentsCommand = new RelayCommand(() => IsCommentsPromptVisible = false);
@@ -380,6 +398,31 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <summary>W-250(揃っていない回があるときだけ)。</summary>
     public string? SaveOnlyNote { get => _saveOnlyNote; private set => SetProperty(ref _saveOnlyNote, value); }
 
+    /// <summary>
+    /// 保存済みの設定で確かめている(設定ページの stations.json の「再読み込み」・要対応の「再適用の確認へ」から来た。#164)。
+    /// 確認の画面は W-252 / W-253 の形になり、変更前 → 変更後(W-241)は出さず、ボタンは W-312(<c>適用</c> / <c>戻る</c>)になる。
+    /// </summary>
+    public bool IsSavedBasis
+    {
+        get => _isSavedBasis;
+        private set
+        {
+            if (!SetProperty(ref _isSavedBasis, value))
+                return;
+            OnPropertyChanged(nameof(IsDraftBasis));
+            NotifyCommands();
+        }
+    }
+
+    /// <summary>番組ページで編集した設定(保存前)で確かめている。<see cref="IsSavedBasis"/> の逆。</summary>
+    public bool IsDraftBasis => !IsSavedBasis;
+
+    /// <summary>
+    /// 保存済みの設定での確認(<see cref="ConfirmSavedAsync"/>)を始められない理由(W-256)。始められるなら null。
+    /// 入口のボタンの横に出し、ボタンは押せなくする。
+    /// </summary>
+    public string? SavedConfirmBlockedReason => HasUnsavedWork ? SavedConfirmBlocked : null;
+
     /// <summary>W-260〜W-262(初めて管理画面から保存するとき、programs.json にコメントがあれば一度だけ)。</summary>
     public bool IsCommentsPromptVisible
     {
@@ -476,7 +519,13 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <summary>W-249 の「保存だけ」。</summary>
     public AsyncRelayCommand SaveOnlyCommand { get; }
 
-    /// <summary>W-249 の「戻る」(確認から)と、結果から一覧へ戻る。</summary>
+    /// <summary>W-312 の「適用」(保存済みの設定で確かめた再適用を実行する)。</summary>
+    public AsyncRelayCommand ApplySavedCommand { get; }
+
+    /// <summary>
+    /// W-249 / W-312 の「戻る」(確認から)と、結果から戻る。番組ページで編集した設定の確認なら一覧へ、保存済みの設定の確認なら
+    /// 来たページ(設定・ホーム)へ戻る。
+    /// </summary>
     public AsyncRelayCommand BackCommand { get; }
 
     /// <summary>W-262 の「保存する」。</summary>
@@ -636,6 +685,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         _removedPrograms.Clear();
         _removedKeeps.Clear();
         _reapplyPending = false;
+        IsSavedBasis = false; // 一覧に戻すので、保存済みの設定での確認は終わる
         Programs.Clear();
         KeepSeparate.Clear();
         if (snapshot is not null)
@@ -1001,6 +1051,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
             return;
 
         var draft = BuildDraft(_snapshot);
+        IsSavedBasis = false;
         CheckingText = "";
         Mode = ProgramsPageMode.Checking;
 
@@ -1073,8 +1124,141 @@ public sealed class ProgramsPageViewModel : ObservableObject
         return (ProgramsDraft.Describe(before), ProgramsDraft.Describe(after));
     }
 
+    // ---- 保存済みの設定での確認(#164。設定ページの stations.json の「再読み込み」・要対応の「再適用の確認へ」)----
+
+    /// <summary>
+    /// 保存済みの設定で再適用を確かめる(W-252 / W-253)。設定リロード → dry-run(<see cref="IServiceControl.PlanReapplyAsync()"/>)を
+    /// 行い、揃える回があれば確認の画面(W-312 の <c>適用</c> / <c>戻る</c>)にする。呼び出し元はそのとき番組ページへ移る
+    /// (<see cref="SavedReapplyStart.ShowsConfirm"/>)。揃える回が無い・確かめられなかったときは、番組ページへ移らずに、来たページに
+    /// 出す 1 行を返す(W-254 / W-255)。「戻る」は <paramref name="origin"/> へ戻る。
+    /// <para>
+    /// 番組ページに保存していない作業があれば始めない(W-256。確認の画面に替わると下書きが見えなくなるため。下書きは消さない)。
+    /// 確かめている間は番組ページを「確かめている」画面(W-240)にし、編集を始められないようにする。
+    /// </para>
+    /// </summary>
+    public async Task<SavedReapplyStart> ConfirmSavedAsync(ManagementPage origin)
+    {
+        if (SavedConfirmBlockedReason is { } blocked)
+            return SavedReapplyStart.Stay(blocked, isWarning: true);
+        if (_control is null)
+            return SavedReapplyStart.Stay(SavedAborted(ConfirmUnavailable), isWarning: true);
+
+        // まだ読んでいなければ先に読む(後で番組ページを出したときの読み込みが、確認の画面を一覧に戻さないように)。
+        if (!_loaded)
+        {
+            await LoadAsync();
+            if (SavedConfirmBlockedReason is { } blockedAfterLoad)
+                return SavedReapplyStart.Stay(blockedAfterLoad, isWarning: true);
+        }
+
+        _plan = null;
+        _planDraft = null;
+        _savedOrigin = origin;
+        IsSavedBasis = true;
+        IsCommentsPromptVisible = false;
+        IsConflict = false;
+        CheckingText = "";
+        Mode = ProgramsPageMode.Checking;
+
+        ReapplyResult planned;
+        try
+        {
+            var planTask = _control.PlanReapplyAsync();
+            if (await Task.WhenAny(planTask, Task.Delay(CheckingDelay)) != planTask)
+                CheckingText = Checking; // W-240
+            planned = await planTask;
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"管理画面: 再適用の確認(保存済みの設定)に失敗しました: {ex}");
+            planned = ReapplyResult.Failed($"再適用の確認に失敗しました: {ex.Message}");
+        }
+
+        if (planned.Report is not { } plan)
+        {
+            EndSavedConfirm();
+            return SavedReapplyStart.Stay(SavedAborted(planned.Error ?? "理由不明"), isWarning: true); // W-255
+        }
+        if (plan.IsAligned)
+        {
+            EndSavedConfirm();
+            return SavedReapplyStart.Stay(SavedAligned(plan), isWarning: false); // W-254
+        }
+
+        _plan = plan;
+        DiffBefore = "";
+        DiffAfter = "";
+        var text = ReapplyDialogFormatter.BuildConfirmation(plan, ReapplyBasis.Saved); // W-252 / W-253
+        ConfirmHeading = text.Heading;
+        ConfirmBody = text.Body;
+        SaveOnlyNote = null;
+        Mode = ProgramsPageMode.Confirm;
+        return SavedReapplyStart.Confirm;
+    }
+
+    /// <summary>W-254。保存済みの設定で確かめたら、揃える回が無かった(来たページに出す 1 行)。</summary>
+    public static string SavedAligned(ReapplyReport plan)
+    {
+        var heading = ReapplyDialogFormatter.BuildAligned(plan, ReapplyBasis.Saved).Heading;
+        var excluded = plan.Count(ReapplyAction.Excluded);
+        return excluded > 0 ? $"{heading}(対象外の回が {excluded} 回あります。動かしません)" : heading;
+    }
+
+    /// <summary>W-255。保存済みの設定で確かめられなかった(来たページに出す 1 行。W-251 と同じ言い方)。</summary>
+    public static string SavedAborted(string reason) => $"{Aborted}: {reason}";
+
+    // W-312 の「適用」。確かめたときの設定で実行する(worker が確かめたときの設定・予定と同じかを確かめ、違えば実行しない。W-278)。
+    private async Task ApplySavedAsync()
+    {
+        if (!IsConfirmMode || !IsSavedBasis || _plan is not { } plan || _control is null)
+            return;
+
+        _plan = null; // 同じ確認で 2 回実行しない(worker も直前の確認を忘れる)
+        SavedMessage = null;
+        Mode = ProgramsPageMode.Applying;
+        ReapplyResult applied;
+        try
+        {
+            applied = await _control.ApplyReapplyAsync(plan);
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"管理画面: 再適用の実行(保存済みの設定)に失敗しました: {ex}");
+            applied = ReapplyResult.Failed($"再適用に失敗しました: {ex.Message}");
+        }
+
+        if (applied.IsStale)
+            ShowResult(SavedStale, "", isError: true); // W-278
+        else if (applied.Report is { } result)
+        {
+            var text = ReapplyDialogFormatter.BuildCompletion(result);
+            ShowResult(text.Heading, text.Body, isError: result.Count(ReapplyAction.Failed) > 0);
+        }
+        else
+            ShowResult(Aborted, applied.Error ?? "理由不明", isError: true); // W-251
+    }
+
+    // 保存済みの設定での確認を終え、番組ページを一覧に戻す(一覧の中身は、確かめる前のまま)。
+    private void EndSavedConfirm()
+    {
+        _plan = null;
+        IsSavedBasis = false;
+        IsCommentsPromptVisible = false;
+        IsConflict = false;
+        Mode = ProgramsPageMode.List;
+    }
+
     private async Task BackToListAsync()
     {
+        if (IsSavedBasis)
+        {
+            // 保存済みの設定での確認・結果からは、来たページへ戻る(番組ページは一覧に戻しておく)。
+            var origin = _savedOrigin;
+            EndSavedConfirm();
+            _navigate(origin);
+            return;
+        }
+
         var fromResult = IsResultMode;
         IsCommentsPromptVisible = false;
         IsConflict = false;
@@ -1268,6 +1452,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         ConfirmCommand.NotifyCanExecuteChanged();
         SaveAndApplyCommand.NotifyCanExecuteChanged();
         SaveOnlyCommand.NotifyCanExecuteChanged();
+        ApplySavedCommand.NotifyCanExecuteChanged();
     }
 
     // W-210

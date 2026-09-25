@@ -168,23 +168,27 @@
                     </StackPanel>
                 </Border>
 
-                <!-- stations.json(「再読み込み」から再適用の確認へ進む流れは #164) -->
+                <!-- stations.json。「再読み込み」は設定リロードの後、番組ページの確認の画面で再適用を確かめる(#164) -->
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <DockPanel>
-                            <!-- W-305 -->
-                            <Button DockPanel.Dock="Right" VerticalAlignment="Top" Style="{StaticResource SmallButton}"
-                                    Content="ファイルを開く" Command="{Binding OpenStationsCommand}" />
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                                <!-- W-305 -->
+                                <Button Style="{StaticResource SmallButton}" Content="ファイルを開く" Command="{Binding OpenStationsCommand}" />
+                                <Button Style="{StaticResource SmallButton}" Content="再読み込み" Command="{Binding ReloadStationsCommand}" />
+                            </StackPanel>
                             <StackPanel DataContext="{Binding Stations}">
                                 <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
                                 <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap" Text="{Binding Path}" />
                             </StackPanel>
                         </DockPanel>
+                        <!-- W-316 / W-256 -->
+                        <TextBlock Style="{StaticResource Optional}" Text="{Binding StationsReloadNote}" />
                         <StackPanel DataContext="{Binding Stations}">
                             <TextBox Style="{StaticResource FileContent}" Text="{Binding Content, Mode=OneWay}" />
                             <!-- W-307 / W-315 / W-317 -->
                             <TextBlock Style="{StaticResource Optional}" Text="{Binding Note}" />
-                            <!-- W-308 -->
+                            <!-- W-308 / W-311 / W-254 / W-255 -->
                             <TextBlock Style="{StaticResource RowMessage}" Text="{Binding Message}" />
                         </StackPanel>
                     </StackPanel>

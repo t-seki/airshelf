@@ -67,7 +67,9 @@ public static class ReapplyDialogFormatter
         {
             basis == ReapplyBasis.Draft
                 ? "まだ保存していない設定で、取り込み済みの回を次のように揃えます。"
-                : "今の programs.json の設定で、取り込み済みの回を次のように揃えます。",
+                // W-253。stations.json の「再読み込み」と要対応の「再適用の確認へ」のどちらから来ても同じ言い方にする
+                // (再適用は programs.json と stations.json の両方を読み直すので、どちらの入口でも事実として正しい。#164)。
+                : "今の programs.json と stations.json の設定で、取り込み済みの回を次のように揃えます。",
             "合計: " + Totals(plan),
             Albums(plan),
         };
