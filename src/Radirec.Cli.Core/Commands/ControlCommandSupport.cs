@@ -12,7 +12,9 @@ internal static class ControlCommandSupport
 
     /// <summary>
     /// 応答が得られなかった結果(繋がらない・版の違い・読めない)の終了コードと理由。応答が得られていれば null。
-    /// 繋がったが応答を読めない(途中で切れた・時間切れ)ときは、常駐が正しく応答していないので 2 にする。
+    /// 繋がったが応答を読めない(途中で切れた・時間切れ)ときも、頼んだ結果を常駐から得られなかったので 2 にする。
+    /// <c>ingest</c> の時間切れ(1 時間)は常駐が止まっているとは限らず、走査がトレイで続いていることがある。
+    /// 理由(<see cref="ControlCallResult.Error"/>)でそう伝え、<c>radirec status</c> で確かめるよう促す(usage.md の終了コードの表)。
     /// </summary>
     public static (int ExitCode, string Message)? Unanswered(ControlCallResult result, CliVersion cli) => result.Outcome switch
     {

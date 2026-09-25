@@ -287,17 +287,21 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 }
 
                 // 走査の実行(#180)。積まれた分をまとめて 1 回の走査で処理する(新規取込のトーストは出さない)。
-                // 再適用と同じく、直前に置かれた reload(radirec reload → radirec ingest の順に打たれた等)を先に反映する。
-                if (_pendingReload.Take() is { } configBeforeScanRun)
-                    ApplyReload(configBeforeScanRun);
-                var ranScanRun = await _scanRuns.RunPendingAsync(ct => RunScanAsync(ScanRunTrigger, ct), stoppingToken);
+                // 再適用と同じく、取り出した**後**に保留中の reload を反映する(頼む側は「reload の Set → 走査の実行の Enqueue」の
+                // 順に行うので、取り出せた走査の実行より前に置かれた reload は必ず見える。radirec reload → radirec ingest 等)。
+                if (_scanRuns.TakePending() is { } scanRuns)
+                {
+                    if (_pendingReload.Take() is { } configBeforeScanRun)
+                        ApplyReload(configBeforeScanRun);
+                    await _scanRuns.RunAsync(scanRuns, ct => RunScanAsync(ScanRunTrigger, ct), stoppingToken);
 
-                // 走査の実行のために起こされ、この反復で走査の実行を行ったなら、もう一度は走らせない(このトリガより前に来て
-                // 容量 1 のチャネルで捨てられたトリガも、この後に始めた走査が覆っている)。起こしのトリガだけが残っていて
-                // キューが空(前の反復が先に処理した)なら、その間に捨てられたトリガがありうるので、通常の走査として 1 回走らせる。
-                if (trigger == ScanRunTrigger && ranScanRun)
+                    // この反復で走査の実行を行ったなら、トリガが何であれ通常の走査はもう走らせない(トリガはどれも走査の実行の
+                    // 走査より前に来ているので、その走査が覆っている。容量 1 のチャネルで捨てられたトリガも同じ)。
                     continue;
+                }
 
+                // 走査の実行の起こしだけが残っていてキューが空(前の反復が先に処理した)なら、その間に捨てられたトリガがありうるので、
+                // 通常の走査として 1 回走らせる。
                 await ScanAsync(trigger == ScanRunTrigger ? CoalescedTrigger : trigger, stoppingToken);
             }
         }
@@ -690,9 +694,11 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             };
             return report;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException && trigger == ScanRunTrigger)
+        catch (Exception ex) when (
+            trigger == ScanRunTrigger && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
         {
-            // 走査の実行の失敗は結果にして CLI へ返すが、トリガの走査(ScanAsync)と同じく gui.log にも残す。
+            // 走査の実行の失敗は結果にして CLI へ返すが、トリガの走査(ScanAsync)と同じく gui.log にも残す。停止要求だけは残さない
+            // (停止要求でない OperationCanceledException は ScanRunQueue が内部の失敗にするので、ここで残す)。
             _log.LogError(ex, "{Trigger}スキャンで想定外の例外", trigger);
             throw;
         }

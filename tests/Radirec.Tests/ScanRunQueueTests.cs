@@ -116,11 +116,48 @@ public sealed class ScanRunQueueTests
     {
         var queue = NewQueue();
         var pending = queue.Enqueue();
+        using var stopping = new CancellationTokenSource();
+        await stopping.CancelAsync();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            queue.RunPendingAsync(_ => throw new OperationCanceledException(), CancellationToken.None));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            queue.RunPendingAsync(ct => Task.FromCanceled<IngestReport>(ct), stopping.Token));
 
         Assert.Equal(ScanRunFailure.Stopped, (await pending).Failure);
+    }
+
+    [Fact]
+    public async Task 停止要求でない取り消しは内部の失敗として返し_ループへは伝えない()
+    {
+        // 呼んだ先の独自の時間切れ(TaskCanceledException)など。停止として投げ直すと、直列ループがログも残さず終わる。
+        var queue = NewQueue();
+        var pending = queue.Enqueue();
+
+        var ran = await queue.RunPendingAsync(_ => throw new TaskCanceledException("時間切れ"), CancellationToken.None);
+
+        Assert.True(ran);
+        var result = await pending;
+        Assert.Equal(ScanRunFailure.Internal, result.Failure);
+        Assert.Contains("時間切れ", result.Error);
+    }
+
+    [Fact]
+    public async Task 取り出した後に積まれた走査の実行は_その回の走査に入らず次に回る()
+    {
+        // 直列ループは取り出した後に保留中の設定リロードを反映する。取り出した後に積まれた分をその回で処理すると、
+        // その分の前に置かれた設定リロードを反映しないまま走査してしまう。
+        var queue = NewQueue();
+        var first = queue.Enqueue();
+        var batch = queue.TakePending()!;
+        var late = queue.Enqueue();
+
+        await queue.RunAsync(batch, _ => Task.FromResult(Report(IngestOutcome.Imported)), CancellationToken.None);
+
+        Assert.Equal(1, batch.Count);
+        Assert.True(first.IsCompleted);
+        Assert.False(late.IsCompleted);
+        Assert.True(await queue.RunPendingAsync(_ => Task.FromResult(Report()), CancellationToken.None));
+        Assert.Empty((await late).Report!.Items);
+        Assert.Null(queue.TakePending());
     }
 
     [Fact]
