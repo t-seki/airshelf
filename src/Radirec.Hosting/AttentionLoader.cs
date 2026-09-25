@@ -9,7 +9,7 @@ using Radirec.Core.Sources;
 namespace Radirec.Hosting;
 
 /// <summary>
-/// 管理画面の要対応(ADR-0018)を、台帳とディスクの設定ファイル(<c>programs.json</c> / <c>stations.json</c>)から計算する。
+/// 管理画面の要対応(ADR-0018)を、台帳(失敗のストアを含む)とディスクの設定ファイル(<c>programs.json</c> / <c>stations.json</c>)から計算する。
 /// 設定は取り込みが読み込んだものではなく、ディスクのファイルを読む(「統合する」「分けておく」が書く先と同じで、
 /// 取り込みが止まっていても計算できる。#155 の決定 4)。読むのは台帳と設定ファイルだけで、取込元・出力先には触れない。
 /// </summary>
@@ -31,11 +31,14 @@ public static class AttentionLoader
             : ConfigLoader.LoadOptional<ProgramMasterConfig>(programsFile);
 
         IReadOnlyList<LedgerEntry> entries = [];
+        IReadOnlyList<IngestFailureRecord> failures = [];
         if (File.Exists(ledgerPath))
         {
             // 取り込みワーカーの書込接続とは別の読み取り専用の接続(取込履歴と同じ。SQLite の WAL は並行に読める)。
+            // 失敗のストアも同じ台帳の別テーブル(ADR-0011)。
             using var ledger = new SqliteLedger(ledgerPath, readOnly: true);
             entries = ledger.ListAll();
+            failures = ledger.List();
         }
 
         var resolver = new LedgerEpisodeResolver(
@@ -43,6 +46,6 @@ public static class AttentionLoader
             new RajirekoImporter(knownRecordingKinds),
             new StationResolver(stations),
             new ProgramResolver(programs ?? new ProgramMasterConfig()));
-        return AttentionCalculator.Compute(entries, resolver, new AttentionPrograms(programs));
+        return AttentionCalculator.Compute(entries, resolver, new AttentionPrograms(programs), failures);
     }
 }
