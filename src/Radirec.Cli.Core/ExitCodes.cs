@@ -11,7 +11,7 @@ public static class ExitCodes
 
     /// <summary>
     /// 使い方の誤り(未知のオプション・コマンド)・設定を読めない・版の不一致。引数か設定を直す。
-    /// 想定外の例外(内部エラー)もこれで終える(専用の番号は無い。ADR-0020)。そのときは標準エラーか JSON の <c>error</c> に理由が出る。
+    /// 想定外の例外(内部エラー)もこれで終える(専用の番号は無い。ADR-0020)。そのときは出力(<c>--json</c> なら <c>error</c>)に理由が出る。
     /// </summary>
     public const int UsageOrConfig = 1;
 
