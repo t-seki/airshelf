@@ -385,26 +385,26 @@
     <h2>番組</h2>
 
     <!-- 縮退:radirec.json を読めない -->
-    <div data-if="run:noconfig" class="msg warn an" data-w="W-211">設定を読めないため、番組の設定を出せません</div>
+    <div data-if="run:noconfig" class="msg warn" data-w="W-211">設定を読めないため、番組の設定を出せません</div>
 
     <!-- programs.json を使わない設定(ProgramsFile が空) -->
     <div data-if="pf:unused run:watching,polling,noscan,crashed,startfail" class="card">
-      <p class="an" style="margin-top: 0;" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
-      <p class="sub an" data-w="W-213">番組の設定を使うには、radirec.json の ProgramsFile にファイル名(例 programs.json)を書き、設定ページの「再読み込み」を押してください。</p>
+      <p style="margin-top: 0;" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
+      <p class="sub" data-w="W-213">番組の設定を使うには、radirec.json の ProgramsFile にファイル名(例 programs.json)を書き、設定ページの「再読み込み」を押してください。</p>
       <div class="mocknote">この設定では、どのフォルダもフォルダ名がそのままアルバム名になる(統合もしない)。</div>
     </div>
 
     <div data-if="pf:used run:watching,polling,noscan,crashed,startfail">
     <!-- 一覧 -->
     <div data-if="prog:list,dirty,empty">
-      <p class="sub an" data-w="W-201">番組の設定 — programs.json の中身です。保存するまでファイルは変わりません</p>
+      <p class="sub" data-w="W-201">番組の設定 — programs.json の中身です。保存するまでファイルは変わりません</p>
       <div class="msg warn row" data-if="prog:dirty" style="justify-content: space-between;">
-        <span class="an" data-w="W-208">保存していない変更があります(1 件)</span>
-        <button class="btn small an" data-go="prog:list" data-w="W-209">変更を取り消す</button>
+        <span data-w="W-208">保存していない変更があります(1 件)</span>
+        <button class="btn small" data-go="prog:list" data-w="W-209">変更を取り消す</button>
       </div>
 
       <div class="row" style="justify-content: space-between;">
-        <h3 class="an" data-w="W-202">アルバム名と統合</h3>
+        <h3 data-w="W-202">アルバム名と統合</h3>
         <div class="row">
           <button class="btn small" data-go="prog:edit" data-w="W-206">追加</button>
           <button class="btn small" data-go="prog:edit" data-w="W-206">編集</button>
@@ -413,9 +413,9 @@
       </div>
       <table class="grid">
         <colgroup><col style="width:100px"><col style="width:250px"><col style="width:230px"><col style="width:100px"><col></colgroup>
-        <tr class="an" data-w="W-203"><th>放送局</th><th>フォルダ</th><th>アルバム名</th><th>種類</th><th>メモ</th></tr>
-        <tr><td>J-WAVE</td><td>LOGISTEEDRADIONOMICS</td><td>LOGISTEED RADIONOMICS</td><td class="an" data-w="W-204">アルバム名だけ</td><td>空白を入れて読みやすく</td></tr>
-        <tr class="sel"><td>J-WAVE</td><td>SONYSONPOQUESTFORTHEFUTURE</td><td>SONY SONPO QUEST FOR THE FUTURE</td><td class="an" data-w="W-204">アルバム名だけ</td><td></td></tr>
+        <tr data-w="W-203"><th>放送局</th><th>フォルダ</th><th>アルバム名</th><th>種類</th><th>メモ</th></tr>
+        <tr><td>J-WAVE</td><td>LOGISTEEDRADIONOMICS</td><td>LOGISTEED RADIONOMICS</td><td data-w="W-204">アルバム名だけ</td><td>空白を入れて読みやすく</td></tr>
+        <tr class="sel"><td>J-WAVE</td><td>SONYSONPOQUESTFORTHEFUTURE</td><td>SONY SONPO QUEST FOR THE FUTURE</td><td data-w="W-204">アルバム名だけ</td><td></td></tr>
         <tr><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(1)<br>パンサー向井のふらっと(2)</td><td>パンサー向井のふらっと</td><td data-w="W-204">統合番組</td><td class="wrap">時間帯で 2 つに分けて録っている</td></tr>
         <tr class="changed" data-if="prog:dirty"><td>TBSラジオ</td><td class="wrap">安住紳一郎の日曜天国(1)<br>安住紳一郎の日曜天国(2)</td><td>安住紳一郎の日曜天国</td><td data-w="W-204">統合番組</td><td>(追加・未保存)</td></tr>
       </table>
@@ -432,77 +432,79 @@
         <colgroup><col style="width:100px"><col style="width:480px"><col></colgroup>
         <tr data-w="W-205"><th>放送局</th><th>フォルダの組</th><th>メモ</th></tr>
         <tr data-if="prog:list,dirty"><td>文化放送</td><td class="wrap">大竹まこと ゴールデンラジオ!(1) / 大竹まこと ゴールデンラジオ!(2)</td><td class="wrap">1 部と 2 部を別のアルバムで聞く</td></tr>
-        <tr data-if="prog:empty"><td colspan="3" class="sub an" data-w="W-210">まだありません</td></tr>
+        <tr data-if="prog:empty"><td colspan="3" class="sub" data-w="W-210">まだありません</td></tr>
       </table>
-      <p class="sub" data-if="prog:list,dirty"><span class="an" data-w="W-210">1 件</span></p>
+      <p class="sub" data-if="prog:list,dirty"><span data-w="W-210">1 件</span></p>
 
       <div class="row" style="justify-content: flex-end; margin-top: 14px;">
         <button class="btn" disabled data-if="prog:list,empty" data-w="W-207">確認</button>
         <button class="btn primary" data-if="prog:dirty" data-go="prog:confirm" data-w="W-207">確認</button>
       </div>
-      <div class="mocknote">「確認」は変更が無いと押せない。一覧の「追加・編集・削除」はファイルに書かず、この画面の中の変更として溜める。</div>
+      <div class="mocknote">「確認」は変更が無いと押せない。一覧の「追加・編集・削除」はファイルに書かず、この画面の中の変更として溜める。
+        取り込みが止まっているときも押せず、横に <span class="an" data-w="W-214">取り込みが止まっているため、確認と保存はできません</span> と出す。</div>
     </div>
 
     <!-- 編集フォーム -->
     <div data-if="prog:edit,invalid,draft">
-      <h3 class="an" data-if="prog:edit,invalid" data-w="W-220">アルバム名と統合を編集</h3>
-      <h3 class="an" data-if="prog:draft" data-w="W-220">アルバム名と統合を追加</h3>
-      <div class="msg info an" data-if="prog:draft" data-w="W-226">要対応の兄弟フォルダから下書きを作りました。アルバム名を確かめてください</div>
+      <h3 data-if="prog:edit,invalid" data-w="W-220">アルバム名と統合を編集</h3>
+      <h3 data-if="prog:draft" data-w="W-220">アルバム名と統合を追加</h3>
+      <div class="msg info" data-if="prog:draft" data-w="W-226">要対応の兄弟フォルダから下書きを作りました。アルバム名を確かめてください</div>
       <div class="form card">
-        <label class="an" data-w="W-221">放送局</label>
+        <label data-w="W-221">放送局</label>
         <input data-if="prog:edit,draft" value="TBSラジオ"><input data-if="prog:invalid" value="">
-        <div class="err an" data-if="prog:invalid" data-w="W-224">放送局を入れてください</div>
+        <div class="err" data-if="prog:invalid" data-w="W-224">放送局を入れてください</div>
 
-        <label class="an" data-w="W-221">フォルダ</label>
+        <label data-w="W-221">フォルダ</label>
         <textarea data-if="prog:edit">パンサー向井のふらっと(1)
 パンサー向井のふらっと(2)</textarea><textarea data-if="prog:draft">安住紳一郎の日曜天国(1)
 安住紳一郎の日曜天国(2)</textarea><textarea data-if="prog:invalid">パンサー向井のふらっと(1)
 SONYSONPOQUESTFORTHEFUTURE</textarea>
-        <div class="hint an" data-w="W-222">1 行に 1 フォルダ。上から順にパート番号 1, 2, … が付きます</div>
-        <div class="err an" data-if="prog:invalid" data-w="W-225">フォルダ『SONYSONPOQUESTFORTHEFUTURE』は『SONY SONPO QUEST FOR THE FUTURE』の設定にも入っています</div>
+        <div class="hint" data-w="W-222">1 行に 1 フォルダ。上から順にパート番号 1, 2, … が付きます</div>
+        <div class="err" data-if="prog:invalid" data-w="W-225">フォルダ『SONYSONPOQUESTFORTHEFUTURE』は『SONY SONPO QUEST FOR THE FUTURE』の設定にも入っています</div>
 
-        <label class="an" data-w="W-221">アルバム名</label>
+        <label data-w="W-221">アルバム名</label>
         <input data-if="prog:edit" value="パンサー向井のふらっと"><input data-if="prog:draft" value="安住紳一郎の日曜天国"><input data-if="prog:invalid" value="">
         <div class="hint" data-w="W-223">未登録のフォルダは、フォルダ名がそのままアルバム名になります</div>
-        <div class="err an" data-if="prog:invalid" data-w="W-224">アルバム名を入れてください</div>
+        <div class="err" data-if="prog:invalid" data-w="W-224">アルバム名を入れてください</div>
 
-        <label class="an" data-w="W-221">メモ</label>
+        <label data-w="W-221">メモ</label>
         <textarea data-if="prog:edit">時間帯で 2 つに分けて録っている</textarea><textarea data-if="prog:draft,invalid"></textarea>
       </div>
-      <div class="mocknote">入力エラーの残り 1 つは <span class="an" data-w="W-224">フォルダを 1 つ以上入れてください</span>。</div>
+      <div class="mocknote">入力エラーの残り 1 つは <span data-w="W-224">フォルダを 1 つ以上入れてください</span>。</div>
       <div class="row" style="justify-content: flex-end;">
-        <button class="btn primary an" data-go="prog:dirty" data-w="W-227">決定</button>
-        <button class="btn an" data-go="prog:list" data-w="W-227">キャンセル</button>
+        <button class="btn primary" data-go="prog:dirty" data-w="W-227">決定</button>
+        <button class="btn" data-go="prog:list" data-w="W-227">キャンセル</button>
       </div>
     </div>
 
     <!-- 分けておく の編集 -->
     <div data-if="prog:keepedit">
       <h3 data-w="W-228">分けておく兄弟フォルダを編集</h3>
+      <div class="mocknote">「追加」から来たときの見出しは <span class="an" data-w="W-229">分けておく兄弟フォルダを追加</span>。</div>
       <div class="form card">
-        <label class="an" data-w="W-228">放送局</label><input value="文化放送">
-        <label class="an" data-w="W-228">フォルダの組</label><textarea>大竹まこと ゴールデンラジオ!(1)
+        <label data-w="W-228">放送局</label><input value="文化放送">
+        <label data-w="W-228">フォルダの組</label><textarea>大竹まこと ゴールデンラジオ!(1)
 大竹まこと ゴールデンラジオ!(2)</textarea>
-        <label class="an" data-w="W-228">メモ</label><textarea>1 部と 2 部を別のアルバムで聞く</textarea>
+        <label data-w="W-228">メモ</label><textarea>1 部と 2 部を別のアルバムで聞く</textarea>
       </div>
       <div class="row" style="justify-content: flex-end;">
-        <button class="btn primary an" data-go="prog:dirty" data-w="W-227">決定</button>
-        <button class="btn an" data-go="prog:list" data-w="W-227">キャンセル</button>
+        <button class="btn primary" data-go="prog:dirty" data-w="W-227">決定</button>
+        <button class="btn" data-go="prog:list" data-w="W-227">キャンセル</button>
       </div>
     </div>
 
     <!-- 確かめている途中 -->
     <div data-if="prog:checking" class="card">
-      <p class="an" data-w="W-240">再適用の内容を確かめています(取り込み中なら完了後)</p>
+      <p data-w="W-240">再適用の内容を確かめています(取り込み中なら完了後)</p>
       <div class="mocknote">すぐ終われば出さない(いまのトレイは 1.5 秒待っても終わらないときだけバルーンを出す。ControlTrayMenu.cs:229)。</div>
     </div>
 
     <!-- 確認 -->
     <div data-if="prog:confirm,aligned,comments">
-      <h3 class="an" data-w="W-241">設定の変更</h3>
+      <h3 data-w="W-241">設定の変更</h3>
       <div class="diff">
-        <div><div class="sub an" data-w="W-241">変更前</div><pre>(なし)</pre></div>
-        <div class="after"><div class="sub an" data-w="W-241">変更後</div><pre>{
+        <div><div class="sub" data-w="W-241">変更前</div><pre>(なし)</pre></div>
+        <div class="after"><div class="sub" data-w="W-241">変更後</div><pre>{
   "Match": { "Station": "TBSラジオ",
              "Folders": ["安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)"] },
   "Canonical": { "Album": "安住紳一郎の日曜天国" }
@@ -510,8 +512,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       </div>
 
       <div class="card confirm-body" style="margin-top: 12px;" data-if="prog:confirm,comments">
-        <h3 class="an" style="margin-top: 0;" data-w="W-242">47 回を編集した設定に揃えます</h3>
-        <p class="an" data-w="W-243">まだ保存していない設定で、取り込み済みの回を次のように揃えます。</p>
+        <h3 style="margin-top: 0;" data-w="W-242">47 回を編集した設定に揃えます</h3>
+        <p data-w="W-243">まだ保存していない設定で、取り込み済みの回を次のように揃えます。</p>
         <p data-w="W-244">合計: 移動・リネーム 47 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 1 回</p>
         <div class="albums" data-w="W-245">
           <div>・TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」</div>
@@ -521,10 +523,10 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         </div>
         <p data-w="W-246">対象外の回(衝突・放送局の変更など)は動かしません。</p>
         <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\RadirecData\gui.log)に書きました。</p>
-        <div class="msg warn an" data-w="W-250">「保存だけ」にすると、揃っていない 47 回は要対応の「再適用が要る番組」に残ります</div>
+        <div class="msg warn" data-w="W-250">「保存だけ」にすると、揃っていない 47 回は要対応の「再適用が要る番組」に残ります</div>
       </div>
       <div class="card confirm-body" style="margin-top: 12px;" data-if="prog:aligned">
-        <h3 class="an" style="margin-top: 0;" data-w="W-248">取り込み済みの回は編集した設定と揃っています</h3>
+        <h3 style="margin-top: 0;" data-w="W-248">取り込み済みの回は編集した設定と揃っています</h3>
         <p data-w="W-248">変更するものはありません。</p>
       </div>
       <div class="row" style="justify-content: flex-end;">
@@ -557,7 +559,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 
     <!-- 結果 -->
     <div data-if="prog:applying,done,saveonly,conflict,writefail,stale,abort">
-      <div class="msg ok an" data-if="prog:applying,done" data-w="W-270">programs.json を保存しました(バックアップ: programs.json.bak-20260925-104512)</div>
+      <div class="msg ok" data-if="prog:applying,done" data-w="W-270">programs.json を保存しました(バックアップ: programs.json.bak-20260925-104512)</div>
       <div class="msg info" data-if="prog:applying" data-w="W-271">統合設定の再適用を実行しています</div>
 
       <div class="card confirm-body" data-if="prog:done">
@@ -572,18 +574,18 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
           <span data-w="W-273">Jellyfin ライブラリ更新に失敗しました: {理由}</span>。</div>
       </div>
 
-      <div class="msg ok an" data-if="prog:saveonly" data-w="W-279">保存しました。揃っていない回は要対応の「再適用が要る番組」に出ます</div>
+      <div class="msg ok" data-if="prog:saveonly" data-w="W-279">保存しました。揃っていない回は要対応の「再適用が要る番組」に出ます</div>
 
       <div data-if="prog:conflict">
-        <div class="msg err an" data-w="W-275">programs.json は読み込んだ後に変更されています(エディタで直した等)。保存していません。</div>
-        <div class="row"><button class="btn an" data-go="prog:list" data-w="W-276">読み込み直す</button>
-          <span class="sub an" data-w="W-276">読み込み直すと、この画面での変更は消えます</span></div>
+        <div class="msg err" data-w="W-275">programs.json は読み込んだ後に変更されています(エディタで直した等)。保存していません。</div>
+        <div class="row"><button class="btn" data-go="prog:list" data-w="W-276">読み込み直す</button>
+          <span class="sub" data-w="W-276">読み込み直すと、この画面での変更は消えます</span></div>
       </div>
 
       <div class="msg err" data-if="prog:writefail"><span data-w="W-277">書き込みに失敗しました: {理由}</span>
-        <br><span class="an" data-w="W-277">programs.json は元のままです。</span></div>
+        <br><span data-w="W-277">programs.json は元のままです。</span></div>
 
-      <div class="msg err an" data-if="prog:stale" data-w="W-278">確認した後に設定が変わったため、実行していません。もう一度「確認」を押してください</div>
+      <div class="msg err" data-if="prog:stale" data-w="W-278">確認した後に設定が変わったため、実行していません。もう一度「確認」を押してください</div>
 
       <div class="card confirm-body" data-if="prog:abort">
         <h3 style="margin-top: 0;" data-w="W-251">統合設定の再適用を中止しました</h3>
@@ -599,12 +601,12 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <div class="dh">Radirec</div>
         <div class="db">
           <h3 data-w="W-260">コメントが 6 件消えます(.bak に残ります)</h3>
-          <p class="an" data-w="W-261">管理画面から保存すると、programs.json 全体を書き直すため、// のコメントは残りません。保存の前に、同じフォルダに programs.json.bak-日時 を作ります。これからのメモは各行の「メモ」欄に書けます。</p>
+          <p data-w="W-261">管理画面から保存すると、programs.json 全体を書き直すため、// のコメントは残りません。保存の前に、同じフォルダに programs.json.bak-日時 を作ります。これからのメモは各行の「メモ」欄に書けます。</p>
           <div class="mocknote">初めて管理画面から保存するときに一度だけ。コメントが無ければ出さずに保存へ進む。</div>
         </div>
         <div class="df">
-          <button class="btn primary an" data-go="prog:applying" data-w="W-262">保存する</button>
-          <button class="btn an" data-go="prog:confirm" data-w="W-262" style="outline: 2px solid var(--accent);">戻る</button>
+          <button class="btn primary" data-go="prog:applying" data-w="W-262">保存する</button>
+          <button class="btn" data-go="prog:confirm" data-w="W-262" style="outline: 2px solid var(--accent);">戻る</button>
         </div>
       </div>
     </div>
@@ -696,7 +698,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
             開けたときは何も出さない(エディタが開くので分かる)。</div>
         </div>
         <p class="sub an" data-if="pf:used" data-w="W-313">programs.json は「番組」ページで編集します</p>
-        <p class="sub an" data-if="pf:unused" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
+        <p class="sub" data-if="pf:unused" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
       </div>
 
       <!-- stations.json の再読み込み → 確認 -->
