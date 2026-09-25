@@ -36,7 +36,9 @@ public interface IControlClient
 /// 制御チャネルの CLI 側(ADR-0020 / #179)。受け口(<see cref="ControlPipeServer"/>)へ繋ぎ、要求を 1 行送って応答を 1 行読む。
 /// 2 秒で繋がらなければ「常駐が動いていない」とする(#179 の設計の決定)。
 /// </summary>
-public sealed class ControlPipeClient(string pipeName, TimeSpan? connectTimeout = null, TimeSpan? responseTimeout = null)
+/// <param name="scanResponseTimeout">走査の実行(<c>scan</c>)の応答を待つ時間。既定は <see cref="DefaultScanResponseTimeout"/>。</param>
+public sealed class ControlPipeClient(
+    string pipeName, TimeSpan? connectTimeout = null, TimeSpan? responseTimeout = null, TimeSpan? scanResponseTimeout = null)
     : IControlClient
 {
     /// <summary>接続を諦めるまでの時間(#179 の設計の決定)。</summary>
@@ -44,6 +46,12 @@ public sealed class ControlPipeClient(string pipeName, TimeSpan? connectTimeout 
 
     /// <summary>応答を待つ時間。状態取得・設定リロードの受理はどちらも速いので、これを超えたら異常とみなす。</summary>
     public static readonly TimeSpan DefaultResponseTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// 走査の実行の応答を待つ時間(#180)。走査が終わるまで応答が来ない(取り込み中に頼めば、その走査も待つ)。溜まった録音を
+    /// NAS へ書き出すと長くかかるので長めにとり、それでも終わらなければ、常駐が止まっているとみなして諦める(走査は常駐で続く)。
+    /// </summary>
+    public static readonly TimeSpan DefaultScanResponseTimeout = TimeSpan.FromHours(1);
 
     /// <summary>今のユーザーの既定のパイプ(<see cref="ControlProtocol.DefaultPipeName"/>)へ繋ぐ。</summary>
     public ControlPipeClient()
@@ -80,12 +88,16 @@ public sealed class ControlPipeClient(string pipeName, TimeSpan? connectTimeout 
                 .ConfigureAwait(false);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(responseTimeout ?? DefaultResponseTimeout);
+            timeout.CancelAfter(request.Command == ControlProtocol.ScanCommand
+                ? scanResponseTimeout ?? DefaultScanResponseTimeout
+                : responseTimeout ?? DefaultResponseTimeout);
             line = await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new ControlCallResult(ControlCallOutcome.Failed, null, "常駐から応答がありません(時間切れ)");
+            return new ControlCallResult(ControlCallOutcome.Failed, null, request.Command == ControlProtocol.ScanCommand
+                ? "走査が時間内に終わりませんでした(常駐では続いている場合があります。status で確かめてください)"
+                : "常駐から応答がありません(時間切れ)");
         }
         catch (IOException ex)
         {

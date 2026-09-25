@@ -126,6 +126,7 @@ public sealed class LedgerLocatorTests : IDisposable
         public Exception? Throw { get; set; }
 
         public void RequestRescan() { }
+        public Task<ScanRunResult> RunScanAsync() => throw new NotSupportedException();
         public ServiceStatusSnapshot GetStatus() => Throw is { } ex ? throw ex : Status;
         public ReloadResult RequestReload() => ReloadResult.Ok();
         public Task<ReapplyResult> PlanReapplyAsync() => throw new NotSupportedException();

@@ -25,7 +25,7 @@ namespace Radirec.Gui;
 /// 兼ね、rescan は要求チャネルへ、status はスレッドセーフな状態スナップショットを直接返し、reload は
 /// **config 由来ランタイム一式(グラフ + watcher + タイマー)をプロセス内で丸ごと再構築**する
 /// (部分 hot-swap はしない)。統合設定の再適用(#126 / ADR-0016)も同じ直列ループの上で、reload の反映の後・
-/// スキャンの前に行う。
+/// スキャンの前に行う。CLI から頼まれた走査の実行(#180 / ADR-0020)も同じループの上で、再適用の後・トリガの走査の前に行う。
 ///
 /// トレイ常駐移行(ADR-0012)で、取込通知は EventLog シグナルではなく**注入された in-process publisher**
 /// (トレイのトースト)で発行する。ホストは <see cref="Radirec.Gui"/> のユーザーセッションプロセス。
@@ -34,8 +34,13 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 {
     private readonly ILogger<RadioMonitorWorker> _log;
     private readonly string _configPath;
-    private readonly IIngestSummaryPublisher _summaryPublisher;
+
+    // 注入された取込要約の publisher を包んだもの。取り込みグラフにはこれを渡し、走査の実行(#180)の間だけ新規取込のトーストを止める。
+    private readonly ScanRunSummaryGate _summaryGate;
     private readonly IIngestFailurePublisher _failurePublisher;
+
+    // 走査の実行(#180)。結果を返す非冪等の要求なので、再適用と同じく取りこぼさないキューで運ぶ(起こしはトリガチャネル)。
+    private readonly ScanRunQueue _scanRuns;
 
     // config 由来のランタイム。reload で丸ごと差し替わるため readonly ではない(書き手は直列ループのみ)。
     private RadirecConfig _config;
@@ -87,7 +92,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     {
         _config = config;
         _configPath = options.ConfigPath;
-        _summaryPublisher = summaryPublisher;
+        _summaryGate = new ScanRunSummaryGate(summaryPublisher);
+        _scanRuns = new ScanRunQueue(_summaryGate);
         _failurePublisher = failurePublisher;
         _log = log;
         _pendingReload = new PendingReloadSlot<RadirecConfig>(() => Request("リロード"));
@@ -105,16 +111,41 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         };
     }
 
-    // 注入された in-process publisher を渡して取り込みグラフを組む(ADR-0012)。
+    // 注入された in-process publisher を渡して取り込みグラフを組む(ADR-0012)。成功要約は、走査の実行(#180)の間だけ止める門を通す。
     private (IngestService, IDisposable?) BuildGraph(RadirecConfig config) =>
         CompositionRoot.Build(
             config, dryRun: false, notify: true,
-            summaryPublisher: _summaryPublisher, failurePublisher: _failurePublisher);
+            summaryPublisher: _summaryGate, failurePublisher: _failurePublisher);
 
     // --- IServiceControl(in-process 制御。ADR-0010/0012)------------------------------------
 
     /// <summary>手動再スキャン。既存の要求チャネルへ coalesce される冪等操作(受理まで)。</summary>
     public void RequestRescan() => Request("手動");
+
+    /// <summary>走査の実行を、最後のスキャンのきっかけ(status・管理画面のホーム)に出すときの名前。ループを起こすトリガにも使う。</summary>
+    public const string ScanRunTrigger = "CLI";
+
+    // 走査の実行の起こしだけが残っていたとき(キューは前の反復で処理済み)の通常の走査のきっかけ。束ねられて捨てられたトリガの分。
+    private const string CoalescedTrigger = "再走査";
+
+    /// <summary>
+    /// 走査の実行(#180 / ADR-0020)。キューに積んでループを起こし、走査が終わると完了する結果を返す。走査は直列ループの上で、
+    /// 再適用の後に走る(<see cref="ExecuteAsync"/>)。
+    /// </summary>
+    public Task<ScanRunResult> RunScanAsync()
+    {
+        if (!_running)
+            return Task.FromResult(ScanRunResult.Failed(ScanRunFailure.Stopped, "取り込みが停止中のため受理できません"));
+
+        var result = _scanRuns.Enqueue();
+        Request(ScanRunTrigger);
+
+        // 積んだ直後にループが抜けていた(停止と競合)なら、誰も処理しないので自分で中止にする。
+        if (!_running)
+            _scanRuns.FailPending();
+
+        return result;
+    }
 
     /// <summary>
     /// ライブ状態のスナップショット(在中スキャン中でも直列チャネルを介さず即応)。
@@ -255,7 +286,23 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                     await RunReapplyAsync(job, stoppingToken);
                 }
 
-                await ScanAsync(trigger, stoppingToken);
+                // 走査の実行(#180)。積まれた分をまとめて 1 回の走査で処理する(新規取込のトーストは出さない)。
+                // 再適用と同じく、取り出した**後**に保留中の reload を反映する(頼む側は「reload の Set → 走査の実行の Enqueue」の
+                // 順に行うので、取り出せた走査の実行より前に置かれた reload は必ず見える。radirec reload → radirec ingest 等)。
+                if (_scanRuns.TakePending() is { } scanRuns)
+                {
+                    if (_pendingReload.Take() is { } configBeforeScanRun)
+                        ApplyReload(configBeforeScanRun);
+                    await _scanRuns.RunAsync(scanRuns, ct => RunScanAsync(ScanRunTrigger, ct), stoppingToken);
+
+                    // この反復で走査の実行を行ったなら、トリガが何であれ通常の走査はもう走らせない(トリガはどれも走査の実行の
+                    // 走査より前に来ているので、その走査が覆っている。容量 1 のチャネルで捨てられたトリガも同じ)。
+                    continue;
+                }
+
+                // 走査の実行の起こしだけが残っていてキューが空(前の反復が先に処理した)なら、その間に捨てられたトリガがありうるので、
+                // 通常の走査として 1 回走らせる。
+                await ScanAsync(trigger == ScanRunTrigger ? CoalescedTrigger : trigger, stoppingToken);
             }
         }
         catch (OperationCanceledException)
@@ -266,6 +313,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         {
             _running = false; // 以降の reload 要求は受理しない(誤成功を返さない)。
             FailPendingReapplyJobs();
+            _scanRuns.FailPending();
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         }
     }
@@ -587,7 +635,25 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             Request("スリープ復帰");
     }
 
+    // トリガの走査。例外は gui.log に残して握る(常駐を落とさない)。停止要求だけはループへ伝える。
     private async Task ScanAsync(string trigger, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RunScanAsync(trigger, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // 停止要求はコンシューマループへ伝播させて終了する。
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "{Trigger}スキャンで想定外の例外", trigger);
+        }
+    }
+
+    // 走査を 1 回行い、結果を gui.log と status に残して返す。例外は呼び手へ投げる(走査の実行では、結果にして CLI へ返す)。
+    private async Task<IngestReport> RunScanAsync(string trigger, CancellationToken cancellationToken)
     {
         try
         {
@@ -626,14 +692,15 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 LastImported = imported,
                 LastFailed = failed,
             };
+            return report;
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (
+            trigger == ScanRunTrigger && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
         {
-            throw; // 停止要求はコンシューマループへ伝播させて終了する。
-        }
-        catch (Exception ex)
-        {
+            // 走査の実行の失敗は結果にして CLI へ返すが、トリガの走査(ScanAsync)と同じく gui.log にも残す。停止要求だけは残さない
+            // (停止要求でない OperationCanceledException は ScanRunQueue が内部の失敗にするので、ここで残す)。
             _log.LogError(ex, "{Trigger}スキャンで想定外の例外", trigger);
+            throw;
         }
     }
 

@@ -1,15 +1,20 @@
 using Radirec.Core.Ingestion;
+using Radirec.Hosting.Control;
 
 namespace Radirec.Cli.Core.Output;
 
-/// <summary><c>ingest --json</c> の <c>result</c>。</summary>
+/// <summary>
+/// <c>ingest --json</c> の <c>result</c>。常駐に頼んだ走査の実行(#180)の結果も、<c>--dry-run</c> で CLI が直接計算した予定も同じ形。
+/// </summary>
 public sealed record IngestJson(
     bool DryRun,
     IngestCountsJson Counts,
     IReadOnlyList<IngestItemJson> Items,
     LibraryRefreshJson LibraryRefresh)
 {
-    public static IngestJson From(IngestReport report) => new(
+    public static IngestJson From(IngestReport report) => From(ScanRunReport.From(report));
+
+    public static IngestJson From(ScanRunReport report) => new(
         report.DryRun,
         new IngestCountsJson(
             report.Count(IngestOutcome.Imported),

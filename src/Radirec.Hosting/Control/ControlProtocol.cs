@@ -24,6 +24,9 @@ public static class ControlProtocol
     public const string StatusCommand = "status";
     public const string ReloadCommand = "reload";
 
+    /// <summary>走査の実行(CONTEXT.md。#180)。走査が終わるまで応答しない。</summary>
+    public const string ScanCommand = "scan";
+
     /// <summary>
     /// 要求・応答の JSON。camelCase・列挙は camelCase の文字列・日本語はエスケープしない。1 行で送るので字下げしない。
     /// </summary>
@@ -75,13 +78,15 @@ public static class ControlProtocol
 
 /// <summary>CLI → 常駐の要求。</summary>
 /// <param name="ProtocolVersion">送り手のプロトコルの版(<see cref="ControlProtocol.Version"/>)。</param>
-/// <param name="Command"><see cref="ControlProtocol.StatusCommand"/> か <see cref="ControlProtocol.ReloadCommand"/>。</param>
+/// <param name="Command">
+/// <see cref="ControlProtocol.StatusCommand"/>・<see cref="ControlProtocol.ReloadCommand"/>・<see cref="ControlProtocol.ScanCommand"/> のどれか。
+/// </param>
 public sealed record ControlRequest(int ProtocolVersion, string Command);
 
 /// <summary>応答の種類。</summary>
 public enum ControlResponseKind
 {
-    /// <summary>要求を処理した(状態取得の結果、または設定リロードの受理 / 拒否)。</summary>
+    /// <summary>要求を処理した(状態取得の結果、設定リロードの受理 / 拒否、または走査の実行の結果)。</summary>
     Ok,
 
     /// <summary>プロトコルの版が合わない。何もしていない。</summary>
@@ -113,6 +118,9 @@ public sealed record ControlResponse
 
     /// <summary>設定リロードの結果(<c>reload</c> で <see cref="ControlResponseKind.Ok"/> のときだけ)。</summary>
     public ReloadResult? Reload { get; init; }
+
+    /// <summary>走査の実行の結果(<c>scan</c> で <see cref="ControlResponseKind.Ok"/> のときだけ。#180)。</summary>
+    public ScanRunResult? ScanRun { get; init; }
 }
 
 /// <summary>

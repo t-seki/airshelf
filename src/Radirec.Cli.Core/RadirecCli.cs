@@ -94,10 +94,9 @@ public static class RadirecCli
         config.AddCommand<AttentionCommand>(AttentionCommand.Name)
             .WithDescription("要対応(管理画面のホームと同じ)を出す(台帳と設定を読むだけ。常駐が動いていなくても使える)")
             .WithExample(AttentionCommand.Name, "--json");
-        // 常駐はトレイ(Radirec.Gui)が担う(ADR-0012)。ingest / reapply / refresh / history / attention は CLI が直接行い、status / reload は
-        // トレイの制御チャネル(named pipe)へ頼む形で戻した(ADR-0020 / #179。ConfigureControl)。一回きりの移行のための
-        // ingest --root と organize-source、
-        // 設定ファイルを指す --config は削った(ADR-0020)。設定は常にトレイと同じ既定の radirec.json を使う。
+        // 常駐はトレイ(Radirec.Gui)が担う(ADR-0012)。reapply / refresh / history / attention と ingest --dry-run は CLI が直接行い、
+        // status / reload と ingest(走査の実行。#180)はトレイの制御チャネル(named pipe)へ頼む(ADR-0020 / #179。ConfigureControl)。
+        // 一回きりの移行のための ingest --root と organize-source、設定ファイルを指す --config は削った(ADR-0020)。設定は常にトレイと同じ既定の radirec.json を使う。
     }
 
     /// <summary>

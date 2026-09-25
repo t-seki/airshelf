@@ -183,12 +183,13 @@ public sealed class CliTests
     }
 
     [Theory]
-    [InlineData("ingest")]
+    // ingest は --dry-run のときだけ設定を読む(実行は常駐に頼み、常駐の設定で走る。#180)。
+    [InlineData("ingest", "--dry-run")]
     [InlineData("reapply")]
     [InlineData("refresh")]
-    public async Task 設定を読めなければ1でjsonにも理由が出る(string command)
+    public async Task 設定を読めなければ1でjsonにも理由が出る(string command, params string[] options)
     {
-        var (exitCode, output) = await Run([command, "--json"], new FailingConfigSource("設定ファイルが見つかりません: X"));
+        var (exitCode, output) = await Run([command, .. options, "--json"], new FailingConfigSource("設定ファイルが見つかりません: X"));
 
         Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
         using var doc = JsonDocument.Parse(output);

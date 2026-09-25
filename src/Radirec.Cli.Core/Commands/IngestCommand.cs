@@ -2,13 +2,19 @@ using System.ComponentModel;
 using Radirec.Cli.Core.Output;
 using Radirec.Core.Ingestion;
 using Radirec.Hosting;
+using Radirec.Hosting.Control;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace Radirec.Cli.Core.Commands;
 
-/// <summary>らじれこ録音を正規化して取り込む(1 回走査)。</summary>
-public sealed class IngestCommand(IAnsiConsole console, ICliConfigSource configSource)
+/// <summary>
+/// らじれこ録音を正規化して取り込む(1 回走査)。台帳と出力先を書き換えるので、CLI が自分では走査せず、制御チャネルで常駐に
+/// 走査の実行を頼み、終わるまで待って結果を出す(ADR-0020 / #180)。常駐が動いていなければ 2 で終わる(CLI が代わりに走査しない)。
+/// <c>--dry-run</c> は台帳を読むだけなので、今までどおり CLI が直接行う(常駐が動いていなくても使える)。
+/// </summary>
+public sealed class IngestCommand(
+    IAnsiConsole console, ICliConfigSource configSource, IControlClient controlClient, CliVersion cliVersion)
     : AsyncCommand<IngestCommand.Settings>
 {
     public const string Name = "ingest";
@@ -23,27 +29,20 @@ public sealed class IngestCommand(IAnsiConsole console, ICliConfigSource configS
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var config = CommandSupport.LoadConfig(configSource, console, Name, settings.Json);
-        if (config is null)
-            return ExitCodes.UsageOrConfig;
-
-        IngestService service;
-        IDisposable? disposable;
-        try
+        ScanRunReport report;
+        if (settings.DryRun)
         {
-            (service, disposable) = CompositionRoot.Build(config, settings.DryRun);
+            if (await DryRunAsync(settings, cancellationToken) is not { } planned)
+                return ExitCodes.UsageOrConfig;
+            report = planned;
         }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
+        else
         {
-            // 台帳オープンや stations/programs の読み込みで失敗した場合(radirec.json 本体の
-            // 解析失敗は LoadConfig 側で処理済み)。
-            return CommandSupport.Fail(
-                console, Name, settings.Json, ExitCodes.UsageOrConfig, $"設定の読み込みに失敗しました: {ex.Message}");
+            var (ran, failure) = await RunOnResidentAsync(cancellationToken);
+            if (failure is { } f)
+                return CommandSupport.Fail(console, Name, settings.Json, f.ExitCode, f.Message);
+            report = ran!;
         }
-
-        IngestReport report;
-        using (disposable)
-            report = await service.RunOnceAsync(settings.DryRun, cancellationToken);
 
         var exitCode = ExitCodeRules.For(report);
         if (settings.Json)
@@ -53,7 +52,68 @@ public sealed class IngestCommand(IAnsiConsole console, ICliConfigSource configS
         return exitCode;
     }
 
-    private void Render(IngestReport report)
+    /// <summary>取り込み予定を CLI が直接計算する(台帳は読み取り専用)。設定を読めなければ理由を出して null。</summary>
+    private async Task<ScanRunReport?> DryRunAsync(Settings settings, CancellationToken cancellationToken)
+    {
+        var config = CommandSupport.LoadConfig(configSource, console, Name, settings.Json);
+        if (config is null)
+            return null;
+
+        IngestService service;
+        IDisposable? disposable;
+        try
+        {
+            (service, disposable) = CompositionRoot.Build(config, dryRun: true);
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
+        {
+            // 台帳オープンや stations/programs の読み込みで失敗した場合(radirec.json 本体の
+            // 解析失敗は LoadConfig 側で処理済み)。
+            CommandSupport.Fail(
+                console, Name, settings.Json, ExitCodes.UsageOrConfig, $"設定の読み込みに失敗しました: {ex.Message}");
+            return null;
+        }
+
+        using (disposable)
+            return ScanRunReport.From(await service.RunOnceAsync(dryRun: true, cancellationToken));
+    }
+
+    /// <summary>常駐に走査の実行を頼み、終わるまで待つ。結果が得られなければ終了コードと理由を返す。</summary>
+    private async Task<(ScanRunReport? Report, (int ExitCode, string Message)? Failure)> RunOnResidentAsync(
+        CancellationToken cancellationToken)
+    {
+        var call = await controlClient.SendAsync(ControlProtocol.ScanCommand, cancellationToken);
+        if (ControlCommandSupport.Unanswered(call, cliVersion) is { } unanswered)
+            return (null, unanswered);
+
+        var response = call.Response!;
+        return response.Kind switch
+        {
+            ControlResponseKind.Degraded => (null,
+                (ExitCodes.ResidentNotRunning, $"取り込みが止まっているため走査できません: {response.Error}")),
+            ControlResponseKind.Ok when response.ScanRun is { Report: { } report } => (report, null),
+            ControlResponseKind.Ok when response.ScanRun is { } failed => (null,
+                (ExitCodeOf(failed.Failure), failed.Error ?? "走査に失敗しました")),
+            // 知らないコマンド(走査の実行に対応していない古いトレイ)など。
+            _ => (null, (ExitCodes.UsageOrConfig,
+                response.Error is { } error
+                    ? $"常駐が走査の実行を受け付けませんでした: {error}(トレイが古ければ更新してください)"
+                    : "常駐の応答に走査の結果がありませんでした")),
+        };
+    }
+
+    /// <summary>
+    /// 走査の実行が結果を返せなかったときの終了コード。取り込みが止まった → 2、取込元・出力先・Jellyfin に届かない → 5、それ以外 → 1
+    /// (CLI が自分で走査していたときの、例外の終了コードの決め方と同じ)。
+    /// </summary>
+    private static int ExitCodeOf(ScanRunFailure? failure) => failure switch
+    {
+        ScanRunFailure.Stopped => ExitCodes.ResidentNotRunning,
+        ScanRunFailure.External => ExitCodes.ExternalFailure,
+        _ => ExitCodes.UsageOrConfig,
+    };
+
+    private void Render(ScanRunReport report)
     {
         var table = new Table().Border(TableBorder.Rounded);
         table.AddColumn("結果");
@@ -94,7 +154,7 @@ public sealed class IngestCommand(IAnsiConsole console, ICliConfigSource configS
         }
     }
 
-    private static string Detail(IngestItemResult item) => item.Outcome switch
+    private static string Detail(ScanRunItem item) => item.Outcome switch
     {
         // 取込/予定の警告(出力先の同名衝突を別名で避けた等。ADR-0015)は出力パスに添える。
         IngestOutcome.Imported or IngestOutcome.Planned => item.Message is { } warning

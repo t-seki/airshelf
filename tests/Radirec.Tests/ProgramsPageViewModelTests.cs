@@ -44,6 +44,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         public ReapplyReport Plan { get; set; } = Report(dryRun: true, ReapplyAction.Move, ReapplyAction.Move);
 
         public void RequestRescan() => Calls.Add("rescan");
+        public Task<ScanRunResult> RunScanAsync() => throw new NotSupportedException();
         public ServiceStatusSnapshot GetStatus() => Status;
 
         public ReloadResult RequestReload()

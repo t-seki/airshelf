@@ -11,7 +11,7 @@ namespace Radirec.Hosting.Control;
 /// **スレッド安全性契約**: トレイ常駐移行(ADR-0012)後は UI スレッドから呼ばれ、ワーカーは別スレッドで
 /// 走る。メソッドは**別スレッドと並行に**呼ばれうる(status 読み取り中に worker が状態を更新する等)ため、
 /// 実装はスレッドセーフであること。既定実装は rescan=Channel・status=volatile 参照読み・
-/// reload=Interlocked/lock・再適用=キュー + TaskCompletionSource で満たす。
+/// reload=Interlocked/lock・再適用と走査の実行=キュー + TaskCompletionSource で満たす。
 /// </para>
 /// </summary>
 public interface IServiceControl
@@ -21,6 +21,14 @@ public interface IServiceControl
     /// 冪等操作なので「受理」まで(スキャン完了は待たない)。
     /// </summary>
     void RequestRescan();
+
+    /// <summary>
+    /// 走査の実行(CONTEXT.md。ADR-0020 / #180。CLI の <c>ingest</c>)。取り込み走査を 1 回行い、**終わるまで待って結果を返す**。
+    /// 直列ループの上で走るので、取り込みの走査・再適用と同時には走らない(取り込み中に頼んだら、終わるのを待ってから走る)。
+    /// 結果は頼んだ側に返るので新規取込のトーストは出さない。取込失敗のトーストは出し、失敗のストアにも記録する
+    /// (<see cref="ScanRunSummaryGate"/>)。<see cref="RequestRescan"/>(受理で返る)とは別の指示。
+    /// </summary>
+    Task<ScanRunResult> RunScanAsync();
 
     /// <summary>ライブ状態のスナップショットを返す(在中スキャン中でも即応)。</summary>
     ServiceStatusSnapshot GetStatus();

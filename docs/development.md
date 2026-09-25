@@ -102,15 +102,18 @@ Git for Windows を PATH に置く、こと。
 ```
 src/Radirec.Core/     ドメインロジック(OS 非依存・テスト可能)
 src/Radirec.Hosting/  合成ルート + 環境設定・パス解決 + 制御(Control/)。Cli と Gui が共有する
-src/Radirec.Cli/      単一 exe radirec.exe。dev/batch の単発 CLI(ingest / reapply / refresh / history / attention / status / reload)。Program.cs だけの薄い入口
+src/Radirec.Cli/      単一 exe radirec.exe。普段の運用とエージェントの窓口(ingest / reapply / refresh / history / attention / status / reload)。Program.cs だけの薄い入口
 src/Radirec.Cli.Core/ Cli のテスト可能な核(コマンド・--json の形・終了コード・CommandApp の設定。net10.0)
 src/Radirec.Gui/      本番の常駐本体 Radirec.Gui.exe。取り込みワーカー + トレイ + 通知 + 管理画面(XAML)+ 自己更新
 src/Radirec.Gui.Core/ Gui のテスト可能な提示ロジックと管理画面の ViewModel(WinRT/WPF/WinForms シェルから隔離)
 tests/Radirec.Tests/  xUnit
 ```
 
-**本番の常駐は `Radirec.Gui`(トレイ)**で、`radirec.exe` は dev/batch の単発 CLI に縮小されている
-([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)。`service` verb は廃止)。
+**本番の常駐は `Radirec.Gui`(トレイ)**で([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)。`service` verb は廃止)、
+`radirec.exe` は普段の運用と AI エージェントの窓口([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
+台帳を書き換える `ingest` と、`status` / `reload` はトレイの制御チャネルへ頼む(トレイが動いていなければ終了コード 2)。
+そのため、開発機でトレイを動かさずに CLI だけで**取り込み**を試せるのは `ingest --dry-run` まで(ADR-0020 の帰結。
+`reapply` / `refresh` / `history` / `attention` はトレイなしでも動く)。
 参照グラフは 2 経路で Core に届く:
 
 ```

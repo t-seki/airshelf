@@ -2,6 +2,7 @@ using System.IO.Pipes;
 using System.Text.Json;
 using Radirec.Cli.Core;
 using Radirec.Core.Configuration;
+using Radirec.Core.Ingestion;
 using Radirec.Core.Reapply;
 using Radirec.Hosting.Control;
 using Spectre.Console;
@@ -342,6 +343,144 @@ public sealed class ControlChannelTests
         Assert.Equal(expected, RadirecCli.CommandOf(args));
     }
 
+    // ---- 走査の実行(radirec ingest。#180)----
+
+    [Fact]
+    public async Task scanは走査が終わるまで待って結果を返す_応答の待ち時間は走査の実行用のものを使う()
+    {
+        var control = new FakeControl { BlockScan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var server = StartServer(control, degradedReason: null);
+        // 状態取得などの応答の待ち時間は短くしても、走査の実行は走査が終わるまで待つ。
+        var client = new ControlPipeClient(server.PipeName, TimeSpan.FromSeconds(5), responseTimeout: TimeSpan.FromMilliseconds(200));
+
+        var call = client.SendAsync(ControlProtocol.ScanCommand, CancellationToken.None);
+        await Task.Delay(600);
+        Assert.False(call.IsCompleted);
+
+        control.BlockScan.SetResult();
+        var result = await call.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(ControlCallOutcome.Answered, result.Outcome);
+        var report = result.Response!.ScanRun!.Report!;
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.Equal(@"Z:\out\a.m4a", report.Items.Single().OutputPath);
+        Assert.Equal(1, control.ScanCalls);
+    }
+
+    [Fact]
+    public async Task 走査の実行が時間内に終わらなければ応答を読めないとして返す()
+    {
+        var control = new FakeControl { BlockScan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var server = StartServer(control, degradedReason: null);
+        var client = new ControlPipeClient(server.PipeName, TimeSpan.FromSeconds(5), scanResponseTimeout: TimeSpan.FromMilliseconds(300));
+
+        var result = await client.SendAsync(ControlProtocol.ScanCommand, CancellationToken.None);
+        control.BlockScan.SetResult();
+
+        Assert.Equal(ControlCallOutcome.Failed, result.Outcome);
+        Assert.Contains("走査が時間内に終わりませんでした", result.Error);
+    }
+
+    [Fact]
+    public async Task CLIのingestは常駐に走査を頼み_結果をjsonで返す()
+    {
+        var control = new FakeControl();
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["ingest", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        Assert.Equal(1, control.ScanCalls);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal("ingest", doc.RootElement.GetProperty("command").GetString());
+        var result = doc.RootElement.GetProperty("result");
+        Assert.False(result.GetProperty("dryRun").GetBoolean());
+        Assert.Equal(1, result.GetProperty("counts").GetProperty("imported").GetInt32());
+        Assert.Equal("started", result.GetProperty("libraryRefresh").GetProperty("status").GetString());
+        Assert.Equal(@"I:\radio\a.m4a", result.GetProperty("items")[0].GetProperty("source").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのingestは一部の回が失敗したら4()
+    {
+        var control = new FakeControl
+        {
+            ScanRun = ScanRunResult.Ok(new ScanRunReport
+            {
+                DryRun = false,
+                Items =
+                [
+                    new ScanRunItem(IngestOutcome.Imported, "a.m4a", "out/a.m4a", null, false),
+                    new ScanRunItem(IngestOutcome.Failed, "b.m4a", null, "日付を読めません", false),
+                ],
+            }),
+        };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["ingest"], Client(server));
+
+        Assert.Equal(ExitCodes.PartialFailure, exitCode);
+        Assert.Contains("b.m4a", output);
+    }
+
+    [Fact]
+    public async Task CLIのingestは常駐に繋がらなければ2で_自分では走査しない()
+    {
+        var (exitCode, output) = await RunCli(["ingest", "--json"], new ControlPipeClient(UniqueName(), ShortConnect));
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal(ControlPipeClient.NotRunningMessage, doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのingestは取り込みが止まっていれば2で理由を添え_走査を頼まない()
+    {
+        var control = new FakeControl { Running = false };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["ingest", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Contains(ControlPipeServer.WorkerStoppedReason, doc.RootElement.GetProperty("error").GetString());
+        Assert.Equal(0, control.ScanCalls);
+    }
+
+    [Theory]
+    [InlineData(ScanRunFailure.Stopped, ExitCodes.ResidentNotRunning)]
+    [InlineData(ScanRunFailure.External, ExitCodes.ExternalFailure)]
+    [InlineData(ScanRunFailure.Internal, ExitCodes.UsageOrConfig)]
+    public async Task CLIのingestは走査が失敗したら種類ごとの終了コードで理由を返す(ScanRunFailure failure, int expected)
+    {
+        var control = new FakeControl { ScanRun = ScanRunResult.Failed(failure, "走査に失敗しました: 理由") };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["ingest", "--json"], Client(server));
+
+        Assert.Equal(expected, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal("走査に失敗しました: 理由", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのingestは走査の実行を知らない古いトレイなら1()
+    {
+        var oldTray = new FixedClient(new ControlCallResult(ControlCallOutcome.Answered, new ControlResponse
+        {
+            ProtocolVersion = ControlProtocol.Version,
+            TrayVersion = "0.9.0",
+            Kind = ControlResponseKind.BadRequest,
+            Error = "知らないコマンドです: scan",
+        }, null, "0.9.0"));
+
+        var (exitCode, output) = await RunCli(["ingest", "--json"], oldTray);
+
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Contains("トレイが古ければ更新してください", doc.RootElement.GetProperty("error").GetString());
+    }
+
     // ---- 組み立て ----
 
     private static string UniqueName() => "radirec-test-" + Guid.NewGuid().ToString("N");
@@ -403,6 +542,26 @@ public sealed class ControlChannelTests
             ReloadEntered.TrySetResult();
             BlockReload?.Wait(TimeSpan.FromSeconds(10));
             return Reload;
+        }
+
+        public ScanRunResult ScanRun { get; set; } = ScanRunResult.Ok(new ScanRunReport
+        {
+            DryRun = false,
+            Items = [new ScanRunItem(IngestOutcome.Imported, @"I:\radio\a.m4a", @"Z:\out\a.m4a", null, false)],
+            LibraryRefresh = LibraryRefreshStatus.Started,
+        });
+
+        public int ScanCalls { get; private set; }
+
+        /// <summary>設定すると、走査の実行はこれが完了するまで終わらない(走査に時間がかかる)。</summary>
+        public TaskCompletionSource? BlockScan { get; init; }
+
+        public async Task<ScanRunResult> RunScanAsync()
+        {
+            ScanCalls++;
+            if (BlockScan is { } block)
+                await block.Task;
+            return ScanRun;
         }
 
         public void RequestRescan() => throw new NotSupportedException();

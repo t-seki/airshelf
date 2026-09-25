@@ -6,6 +6,7 @@ using Radirec.Core.Model;
 using Radirec.Core.Normalization;
 using Radirec.Core.Output;
 using Radirec.Core.Sources;
+using Radirec.Hosting.Control;
 
 namespace Radirec.Tests;
 
@@ -198,7 +199,8 @@ public sealed class IngestServiceTests
 
     private IngestService Build(
         IEnumerable<RecordingFile> files, IEnumerable<string>? skipPatterns = null,
-        IOutputTarget? target = null, ILibraryRefresher? refresher = null, IRecordingSource? source = null)
+        IOutputTarget? target = null, ILibraryRefresher? refresher = null, IRecordingSource? source = null,
+        IIngestSummaryPublisher? publisher = null)
         => new(
             source ?? new FakeRecordingSource(files.ToArray()),
             new RajirekoImporter(),
@@ -213,7 +215,7 @@ public sealed class IngestServiceTests
             new FixedClock(Now),
             genre: "ラジオ",
             refresher ?? _refresher,
-            _publisher,
+            publisher ?? _publisher,
             _failureStore,
             _failurePublisher);
 
@@ -780,5 +782,43 @@ public sealed class IngestServiceTests
         Assert.Single(_ledger.Keys);
         Assert.False(report.NotificationPublished);
         Assert.Equal("event log full", report.NotificationError);
+    }
+
+    // ---- 走査の実行(CLI から頼んだ走査。#180 / ADR-0020)----
+
+    [Fact]
+    public async Task 走査の実行は新規取込のトーストを出さず_失敗のトーストは出して失敗のストアに記録する()
+    {
+        var gate = new ScanRunSummaryGate(_publisher);
+        var queue = new ScanRunQueue(gate);
+        var bad = BadFile();
+        var service = Build([Rec(StandardName), bad], publisher: gate);
+
+        var pending = queue.Enqueue();
+        await queue.RunAsync(queue.TakePending()!, ct => service.RunOnceAsync(dryRun: false, ct), CancellationToken.None);
+        var result = await pending;
+
+        Assert.Equal(0, _publisher.Calls);                   // 新規取込のトーストは出さない(結果は CLI に返る)
+        Assert.Equal(1, _failurePublisher.Calls);            // 失敗のトーストは出す
+        Assert.True(_failureStore.IsKnown(bad.FilePath, FileFingerprint.Of(bad))); // 要対応に載る
+        Assert.Equal(1, result.Report!.Count(IngestOutcome.Imported));
+        Assert.Equal(1, result.Report.Count(IngestOutcome.Failed));
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task 走査の実行の外の走査は同じ門を通っても新規取込のトーストを出す()
+    {
+        var gate = new ScanRunSummaryGate(_publisher);
+        var queue = new ScanRunQueue(gate);
+
+        // 走査の実行を 1 回済ませた後でも、止めたままにならない。
+        var scanRun = queue.Enqueue();
+        await queue.RunAsync(
+            queue.TakePending()!, ct => Build([], publisher: gate).RunOnceAsync(dryRun: false, ct), CancellationToken.None);
+        await scanRun;
+        await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, _publisher.Calls);
     }
 }

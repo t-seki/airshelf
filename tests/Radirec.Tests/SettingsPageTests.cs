@@ -166,6 +166,7 @@ public sealed class SettingsPageTests : IDisposable
         public int Reloads { get; private set; }
 
         public void RequestRescan() { }
+        public Task<ScanRunResult> RunScanAsync() => throw new NotSupportedException();
         public ServiceStatusSnapshot GetStatus() => Status;
 
         public ReloadResult RequestReload()
