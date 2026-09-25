@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\Radirec.Core\Radirec.Core.csproj" />
     <ProjectReference Include="..\..\src\Radirec.Hosting\Radirec.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Radirec.Gui.Core\Radirec.Gui.Core.csproj" />
+    <ProjectReference Include="..\..\src\Radirec.Cli.Core\Radirec.Cli.Core.csproj" />
   </ItemGroup>
 
 </Project>

@@ -55,8 +55,11 @@ v1 が不変条件として掲げていた「**2 ツリーは ProjectReference �
 Radirec.Gui ──> Radirec.Gui.Core ──> Radirec.Core
      │                 └───────────> Radirec.Hosting
      └────────> Radirec.Hosting  ──> Radirec.Core
-Radirec.Cli ──> Radirec.Hosting / Radirec.Core
+Radirec.Cli ──> Radirec.Cli.Core ──> Radirec.Hosting / Radirec.Core
 ```
+
+- `Radirec.Cli.Core` は #178 で足した。CLI のコマンド・終了コード・JSON の形を、Linux の CI でテストできる `net10.0` に
+  置く(exe の `Radirec.Cli` は Program.cs だけ)。`Gui` / `Gui.Core` と同じ分け方。
 
 - `Gui.Core → Hosting` は管理画面(#151)で足した辺。ViewModel が制御面(`IServiceControl` /
   `ServiceStatusSnapshot`)をそのまま受け取る。Gui.Core 側にインタフェースを切ると、`IServiceControl` の写しと

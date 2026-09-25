@@ -31,14 +31,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Radirec.Core\Radirec.Core.csproj" />
-    <ProjectReference Include="..\Radirec.Hosting\Radirec.Hosting.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- 常駐/制御(Hosting・WindowsServices・EventLog・SystemEvents)は撤去済み(ADR-0012)。
-         radirec.exe は単発 CLI(ingest / refresh)専用に縮小した。 -->
-    <PackageReference Include="Spectre.Console.Cli" />
+    <!-- コマンド・JSON・終了コード・CommandApp の設定は Radirec.Cli.Core(net10.0。テストできる)にある。
+         この exe は Program.cs だけの薄い入口(#178。Radirec.Gui / Radirec.Gui.Core と同じ分け方)。
+         常駐/制御(Hosting・WindowsServices・EventLog・SystemEvents)は撤去済み(ADR-0012)。 -->
+    <ProjectReference Include="..\Radirec.Cli.Core\Radirec.Cli.Core.csproj" />
   </ItemGroup>
 
 </Project>

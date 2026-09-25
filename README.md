@@ -73,6 +73,7 @@ dotnet run --project src/Radirec.Cli -- ingest
 | `Radirec.Core` | ドメインロジック(パース/正規化/import-once/タグ/出力ターゲット) | 実装済み |
 | `Radirec.Hosting` | 合成ルート + 環境設定・パス解決(Core と入口の橋渡し。CLI と常駐トレイが共有) | 実装済み |
 | `Radirec.Cli` | 単一 exe `radirec.exe`。dev/batch 用の単発 CLI(`ingest`/`refresh`) | 実装済み |
+| `Radirec.Cli.Core` | `Radirec.Cli` のテスト可能な核(コマンド・`--json` の形・終了コード) | 実装済み |
 | `Radirec.Gui` | **常駐トレイ**(独立 exe)。取り込みワーカーを内包し、通知/制御/管理画面(取込履歴・番組の設定を含む)/自己更新を担う(ADR-0012) | 実装済み(管理画面は 5 ページとも実装済み。要対応の欄などの残りは #159) |
 | `Radirec.Gui.Core` | `Radirec.Gui` のテスト可能な提示ロジック(トースト整形・履歴行整形・版表示・状態の文言)と管理画面の ViewModel | 実装済み |
 | `Radirec.Tests` | 単体・統合テスト | 実装済み |
