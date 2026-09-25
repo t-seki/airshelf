@@ -287,7 +287,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     public static string ReloadRejected(string? error) => $"設定リロードは拒否されました: {error}";
 
     // 開く場所 = 今読み込んでいる設定から計算した場所。ワーカーがあれば状態(設定リロードの反映に追従する)、
-    // 無ければ起動時に読めた設定から(トレイの「設定ファイルを開く」#143 と同じ)。
+    // 無ければ起動時に読めた設定から(#143 で作った開く場所の決め方を、設定ページの「ファイルを開く」が引き継ぐ。#152)。
     private void UpdateLocations()
     {
         ServiceStatusSnapshot? status = null;

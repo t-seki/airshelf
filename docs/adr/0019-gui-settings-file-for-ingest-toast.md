@@ -1,6 +1,6 @@
 # 新規取込のトーストの切り替えは管理画面用の設定ファイルに持つ
 
-Status: accepted(#152 の grill、2026-09-25。requirements §10.3、[ADR-0011](0011-ingest-failure-as-separate-eventlog-signal.md) の失敗の de-dup、[ADR-0017](0017-management-window-owns-programs-json.md) と関連)
+Status: accepted(#152 の grill、2026-09-25。requirements §10.3、[ADR-0011](0011-ingest-failure-as-separate-eventlog-signal.md) の失敗の de-dup、[ADR-0017](0017-management-window-owns-programs-json.md)、[ADR-0018](0018-attention-items-derived-from-state.md) の要対応と関連)
 
 管理画面の設定ページ(requirements §10.3)で、新規取込のトーストを出すかを切り替えられるようにする。
 いまは `radirec.json` の `NotificationsEnabled`(既定 `true`)がこれを決めているが、`false` にすると新規取込のトーストだけでなく、
@@ -41,6 +41,7 @@ Status: accepted(#152 の grill、2026-09-25。requirements §10.3、[ADR-0011](
   `gui-settings.json` はバックアップや移行のときに `radirec.json` と一緒に扱う(同じフォルダにあるので、フォルダごと扱えば足りる)。
 - `NotificationsEnabled` は初期値の出どころとしてだけ残る。`gui-settings.json` に値が入った後に `radirec.json` の
   `NotificationsEnabled` を変えても効かない(設定ページで切り替える)。
-- 新規取込のトーストを止めても、取込失敗のトーストは出て、失敗のストアにも記録される。兄弟フォルダの知らせ(新規取込の
+- 新規取込のトーストを止めても、取込失敗のトーストは出て、失敗のストアにも記録される。ADR-0018 の結果の節が残した宿題
+  (失敗のストアは取込通知が無効だと使われないので、通知の有無から切り離す)は、この決定で片付いた。兄弟フォルダの知らせ(新規取込の
   トーストの 1 行)は、止めると一緒に出なくなる(`gui.log` には残る。要対応へ移すのは #155)。
 - 管理画面が今後ほかの設定(画面の状態など)を持つときも、`gui-settings.json` に足す。

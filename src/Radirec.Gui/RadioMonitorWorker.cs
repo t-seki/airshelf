@@ -526,7 +526,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 _log.LogWarning("{Message}: {Output}", item.Message, item.OutputPath);
 
             // 統合設定の無い兄弟フォルダ(#127)。取込通知には 1 行しか出せないので、全件をここに残す
-            // (通知を無効にしていても残る)。文言は取込通知と同じ。
+            // (新規取込のトーストを止めていても残る。#152)。文言は取込通知と同じ。
             foreach (var notice in report.SiblingFolderNotices)
                 _log.LogInformation(
                     "{Notice}({Station})",

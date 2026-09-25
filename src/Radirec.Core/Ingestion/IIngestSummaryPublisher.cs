@@ -10,7 +10,10 @@ public interface IIngestSummaryPublisher
     Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default);
 }
 
-/// <summary>何もしない実装(通知無効時 / dry-run / 非 Windows)。</summary>
+/// <summary>
+/// 何もしない実装(dry-run / 手動 CLI などの非発行走査 / publisher を注入しない経路)。常駐で新規取込のトーストを
+/// 止めているときはこれを使わず、提示側(トレイ)が成功要約のトーストだけを出さない(#152・ADR-0019)。
+/// </summary>
 public sealed class NullIngestSummaryPublisher : IIngestSummaryPublisher
 {
     public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)

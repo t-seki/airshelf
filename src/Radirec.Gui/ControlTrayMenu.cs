@@ -308,7 +308,7 @@ internal sealed class ControlTrayMenu
         var name = Path.GetFileName(path);
         var groups = plan.UnintegratedSiblings.Select(s => s.Group).ToList();
 
-        // programs.json が無ければ、起動時(設定ページの「ファイルを開く」も)と同じ見本から作ってから追記する。
+        // programs.json が無ければ、起動時と同じ見本から作ってから追記する。
         // 作れなければ追記も開くこともできないので、エラーを出して終わる(理由は gui.log)。
         var (existed, ready) = await Task.Run(() =>
         {

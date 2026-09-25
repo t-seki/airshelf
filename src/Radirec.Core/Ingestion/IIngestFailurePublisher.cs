@@ -10,7 +10,10 @@ public interface IIngestFailurePublisher
     Task PublishAsync(IngestFailureSignal signal, CancellationToken cancellationToken = default);
 }
 
-/// <summary>何もしない実装(通知無効時 / dry-run / 非 Windows / 非 notify 経路)。</summary>
+/// <summary>
+/// 何もしない実装(dry-run / 手動 CLI などの非発行走査 / publisher を注入しない経路)。常駐の失敗の発行は、新規取込の
+/// トーストの設定に左右されない(止めても失敗は発行し、失敗のストアにも記録する。#152・ADR-0019)。
+/// </summary>
 public sealed class NullIngestFailurePublisher : IIngestFailurePublisher
 {
     public Task PublishAsync(IngestFailureSignal signal, CancellationToken cancellationToken = default)
