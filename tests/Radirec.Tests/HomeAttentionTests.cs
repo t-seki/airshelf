@@ -40,13 +40,34 @@ public sealed class HomeAttentionTests : IDisposable
         public void RequestRescan() { }
         public ServiceStatusSnapshot GetStatus() => Status;
         public ReloadResult RequestReload() => ReloadResult.Ok();
-        public Task<ReapplyResult> PlanReapplyAsync() => throw new NotSupportedException();
+        // 保存済みの設定での確認(#164)→「適用」で結果の画面まで進めるための予定(1 回を動かす)。
+        public Task<ReapplyResult> PlanReapplyAsync() => Task.FromResult(ReapplyResult.Ok(MoveOne(dryRun: true)));
         // 番組ページの「確認」→「保存だけ」で結果の画面まで進めるための dry-run(揃っている予定)。
         public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs) => Task.FromResult(ReapplyResult.Ok(
             new ReapplyReport { Items = [], DryRun = true, UnintegratedSiblings = [] }));
-        public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
+        public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => Task.FromResult(ReapplyResult.Ok(MoveOne(dryRun: false)));
         public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
     }
+
+    private static ReapplyReport MoveOne(bool dryRun) => new()
+    {
+        Items =
+        [
+            new ReapplyItem
+            {
+                Action = ReapplyAction.Move,
+                Station = Tbs,
+                FromAlbum = "安住紳一郎の日曜天国(1)",
+                ToAlbum = "安住紳一郎の日曜天国",
+                BroadcastDate = new DateOnly(2024, 9, 23),
+                FromPath = "/out/a.m4a",
+                ToPath = "/out/b.m4a",
+                SourcePath = "/radio/a.m4a",
+            },
+        ],
+        DryRun = dryRun,
+        UnintegratedSiblings = [],
+    };
 
     private sealed class NoPathActions : IHistoryPathActions
     {
@@ -59,6 +80,7 @@ public sealed class HomeAttentionTests : IDisposable
     private readonly List<LedgerEntry> _ledger = [];
     private readonly FakeControl _control = new();
     private int _computes;
+    private int _locates; // programs.json の場所を決めた回数(= 番組ページの読み込みと、「分けておく」の読み込みの回数)
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
@@ -99,7 +121,7 @@ public sealed class HomeAttentionTests : IDisposable
             File.WriteAllText(ProgramsPath, content, new UTF8Encoding(false));
         return new ManagementViewModel(
             _control, null, () => [], new NoPathActions(), _log.Add,
-            locateProgramsFile: () => ProgramsPath, now: () => new DateTime(2026, 9, 25, 12, 0, 0),
+            locateProgramsFile: () => { _locates++; return ProgramsPath; }, now: () => new DateTime(2026, 9, 25, 12, 0, 0),
             computeAttention: degraded ? null : compute ?? Compute);
     }
 
@@ -421,6 +443,191 @@ public sealed class HomeAttentionTests : IDisposable
         Assert.True(vm.Programs.IsProgramFormMode); // 読み直して一覧へ戻さない
         Assert.Empty(vm.Programs.Programs);
     });
+
+    // ---------- 結果の画面のまま、要対応から下書きを入れる(#199) ----------
+
+    [Fact]
+    public async Task Integrate_from_the_result_screen_opens_the_draft_W226()
+    {
+        Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
+        var vm = await Create();
+        await SaveOnlyToResult(vm);
+
+        vm.CurrentPage = ManagementPage.Home; // 結果の画面のままホームへ
+        vm.Home.SiblingRows[0].IntegrateCommand.Execute(null);
+        await WaitUntil(() => vm.Programs.IsProgramFormMode);
+
+        Assert.Equal(ManagementPage.Programs, vm.CurrentPage);
+        Assert.Equal("アルバム名と統合を追加", vm.Programs.FormHeading);
+        Assert.Equal("安住紳一郎の日曜天国(1)\n安住紳一郎の日曜天国(2)", vm.Programs.FormFolders);
+        Assert.Equal(ProgramsPageViewModel.DraftFromAttention, vm.Programs.FormNotice); // W-226
+    }
+
+    [Fact]
+    public async Task Keep_apart_with_comments_from_the_saved_apply_result_opens_the_keep_draft()
+    {
+        // コメントが残ったまま結果の画面になるのは、保存済みの設定での確認(#164)から「適用」したとき(programs.json を書かない)。
+        Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
+        var withComment = Sample.Replace("\"Programs\": [", "// 手で書いたメモ\n  \"Programs\": [");
+        var vm = await Create(withComment);
+        var start = await vm.Programs.ConfirmSavedAsync(ManagementPage.Settings);
+        Assert.True(start.ShowsConfirm);
+        await vm.Programs.ApplySavedCommand.ExecuteAsync(null);
+        Assert.True(vm.Programs.IsResultMode);
+
+        vm.CurrentPage = ManagementPage.Home; // 結果の画面のままホームへ
+        await vm.Home.SiblingRows[0].KeepApartCommand.ExecuteAsync(null);
+        await WaitUntil(() => vm.Programs.IsKeepFormMode);
+
+        Assert.Equal(withComment, File.ReadAllText(ProgramsPath)); // その場では書かない(保存の前に W-260 で確かめる)
+        Assert.Equal(ManagementPage.Programs, vm.CurrentPage);
+        Assert.Equal(ProgramsPageViewModel.KeepDraftFromAttention, vm.Programs.FormNotice); // W-226 の 2 つ目
+        Assert.False(vm.Programs.IsSavedBasis); // 保存済みの設定での確認は終えた(「戻る」で設定ページへ移らない)
+    }
+
+    // 入口から出口まで:「統合する」→ 番組ページに、読み直した一覧の上の下書き。この筋書きでは、ShowDraftAsync が先に呼ぶ
+    // OnShownAsync が(結果の画面でファイルが変わっていれば)読み直して一覧に戻すので、LeaveResultForDraftAsync の読み直しの
+    // 分岐は通らない。その分岐は、下の LeaveResultForDraftAsync を直接呼ぶテストで確かめる。
+    [Fact]
+    public async Task Integrate_end_to_end_after_the_file_changed_while_on_the_result_screen()
+    {
+        Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
+        var vm = await Create();
+        await SaveOnlyToResult(vm);
+        File.WriteAllText(ProgramsPath, Sample); // 結果を出している間に、ほかの経路で書かれた
+
+        vm.CurrentPage = ManagementPage.Home;
+        vm.Home.SiblingRows[0].IntegrateCommand.Execute(null);
+        await WaitUntil(() => vm.Programs.IsProgramFormMode);
+
+        Assert.Single(vm.Programs.Programs); // 削除して保存した 0 件ではなく、書き直されたファイルを読み直してから下書き
+        Assert.False(vm.Programs.HasChanges);
+    }
+
+    [Fact]
+    public async Task Leaving_the_result_screen_for_a_draft_rereads_when_the_file_changed()
+    {
+        var vm = await Create();
+        await SaveOnlyToResult(vm);
+        File.WriteAllText(ProgramsPath, Sample); // 結果を出している間に、ほかの経路で書かれた
+
+        await vm.Programs.LeaveResultForDraftAsync();
+
+        Assert.True(vm.Programs.IsListMode);
+        Assert.Single(vm.Programs.Programs); // Sample の 1 件を読み直した(削除して保存した 0 件ではない)
+        Assert.False(vm.Programs.HasChanges);
+    }
+
+    [Fact]
+    public async Task Leaving_the_result_screen_for_a_draft_keeps_the_list_when_the_file_is_unchanged()
+    {
+        var vm = await Create();
+        await SaveOnlyToResult(vm);
+        var loads = _locates;
+
+        await vm.Programs.LeaveResultForDraftAsync();
+
+        Assert.True(vm.Programs.IsListMode);
+        Assert.Empty(vm.Programs.Programs); // 保存した一覧のまま
+        Assert.Equal(loads, _locates); // 読み直していない
+    }
+
+    // 保存済みの設定での確認(#164)から「適用」した結果の画面(programs.json を書かない)。
+    private static async Task SavedApplyToResult(ManagementViewModel vm)
+    {
+        await vm.Programs.LoadAsync();
+        var start = await vm.Programs.ConfirmSavedAsync(ManagementPage.Settings);
+        Assert.True(start.ShowsConfirm);
+        await vm.Programs.ApplySavedCommand.ExecuteAsync(null);
+        Assert.True(vm.Programs.IsResultMode);
+        Assert.True(vm.Programs.IsSavedBasis);
+    }
+
+    [Fact]
+    public async Task Leaving_the_saved_apply_result_for_a_draft_rereads_when_the_file_changed()
+    {
+        var vm = await Create();
+        await SavedApplyToResult(vm);
+        File.WriteAllText(ProgramsPath, Sample.Replace("パンサー向井のふらっと\" }", "パンサー向井のふらっと(新)\" }"));
+        var loads = _locates;
+        var page = vm.CurrentPage;
+
+        await vm.Programs.LeaveResultForDraftAsync();
+
+        Assert.True(vm.Programs.IsListMode);
+        Assert.False(vm.Programs.IsSavedBasis); // 確認を終えた
+        Assert.Equal(page, vm.CurrentPage); // 来たページ(設定)へは移らない
+        Assert.Equal(loads + 1, _locates); // 読み直した
+        Assert.Equal("パンサー向井のふらっと(新)", Assert.Single(vm.Programs.Programs).Album);
+    }
+
+    [Fact]
+    public async Task Leaving_the_saved_apply_result_for_a_draft_keeps_the_list_when_the_file_is_unchanged()
+    {
+        var vm = await Create();
+        await SavedApplyToResult(vm);
+        var loads = _locates;
+
+        await vm.Programs.LeaveResultForDraftAsync();
+
+        Assert.True(vm.Programs.IsListMode);
+        Assert.False(vm.Programs.IsSavedBasis);
+        Assert.Equal(loads, _locates); // 読み直していない
+    }
+
+    [Fact]
+    public async Task Result_with_unsaved_changes_W275_is_left_as_is()
+    {
+        var vm = await Create();
+        await vm.Programs.LoadAsync();
+        vm.Programs.SelectedProgram = vm.Programs.Programs[0];
+        vm.Programs.DeleteProgramCommand.Execute(null);
+        await vm.Programs.ConfirmCommand.ExecuteAsync(null);
+        File.WriteAllText(ProgramsPath, Sample + "\n"); // エディタで直した
+        await vm.Programs.SaveOnlyCommand.ExecuteAsync(null);
+        Assert.True(vm.Programs.IsConflict); // W-275:保存していない変更を持ったまま結果の画面
+
+        await vm.Programs.LeaveResultForDraftAsync();
+
+        Assert.True(vm.Programs.IsResultMode); // 読み込み直すかを利用者が決める画面のまま(下書きは作らない)
+        Assert.True(vm.Programs.HasChanges);
+    }
+
+    [Fact]
+    public async Task Integrate_while_editing_a_form_does_not_replace_it()
+    {
+        Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
+        var vm = await Create();
+        await vm.Programs.LoadAsync();
+        vm.Programs.AddProgramCommand.Execute(null);
+        vm.Programs.FormAlbum = "書きかけ";
+
+        vm.CurrentPage = ManagementPage.Home;
+        vm.Home.SiblingRows[0].IntegrateCommand.Execute(null);
+        await WaitUntil(() => vm.CurrentPage == ManagementPage.Programs);
+
+        Assert.True(vm.Programs.IsProgramFormMode);
+        Assert.Equal("書きかけ", vm.Programs.FormAlbum); // 編集の途中のフォームを下書きで上書きしない
+        Assert.NotEqual(ProgramsPageViewModel.DraftFromAttention, vm.Programs.FormNotice);
+    }
+
+    [Fact]
+    public async Task Integrate_during_confirm_does_not_leave_the_confirm_screen()
+    {
+        Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
+        var vm = await Create();
+        await vm.Programs.LoadAsync();
+        vm.Programs.SelectedProgram = vm.Programs.Programs[0];
+        vm.Programs.DeleteProgramCommand.Execute(null);
+        await vm.Programs.ConfirmCommand.ExecuteAsync(null);
+        Assert.True(vm.Programs.IsConfirmMode);
+
+        vm.CurrentPage = ManagementPage.Home;
+        vm.Home.SiblingRows[0].IntegrateCommand.Execute(null);
+        await WaitUntil(() => vm.CurrentPage == ManagementPage.Programs);
+
+        Assert.True(vm.Programs.IsConfirmMode); // 確認の画面のまま(下書きは作らない)
+    }
 
     [Fact]
     public async Task Keep_apart_is_blocked_while_programs_page_has_unsaved_changes_W138()
