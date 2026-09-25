@@ -508,8 +508,14 @@ public sealed class ProgramsPageViewModel : ObservableObject
         }
         if (HasChanges || !(IsListMode || IsResultMode))
             return;
-        if ((_reapplyPending || IsResultMode) && !await FileChangedAsync())
-            return;
+        if (_reapplyPending || IsResultMode)
+        {
+            if (!await FileChangedAsync())
+                return;
+            // 確かめている間に編集を始めていたら読み直さない(結果の画面のままなら、変わったので読み直す)。
+            if (!(IsResultMode || CanReloadWithoutLosingWork))
+                return;
+        }
         await LoadAsync();
     }
 
@@ -1076,9 +1082,13 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
         // 結果の画面を出している間に、ファイルが変わっていれば読み直す(OnShownAsync と同じ。保存していない変更があれば
         // 捨てないので読み直さない。W-275 の後の「戻る」がこれ)。
-        if (fromResult && !HasChanges && await FileChangedAsync())
+        if (fromResult && !HasChanges && await FileChangedAsync() && CanReloadWithoutLosingWork)
             await LoadAsync();
     }
+
+    // ファイルが変わったかを確かめている間(await の間)に、利用者が一覧を編集した・フォームや「確認」を始めていたら、
+    // 読み直すとその作業が黙って消える。まだ一覧の画面で、変更が無いときだけ読み直す。
+    private bool CanReloadWithoutLosingWork => IsListMode && !HasChanges;
 
     // ---- 保存 ----
 

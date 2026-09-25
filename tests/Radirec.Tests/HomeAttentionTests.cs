@@ -331,7 +331,6 @@ public sealed class HomeAttentionTests : IDisposable
     {
         Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
         var vm = await Create();
-        vm.CurrentPage = ManagementPage.Programs;
         await SaveOnlyToResult(vm);
 
         vm.CurrentPage = ManagementPage.Home;
@@ -347,7 +346,6 @@ public sealed class HomeAttentionTests : IDisposable
     public async Task Programs_page_left_on_result_keeps_result_when_file_is_unchanged()
     {
         var vm = await Create();
-        vm.CurrentPage = ManagementPage.Programs;
         await SaveOnlyToResult(vm);
 
         vm.CurrentPage = ManagementPage.Home;
@@ -370,6 +368,42 @@ public sealed class HomeAttentionTests : IDisposable
         Assert.Single(vm.Programs.Programs); // Sample の 1 件を読み直した(削除して保存した 0 件ではない)
         Assert.False(vm.Programs.HasChanges);
     }
+
+    [Fact]
+    public void Back_from_result_does_not_reread_when_editing_started_while_checking() => UiThreadContext.Run(async () =>
+    {
+        // UI スレッドと同じく、「戻る」がファイルの変更を確かめて待っている間に、利用者が一覧の編集を始められる。
+        var vm = CreateNow();
+        await SaveOnlyToResult(vm);
+        File.WriteAllText(ProgramsPath, Sample); // 結果を出している間に、ほかの経路で書かれた
+
+        var back = vm.Programs.BackCommand.ExecuteAsync(null);
+        Assert.True(vm.Programs.IsListMode); // 一覧に戻り、ファイルを確かめている途中
+        vm.Programs.AddProgramCommand.Execute(null);
+        vm.Programs.FormStation = Tbs;
+        vm.Programs.FormFolders = "安住紳一郎の日曜天国";
+        vm.Programs.FormAlbum = "安住紳一郎の日曜天国";
+        vm.Programs.CommitFormCommand.Execute(null);
+        await back;
+
+        Assert.True(vm.Programs.HasChanges); // 読み直して、始めた編集を黙って消さない
+        Assert.Equal("安住紳一郎の日曜天国", Assert.Single(vm.Programs.Programs).Album);
+    });
+
+    [Fact]
+    public void Back_from_result_does_not_reread_when_confirm_started_while_checking() => UiThreadContext.Run(async () =>
+    {
+        var vm = CreateNow();
+        await SaveOnlyToResult(vm);
+        File.WriteAllText(ProgramsPath, Sample);
+
+        var back = vm.Programs.BackCommand.ExecuteAsync(null);
+        vm.Programs.AddProgramCommand.Execute(null); // フォームを開いたまま(一覧の画面ではない)
+        await back;
+
+        Assert.True(vm.Programs.IsProgramFormMode); // 読み直して一覧へ戻さない
+        Assert.Empty(vm.Programs.Programs);
+    });
 
     [Fact]
     public async Task Keep_apart_is_blocked_while_programs_page_has_unsaved_changes_W138()
