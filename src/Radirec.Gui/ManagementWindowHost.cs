@@ -78,7 +78,7 @@ internal sealed class ManagementWindowHost
                 ConfirmApplyUpdate, TrayLog.Warn);
             var settings = new SettingsPageViewModel(
                 _control, _settings.ConfigPath, _settings.StartupConfig, _settings.ConfigError,
-                _settings.ToastSetting, new SettingsPageActions(), TrayLog.Warn);
+                _settings.ToastSetting, new SettingsPageActions(), TrayLog.Warn, _settings.StartError);
             var viewModel = new ManagementViewModel(
                 _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn,
                 locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info, about: about, settings: settings);

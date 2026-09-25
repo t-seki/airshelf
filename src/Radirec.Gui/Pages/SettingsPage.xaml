@@ -100,6 +100,27 @@
                 </StackPanel>
             </Border>
 
+            <!-- ========== 起動の失敗のパネル(radirec.json は読めたが取り込みを起動できない。W-104)W-406〜W-409(#168) ==========
+                 ページを置き換えず、通常の設定ページの上に出す。 -->
+            <Border Style="{StaticResource Card}" Visibility="{Binding IsStartFailed, Converter={StaticResource Visible}}">
+                <StackPanel>
+                    <!-- W-406 -->
+                    <TextBlock Style="{DynamicResource SectionHeading}" Text="{x:Static m:SettingsPageViewModel.StartFailedHeading}" />
+                    <!-- W-407(起動に失敗した例外のメッセージをそのまま) -->
+                    <TextBlock Style="{StaticResource Optional}" FontWeight="SemiBold" Text="{Binding StartFailedReason}" />
+                    <!-- W-408 -->
+                    <TextBlock Style="{StaticResource Optional}" Text="{x:Static m:SettingsPageViewModel.StartFailedNote}" />
+                    <!-- W-409。programs.json を使わない設定なら「programs.json を開く」は押せない -->
+                    <WrapPanel Margin="0,10,0,0">
+                        <Button Content="programs.json を開く" Padding="12,4" Command="{Binding OpenProgramsCommand}" />
+                        <Button Content="stations.json を開く" Padding="12,4" Margin="8,0,0,0" Command="{Binding OpenStationsFromPanelCommand}" />
+                        <Button Content="再読み込みして再起動" Padding="12,4" Margin="8,0,0,0" Command="{Binding RestartCommand}" />
+                    </WrapPanel>
+                    <!-- W-308(パネルのボタンで開いた結果。下の stations.json の段には出さない) -->
+                    <TextBlock DataContext="{Binding StartFailedPanel}" Style="{StaticResource RowMessage}" Text="{Binding Message}" />
+                </StackPanel>
+            </Border>
+
             <!-- ========== 通常の設定ページ ========== -->
             <StackPanel Visibility="{Binding IsNormal, Converter={StaticResource Visible}}">
                 <!-- 取り込みの知らせ W-301〜W-303 -->

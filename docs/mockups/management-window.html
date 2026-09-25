@@ -223,7 +223,7 @@
           <div class="status-line" data-if="run:watching,noscan" data-w="W-101">状態: 稼働中(監視中)</div>
           <div class="status-line" data-if="run:polling" data-w="W-102">状態: 稼働中(定期スキャンのみ)</div>
           <div class="status-line" data-if="run:crashed" data-w="W-103">状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)</div>
-          <div class="status-line" data-if="run:startfail" data-w="W-104">状態: 取り込み停止中(取り込みの起動に失敗しました(gui.log 参照))</div>
+          <div class="status-line an" data-if="run:startfail" data-w="W-104">状態: 取り込み停止中(取り込みの起動に失敗しました(設定ページ参照))</div>
           <div class="status-line" data-if="run:noconfig" data-w="W-105">状態: 取り込み停止中(設定を読み込めませんでした)</div>
           <div class="status-line" data-if="run:watching" data-w="W-106">最終スキャン: 9/25 10:42 検知(取込 3)</div>
           <div class="status-line" data-if="run:polling" data-w="W-106">最終スキャン: 9/25 10:40 定期(取込 0・失敗 1)</div>
@@ -639,6 +639,22 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       </div>
       <div class="mocknote">読めない理由は読み込みの戻り値をそのまま出す(上の「:」より後ろの JSON のエラーは例)。ファイルが無いときは
         <span data-w="W-402">設定ファイルが見つかりません: {パス}</span>。JSON のエディタは内蔵しない(§10.3)。</div>
+    </div>
+
+    <!-- 起動の失敗のパネル(W-104。#168)。ページを置き換えず先頭に出す -->
+    <div data-if="run:startfail" class="panel-degraded" style="margin-bottom: 16px;">
+      <h3 class="an" style="margin-top: 0;" data-w="W-406">取り込みを起動できません</h3>
+      <p class="msg err an" data-w="W-407">programs.json を読めません(JSON が壊れています): '}' is invalid after a property name. Expected a ':'. Path: $.Programs[3] | LineNumber: 41 | BytePositionInLine: 6.</p>
+      <p class="an" data-w="W-408">取り込みは止まっています。原因の設定ファイル(programs.json・stations.json など)を直して保存してから「再読み込みして再起動」を押してください。</p>
+      <div class="row">
+        <button class="btn" data-w="W-409">programs.json を開く</button>
+        <button class="btn" data-w="W-409">stations.json を開く</button>
+        <button class="btn primary" data-w="W-409">再読み込みして再起動</button>
+      </div>
+      <div class="mocknote">理由は起動に失敗した例外のメッセージをそのまま出す(全文は gui.log)。stations.json・programs.json が JSON として読めないときは、
+        先頭にファイル名が付く(W-216 と同じ形)。そのファイルを使わない設定なら、そのボタンは押せない。下の設定ページはそのまま出る。
+        パネルのボタンで開いた結果(<span data-w="W-308">{ファイル名} が無かったので見本から作りました</span> 等)は、ボタンの下の 1 行にだけ出す
+        (下の stations.json の段には出さない)。</div>
     </div>
 
     <div data-if="run:watching,polling,noscan,crashed,startfail">
