@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Radirec.Core.Ingestion;
+using Radirec.Gui.Core;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
 using Velopack;
@@ -43,12 +44,28 @@ internal static class Program
 
         ApplicationConfiguration.Initialize();
 
+        // UI の例外がワーカーを巻き込まないようにする(roadmap §地図から読める構造 の 1.・#151 の設計の決定 5)。
+        // UI スレッドの未捕捉例外は WinForms(トレイ)・WPF(管理画面)の両方で捕まえ、gui.log に書いて握り、
+        // 管理画面だけを閉じる(トレイとワーカーは生かす)。SetUnhandledExceptionMode はコントロールを 1 つでも
+        // 作った後に呼ぶと例外になるので、トレイを作る前に置く。
+        ManagementWindowHost? managementHost = null; // トレイを作った後に入る(それまでの例外はログだけ)
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => OnUnhandledUiException(managementHost, e.Exception, "Application.ThreadException");
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.UnhandledException += (_, e) =>
+        {
+            OnUnhandledUiException(managementHost, e.Exception, "Dispatcher.UnhandledException");
+            e.Handled = true;
+        };
+        // 別スレッドの未捕捉例外はプロセスの終了を止められないので、ログに残すだけ。
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            TrayLog.Error($"捕まえていない例外(IsTerminating={e.IsTerminating}): {e.ExceptionObject}");
+
         // 起動シーケンス(自己登録・ホスト構築・トレイ生成)は WinExe でコンソールが無く、失敗すると
         // 無痕跡でトレイが現れないだけになる。ログに残して初回起動失敗を診断可能にする。
         IHost? host = null;
         IServiceControl? control = null;
         string? degradedReason = null; // control==null の理由(縮退メニュー表示用)。
-        string? ledgerPath = null;     // 取込履歴(S4)。設定が読めていれば worker 起動可否に依らず参照可。
+        string? ledgerPath = null;     // 管理画面の取込履歴(S4 / #151)。設定が読めていれば worker 起動可否に依らず参照可。
         string? configPath = null;          // 設定ファイルを開く(#143)。読めなかったときも開ける(直すため)。
         RadirecConfig? startupConfig = null; // 同上。ワーカーが無いときの programs/stations の場所の出どころ。
         UpdateService? updateService = null;       // 自己更新(S6)。設定が読めたときだけ。
@@ -103,13 +120,13 @@ internal static class Program
                     StopHost(host);
                     host = null;
                     control = null;
-                    degradedReason = "取り込みの起動に失敗しました(gui.log 参照)";
+                    degradedReason = ServiceStatusText.DegradedStartFailed; // W-104
                 }
             }
             else
             {
                 TrayLog.Warn($"設定の読み込みに失敗しました({error})。取り込みは起動せずトレイのみ表示します");
-                degradedReason = "設定を読み込めませんでした";
+                degradedReason = ServiceStatusText.DegradedConfigUnreadable; // W-105
             }
 
             trayIcon = new NotifyIcon
@@ -144,10 +161,15 @@ internal static class Program
                     catch (Exception ex) { TrayLog.Warn($"更新適用前のワーカー停止で例外: {ex.Message}"); }
                 };
 
+            // 管理画面(#151)。トレイの「Radirec を開く」とアイコンのダブルクリックで開く。縮退時も開ける。
+            var windowHost = new ManagementWindowHost(trayIcon, control, degradedReason, ledgerPath);
+            managementHost = windowHost;
+            trayIcon.DoubleClick += (_, _) => windowHost.Show();
+
             // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
             trayIcon.ContextMenuStrip = new ControlTrayMenu(
-                trayIcon, control, degradedReason, ledgerPath, updateService, updateCoordinator, drainWorker,
+                trayIcon, windowHost.Show, control, degradedReason, updateService, updateCoordinator, drainWorker,
                 configPath, startupConfig).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
@@ -168,6 +190,23 @@ internal static class Program
         // 更新チェックタイマーを止め、ワーカーを graceful に停止する。
         updateCoordinator?.Dispose();
         StopHost(host);
+    }
+
+    // UI スレッドの未捕捉例外の受け口。管理画面があればそれだけを閉じる(ManagementWindowHost)。トレイを作る前はログだけ。
+    private static void OnUnhandledUiException(ManagementWindowHost? host, Exception ex, string source)
+    {
+        try
+        {
+            if (host is null)
+                TrayLog.Error($"UI スレッドで捕まえていない例外({source}): {ex}");
+            else
+                host.OnUnhandledUiException(ex, source);
+        }
+        catch (Exception inner)
+        {
+            // 最後の網からさらに例外を漏らすと、メッセージループごとトレイが落ちる。
+            TrayLog.Error($"UI スレッドの例外の処理中に例外: {inner}(元の例外: {ex})");
+        }
     }
 
     /// <summary>取り込みワーカー + in-process トースト publisher + ファイルログを載せた汎用ホストを組む。</summary>

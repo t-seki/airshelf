@@ -1,0 +1,232 @@
+<!--
+  管理画面(requirements §10.3・#151)。ViewModel は Radirec.Gui.Core の ManagementViewModel。
+  文言は docs/mockups/management-window.md に従い、各所に W-ID を書いておく(モックと突き合わせるため)。
+  ホームと取込履歴以外のページ(番組 / 設定 / バージョン情報)は、まだ見出しだけ(#152〜#157 が足す)。
+-->
+<Window x:Class="Radirec.Gui.ManagementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:m="clr-namespace:Radirec.Gui.Core.Management;assembly=Radirec.Gui.Core"
+        Title="{x:Static m:ManagementViewModel.Title}"
+        Width="1040" Height="700" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="Visible" />
+
+        <Style x:Key="PageHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="SectionHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="Sub" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+        </Style>
+
+        <!-- ファイル列はファイル名だけを出し、セルの ToolTip にフルパスを出す(列は切り詰められるため。#87)。 -->
+        <Style x:Key="FileCell" TargetType="TextBlock">
+            <Setter Property="ToolTip" Value="{Binding OutputPath}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <!-- 選択・コピーできる読み取り専用のパス(詳細欄 W-145)。長いので折り返して全文を見せる。 -->
+        <Style x:Key="PathBox" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,2" />
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- W-003 -->
+        <Border DockPanel.Dock="Bottom" Padding="12,4"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+            <TextBlock Style="{StaticResource Sub}" Text="{x:Static m:ManagementViewModel.CloseNote}" />
+        </Border>
+
+        <!-- W-002 ページの切り替え -->
+        <ListBox DockPanel.Dock="Left" Width="160" Padding="4,8"
+                 BorderThickness="0,0,1,0"
+                 ItemsSource="{Binding Source={x:Static m:ManagementViewModel.PageNames}}"
+                 SelectedIndex="{Binding CurrentPageIndex}">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Padding" Value="10,7" />
+                </Style>
+            </ListBox.ItemContainerStyle>
+        </ListBox>
+
+        <Grid>
+            <!-- ========== ホーム ========== -->
+            <!-- Visibility は外側(DataContext = ManagementViewModel)で結ぶ。同じ要素で DataContext を差し替えると、
+                 IsHomePage が Home の側で探されて結べない。 -->
+            <Grid Visibility="{Binding IsHomePage, Converter={StaticResource Visible}}">
+            <DockPanel Margin="18,14" LastChildFill="False" DataContext="{Binding Home}">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource PageHeading}" Text="ホーム" />
+
+                <!-- 状態と再スキャン -->
+                <Border DockPanel.Dock="Top" Padding="14,10" CornerRadius="4" BorderThickness="1"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <!-- W-101〜W-105 -->
+                            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,2" />
+                            <!-- W-106〜W-108 -->
+                            <TextBlock Text="{Binding LastScanText}" TextWrapping="Wrap" Margin="0,2" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="16,0,0,0" MaxWidth="280">
+                            <!-- W-110 -->
+                            <Button Content="今すぐ再スキャン" Padding="14,5" HorizontalAlignment="Right"
+                                    Command="{Binding RescanCommand}" />
+                            <!-- W-111(次のスキャンが終わるまで)/ W-112(取り込みが止まっている) -->
+                            <TextBlock Text="{Binding RescanNote}" TextWrapping="Wrap" TextAlignment="Right"
+                                       Margin="0,6,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 取込履歴(新しい方の 5 件)。W-140 -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,20,0,6">
+                    <TextBlock Style="{StaticResource SectionHeading}" Text="取込履歴" />
+                    <TextBlock Style="{StaticResource Sub}" Margin="12,0,0,0" VerticalAlignment="Bottom"
+                               Text="{Binding RecentCaption}" />
+                </StackPanel>
+                <!-- W-150 -->
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
+                           Text="{x:Static m:HistoryText.Unavailable}"
+                           Visibility="{Binding IsHistoryUnavailable, Converter={StaticResource Visible}}" />
+                <!-- W-149 -->
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
+                           Text="{x:Static m:HistoryText.LoadFailed}"
+                           Visibility="{Binding IsHistoryFailed, Converter={StaticResource Visible}}" />
+                <StackPanel DockPanel.Dock="Top"
+                            Visibility="{Binding IsHistoryLoaded, Converter={StaticResource Visible}}">
+                    <!-- W-141(列)。ホームの数件は並べ替えない(常に新しい順) -->
+                    <DataGrid ItemsSource="{Binding RecentRows}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              CanUserAddRows="False" CanUserDeleteRows="False"
+                              CanUserSortColumns="False" CanUserReorderColumns="False"
+                              HeadersVisibility="Column" SelectionMode="Single"
+                              GridLinesVisibility="Horizontal">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="番組" Binding="{Binding Program}" Width="240" />
+                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="120" />
+                            <DataGridTextColumn Header="放送" Binding="{Binding Broadcast}" Width="150" />
+                            <DataGridTextColumn Header="取込日時" Binding="{Binding ImportedAt}" Width="140" />
+                            <DataGridTextColumn Header="ファイル" Binding="{Binding FileName}" Width="*"
+                                                ElementStyle="{StaticResource FileCell}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <!-- W-142 -->
+                    <Button Content="すべて表示" Padding="12,3" Margin="0,6,0,0" HorizontalAlignment="Right"
+                            Command="{Binding ShowAllCommand}" />
+                </StackPanel>
+            </DockPanel>
+            </Grid>
+
+            <!-- ========== 取込履歴(全件) ========== -->
+            <Grid Visibility="{Binding IsHistoryPage, Converter={StaticResource Visible}}">
+            <DockPanel Margin="18,14" DataContext="{Binding History}">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource PageHeading}" Text="取込履歴" />
+                <!-- W-150 -->
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
+                           Text="{x:Static m:HistoryText.Unavailable}"
+                           Visibility="{Binding IsUnavailable, Converter={StaticResource Visible}}" />
+
+                <!-- 「更新」(W-143)・件数(W-151)/ 読み込み失敗(W-149)・開く / コピーの結果(W-146〜W-148)。
+                     StackPanel ではなく DockPanel にする。横積みだと結果の欄に無限の幅が渡り、長いパスが省略されずに
+                     はみ出すため(旧取込履歴ウィンドウと同じ)。 -->
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" LastChildFill="True"
+                           Visibility="{Binding IsAvailable, Converter={StaticResource Visible}}">
+                    <Button DockPanel.Dock="Left" Content="更新" Padding="14,3" Command="{Binding RefreshCommand}" />
+                    <TextBlock DockPanel.Dock="Left" Margin="12,0,0,0" VerticalAlignment="Center"
+                               Text="{Binding CountText}" />
+                    <TextBlock Margin="16,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Text="{Binding ActionMessage}" ToolTip="{Binding ActionMessage}" />
+                </DockPanel>
+
+                <!-- 詳細欄(W-145) -->
+                <Border DockPanel.Dock="Bottom" Padding="10,6,10,8" BorderThickness="0,1,0,0"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                        Visibility="{Binding IsLoaded, Converter={StaticResource Visible}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="出力先" Margin="0,2,12,2" />
+                        <TextBox Grid.Row="0" Grid.Column="1" Style="{StaticResource PathBox}"
+                                 Text="{Binding SelectedOutputPath, Mode=OneWay}" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="取込元" Margin="0,2,12,2" />
+                        <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource PathBox}"
+                                 Text="{Binding SelectedSourcePath, Mode=OneWay}" />
+                    </Grid>
+                </Border>
+
+                <!-- W-141。列の見出しで並べ替えられる。行のダブルクリック・Enter で出力先を開く -->
+                <DataGrid ItemsSource="{Binding Rows}"
+                          SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                          Visibility="{Binding IsLoaded, Converter={StaticResource Visible}}"
+                          AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserAddRows="False" CanUserDeleteRows="False"
+                          HeadersVisibility="Column" SelectionMode="Single"
+                          GridLinesVisibility="Horizontal"
+                          PreviewKeyDown="OnHistoryGridPreviewKeyDown">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <!-- DataGrid 自体の MouseDoubleClick は見出し(列幅の自動調整)でも起きるので、行で拾う -->
+                            <EventSetter Event="MouseDoubleClick" Handler="OnHistoryRowDoubleClick" />
+                            <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnHistoryRowRightButtonDown" />
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <!-- W-144 -->
+                    <DataGrid.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="出力先をエクスプローラーで開く" Command="{Binding RevealOutputCommand}" />
+                            <MenuItem Header="取込元をエクスプローラーで開く" Command="{Binding RevealSourceCommand}" />
+                            <Separator />
+                            <MenuItem Header="出力先のパスをコピー" Command="{Binding CopyOutputCommand}" />
+                            <MenuItem Header="取込元のパスをコピー" Command="{Binding CopySourceCommand}" />
+                        </ContextMenu>
+                    </DataGrid.ContextMenu>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="番組" Binding="{Binding Program}" Width="240" />
+                        <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="120" />
+                        <DataGridTextColumn Header="放送" Binding="{Binding Broadcast}" Width="150" />
+                        <DataGridTextColumn Header="取込日時" Binding="{Binding ImportedAt}" Width="140" />
+                        <DataGridTextColumn Header="ファイル" Binding="{Binding FileName}" Width="*"
+                                            ElementStyle="{StaticResource FileCell}" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+            </Grid>
+
+            <!-- ========== 番組 / 設定 / バージョン情報(中身は #152〜#157) ========== -->
+            <StackPanel Margin="18,14" Visibility="{Binding IsProgramsPage, Converter={StaticResource Visible}}">
+                <TextBlock Style="{StaticResource PageHeading}" Text="番組" />
+            </StackPanel>
+            <StackPanel Margin="18,14" Visibility="{Binding IsSettingsPage, Converter={StaticResource Visible}}">
+                <TextBlock Style="{StaticResource PageHeading}" Text="設定" />
+            </StackPanel>
+            <StackPanel Margin="18,14" Visibility="{Binding IsAboutPage, Converter={StaticResource Visible}}">
+                <TextBlock Style="{StaticResource PageHeading}" Text="バージョン情報" />
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</Window>

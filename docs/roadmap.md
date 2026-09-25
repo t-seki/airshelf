@@ -46,16 +46,22 @@ catch-up 参加といった「分割が生んだ機構」が消えた([CONTEXT.m
 ## 前提: 現状の構造(この地図の起点)
 
 `Radirec.Gui` は「取込通知の受け手」ではなく、**取り込みワーカーを内包する常駐本体**である(ADR-0012)。
-1 つのユーザーセッション exe が「取り込み + トースト + 履歴 UI + 制御 + 自己更新」を持つ。
+1 つのユーザーセッション exe が「取り込み + トースト + 管理画面(取込履歴を含む)+ 制御 + 自己更新」を持つ。
 
 v1 が不変条件として掲げていた「**2 ツリーは ProjectReference を共有しない**」は**退役した**。
 実際の参照グラフは 2 経路で Core に届いている:
 
 ```
 Radirec.Gui ──> Radirec.Gui.Core ──> Radirec.Core
+     │                 └───────────> Radirec.Hosting
      └────────> Radirec.Hosting  ──> Radirec.Core
 Radirec.Cli ──> Radirec.Hosting / Radirec.Core
 ```
+
+- `Gui.Core → Hosting` は管理画面(#151)で足した辺。ViewModel が制御面(`IServiceControl` /
+  `ServiceStatusSnapshot`)をそのまま受け取る。Gui.Core 側にインタフェースを切ると、`IServiceControl` の写しと
+  アダプタができ、制御面を足すたびに両方を直すことになるので採らなかった。Hosting は `net10.0`(依存は Core だけ)
+  なので、Gui.Core は引き続き WSL の CI でビルド・テストできる。
 
 - `Radirec.Gui` 自体に `Radirec.Core` への直接 ProjectReference は**無い**が、**Core の型は既に Gui の
   コンパイル面に乗っている**(`Gui/RadioMonitorWorker.cs` が `Radirec.Core.Ingestion`、
@@ -73,11 +79,12 @@ Radirec.Cli ──> Radirec.Hosting / Radirec.Core
 
 **`Radirec.Gui.Core` は分離を維持しているが、役割が変わった**: EventLog subscriber 契約の置き場ではなく、
 **CI で走らせられない WinRT/WPF/WinForms シェルから隔離した「テスト可能な提示ロジック」**
-(トースト文面整形・履歴行整形・版表示)の置き場である(ADR-0012)。**軸C で UI を厚くするときも、
-ロジックは Gui.Core 側に置いてシェルを薄く保つ**のがこの分離の使い方になる。
+(トースト文面整形・履歴行整形・版表示・状態の文言)と、管理画面の ViewModel(#151)の置き場である(ADR-0012)。
+**軸C で UI を厚くするときも、ロジックは Gui.Core 側に置いてシェルを薄く保つ**のがこの分離の使い方になる。
 
 トレイの実行時は WinForms(トレイ = NotifyIcon)+ WinRT トースト。**WPF は既に実体化済み**で、
-取込履歴ウィンドウ(#66)が WPF `Window` + `DataGrid`(コードビハインド・xaml なし)で動いている。
+管理画面(#151)が WPF + XAML + MVVM(CommunityToolkit.Mvvm)で動いている。取込履歴は管理画面のページになり、
+かつての取込履歴ウィンドウ(#66。コードビハインド・xaml なし)は退役した。
 
 ## 軸C — M5 編集アプリ本体(キュレーション / 条件付き保留)
 
