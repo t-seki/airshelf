@@ -43,7 +43,8 @@ public static class ReapplyDialogFormatter
 
     /// <summary>
     /// dry-run の結果が揃っている(<see cref="ReapplyReport.IsAligned"/>)ときの表示(W-248)。対象外の回が残っていれば
-    /// 件数を添える。
+    /// 件数を添える。保存済みの設定で確かめたとき(<see cref="ReapplyBasis.Saved"/>)の見出しは、来たページに出す 1 行 W-254 の
+    /// 1 つ目に使う(#164)。
     /// </summary>
     public static ReapplyDialogText BuildAligned(ReapplyReport plan, ReapplyBasis basis = ReapplyBasis.Saved)
     {

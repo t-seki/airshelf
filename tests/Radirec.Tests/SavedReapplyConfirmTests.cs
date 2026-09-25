@@ -54,10 +54,12 @@ public sealed class SavedReapplyConfirmTests : IDisposable
             return Task.FromResult(ApplyResult?.Invoke(plan) ?? ReapplyResult.Ok(Report(dryRun: false, ReapplyAction.Move, ReapplyAction.Move)));
         }
 
+        public Func<ReapplyResult>? ReloadAndApplyResult { get; set; }
+
         public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan)
         {
             Calls.Add("reload-and-apply");
-            return Task.FromResult(ReapplyResult.Ok(Report(dryRun: false, ReapplyAction.Move)));
+            return Task.FromResult(ReloadAndApplyResult?.Invoke() ?? ReapplyResult.Ok(Report(dryRun: false, ReapplyAction.Move)));
         }
     }
 
@@ -216,7 +218,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     }
 
     [Fact]
-    public async Task Aligned_stays_on_the_origin_page_with_one_line_W318()
+    public async Task Aligned_stays_on_the_origin_page_with_one_line_W254()
     {
         var control = new FakeControl { Plan = Report(dryRun: true) };
         var vm = Programs(control);
@@ -232,7 +234,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     }
 
     [Fact]
-    public async Task Aligned_with_excluded_episodes_says_how_many_are_left_W318()
+    public async Task Aligned_with_excluded_episodes_says_how_many_are_left_W254()
     {
         var control = new FakeControl { Plan = Report(dryRun: true, ReapplyAction.Excluded) };
         var vm = Programs(control);
@@ -243,7 +245,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     }
 
     [Fact]
-    public async Task Failure_stays_on_the_origin_page_with_the_reason_W319()
+    public async Task Failure_stays_on_the_origin_page_with_the_reason_W255()
     {
         var control = new FakeControl { PlanResult = () => ReapplyResult.Failed("設定の読み込みに失敗しました: 壊れています") };
         var vm = Programs(control);
@@ -258,7 +260,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     }
 
     [Fact]
-    public async Task Unsaved_changes_block_the_entry_and_keep_the_draft_W320()
+    public async Task Unsaved_changes_block_the_entry_and_keep_the_draft_W256()
     {
         var control = new FakeControl();
         var vm = Programs(control);
@@ -278,7 +280,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     }
 
     [Fact]
-    public async Task Editing_form_blocks_the_entry_W320()
+    public async Task Editing_form_blocks_the_entry_W256()
     {
         var vm = Programs(new FakeControl());
         await vm.LoadAsync();
@@ -299,6 +301,73 @@ public sealed class SavedReapplyConfirmTests : IDisposable
         Assert.True(vm.IsConfirmMode);
         Assert.True(vm.IsSavedBasis);
         Assert.True(vm.IsReady);
+    }
+
+    // 番組ページを開いた直後(まだ programs.json を読んでいる)に stations.json の「再読み込み」を押しても、読み終わった読み込みが
+    // 確認の画面を一覧に戻さない(確認は読み込みが終わるのを待ってから進む)。
+    [Fact]
+    public void Confirm_waits_for_the_load_started_by_showing_the_page()
+    {
+        var control = new FakeControl();
+        var vm = Programs(control);
+
+        UiThreadContext.Run(async () =>
+        {
+            var shown = vm.OnShownAsync(); // 番組ページを開いた(読み込みが走る)
+            Assert.False(shown.IsCompleted);
+
+            var start = await vm.ConfirmSavedAsync(ManagementPage.Settings);
+            await shown;
+
+            Assert.True(start.ShowsConfirm);
+            Assert.True(vm.IsConfirmMode);
+            Assert.True(vm.IsSavedBasis);
+        });
+    }
+
+    // 確認の先読みの最中に番組のタブへ切り替えても、2 本目の読み込みは走らず、確認の画面が一覧に戻らない。
+    [Fact]
+    public void Showing_the_page_during_the_confirm_preload_does_not_start_a_second_load()
+    {
+        var control = new FakeControl();
+        var vm = Programs(control);
+
+        UiThreadContext.Run(async () =>
+        {
+            var confirming = vm.ConfirmSavedAsync(ManagementPage.Settings); // まだ読んでいないので先に読む
+            Assert.False(confirming.IsCompleted);
+            var shown = vm.OnShownAsync(); // その間に番組のタブへ切り替えた
+
+            var start = await confirming;
+            await shown;
+
+            Assert.True(start.ShowsConfirm);
+            Assert.True(vm.IsConfirmMode);
+            Assert.True(vm.IsSavedBasis);
+        });
+    }
+
+    // 「保存して適用」で保存できたのに実行できなかった後、保存済みの設定で実行できたら、変更が無いのに「確認」を押せる状態を下ろす。
+    [Fact]
+    public async Task Saved_apply_clears_the_pending_reapply_after_a_failed_save_and_apply()
+    {
+        var control = new FakeControl { ReloadAndApplyResult = () => ReapplyResult.Failed("設定の反映に失敗しました: x") };
+        var vm = Programs(control);
+        await vm.LoadAsync();
+        vm.SelectedProgram = vm.Programs[0];
+        vm.DeleteProgramCommand.Execute(null);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveAndApplyCommand.ExecuteAsync(null);
+        await vm.BackCommand.ExecuteAsync(null);
+        Assert.False(vm.HasChanges);
+        Assert.True(vm.CanConfirm); // 保存したのに実行できなかった(変更が無くても「確認」から実行し直せる)
+
+        await vm.ConfirmSavedAsync(ManagementPage.Settings);
+        await vm.ApplySavedCommand.ExecuteAsync(null);
+        await vm.BackCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsListMode);
+        Assert.False(vm.CanConfirm);
     }
 
     [Fact]
@@ -380,7 +449,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     }
 
     [Fact]
-    public async Task Stations_reload_failure_is_a_warning_line_W319()
+    public async Task Stations_reload_failure_is_a_warning_line_W255()
     {
         var page = Settings(new FakeControl());
         var entry = new FakeEntry();
@@ -395,7 +464,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
     }
 
     [Fact]
-    public void Stations_reload_is_disabled_with_the_reason_while_programs_page_has_unsaved_work_W320()
+    public void Stations_reload_is_disabled_with_the_reason_while_programs_page_has_unsaved_work_W256()
     {
         var page = Settings(new FakeControl());
         var entry = new FakeEntry { BlockedReason = ProgramsPageViewModel.SavedConfirmBlocked };

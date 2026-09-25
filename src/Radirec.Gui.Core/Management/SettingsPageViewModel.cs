@@ -69,7 +69,10 @@ public sealed class SettingsFileRow : ObservableObject
     /// <summary>中身の代わりに出す 1 行(W-307 / W-315 / W-317)。</summary>
     public string? Note { get => _note; internal set => SetProperty(ref _note, value); }
 
-    /// <summary>操作の結果(W-308 / W-310)。</summary>
+    /// <summary>
+    /// 操作の結果(W-308 / W-310)。stations.json の段では、「再読み込み」で確かめている途中(W-311)と、番組ページへ移らなかったときの
+    /// 1 行(W-254 / W-255 / W-256。#164)も出す。
+    /// </summary>
     public string? Message { get => _message; internal set => SetProperty(ref _message, value); }
 
     /// <summary><see cref="Message"/> が失敗・拒否か(警告の色で出す)。</summary>

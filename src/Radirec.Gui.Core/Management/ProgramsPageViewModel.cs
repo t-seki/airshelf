@@ -24,10 +24,13 @@ public enum ProgramsPageMode
     /// <summary>確認の dry-run を待っている(W-240)。</summary>
     Checking,
 
-    /// <summary>確認(変更前 → 変更後と、再適用の予定。W-241〜W-250)。</summary>
+    /// <summary>
+    /// 確認(変更前 → 変更後と、再適用の予定。W-241〜W-250)。保存済みの設定で確かめたとき(<see cref="ProgramsPageViewModel.IsSavedBasis"/>。
+    /// #164)は、変更前 → 変更後を出さず、W-252 / W-253 とボタン W-312(<c>適用</c> / <c>戻る</c>)にする。
+    /// </summary>
     Confirm,
 
-    /// <summary>保存して再適用を実行している(W-270 / W-271)。</summary>
+    /// <summary>保存して再適用を実行している(W-270 / W-271)。保存済みの設定で確かめたときは、保存せずに実行している(W-271)。</summary>
     Applying,
 
     /// <summary>結果(W-251 / W-272〜W-279)。</summary>
@@ -46,6 +49,13 @@ public enum ProgramsPageMode
 /// 「確認」から実行し直せる(リロードも試し直す)。
 /// </para>
 /// <para>「確認」を押してから一覧か結果に戻るまでは <see cref="ProgramsApplyGate"/> を立て、ホームの再スキャンを止める(W-110)。</para>
+/// <para>
+/// もう 1 つの入口として、**保存済みの設定**で再適用を確かめる(<see cref="ConfirmSavedAsync"/>。#164)。設定ページの stations.json の
+/// 「再読み込み」と、要対応の「再適用の確認へ」(W-136)から来る。設定リロード → dry-run(<see cref="IServiceControl.PlanReapplyAsync()"/>)
+/// を行い、同じ確認の画面を W-252 / W-253 / W-312 の形で出す。「適用」は <see cref="IServiceControl.ApplyReapplyAsync"/> で実行し
+/// (確かめたときの設定・予定と違えば実行しない。W-278)、「戻る」は来たページへ戻る。揃える回が無い・確かめられないときは、確認の画面を
+/// 出さずに、来たページに出す 1 行(W-254 / W-255)を返す。
+/// </para>
 /// </summary>
 public sealed class ProgramsPageViewModel : ObservableObject
 {
@@ -134,6 +144,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     private ProgramsFileSnapshot? _snapshot;
     private bool _loaded;
+    private Task? _loading; // 走っている読み込み(LoadAsync を 1 本にまとめる)
     private bool _isUnavailable;
     private bool _isUnused;
     private string? _loadError;
@@ -590,8 +601,18 @@ public sealed class ProgramsPageViewModel : ObservableObject
         }
     }
 
-    /// <summary>programs.json を読み、一覧を作り直す(この画面での変更は捨てる)。</summary>
-    public async Task LoadAsync()
+    /// <summary>
+    /// programs.json を読み、一覧を作り直す(この画面での変更は捨てる)。読み込みが走っていれば、新しく始めずにそれを待つ
+    /// (2 本走ると、後から終わった方が、その間に始めた確認の画面を一覧に戻してしまうため。#164)。
+    /// </summary>
+    public Task LoadAsync()
+    {
+        if (_loading is { IsCompleted: false } running)
+            return running;
+        return _loading = LoadCoreAsync();
+    }
+
+    private async Task LoadCoreAsync()
     {
         _loaded = true;
         if (_locateProgramsFile is null)
@@ -1143,8 +1164,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
         if (_control is null)
             return SavedReapplyStart.Stay(SavedAborted(ConfirmUnavailable), isWarning: true);
 
-        // まだ読んでいなければ先に読む(後で番組ページを出したときの読み込みが、確認の画面を一覧に戻さないように)。
-        if (!_loaded)
+        // まだ読んでいなければ先に読む。読んでいる途中(番組ページを開いた直後等)なら、終わるのを待つ。後から終わった読み込みの
+        // SetSnapshot が、確認の画面を一覧に戻さないように(読み込みは LoadAsync が 1 本にまとめる)。
+        if (!_loaded || _loading is { IsCompleted: false })
         {
             await LoadAsync();
             if (SavedConfirmBlockedReason is { } blockedAfterLoad)
@@ -1231,6 +1253,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
             ShowResult(SavedStale, "", isError: true); // W-278
         else if (applied.Report is { } result)
         {
+            // 保存したのに実行できなかった再適用も、保存済みの設定で実行できたので済んだ(変更が無いのに「確認」を押せる状態を下ろす)。
+            _reapplyPending = false;
             var text = ReapplyDialogFormatter.BuildCompletion(result);
             ShowResult(text.Heading, text.Body, isError: result.Count(ReapplyAction.Failed) > 0);
         }
