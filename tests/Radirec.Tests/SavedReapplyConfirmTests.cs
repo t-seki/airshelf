@@ -120,10 +120,13 @@ public sealed class SavedReapplyConfirmTests : IDisposable
         UnintegratedSiblings = [],
     };
 
+    // programs.json の場所を決めた回数(= 読み込みを始めた回数)。
+    private int _locates;
+
     private ProgramsPageViewModel Programs(FakeControl? control)
     {
         File.WriteAllText(ProgramsPath, Sample, new UTF8Encoding(false));
-        return new ProgramsPageViewModel(control, () => ProgramsPath, new ProgramsApplyGate(), _log.Add,
+        return new ProgramsPageViewModel(control, () => { _locates++; return ProgramsPath; }, new ProgramsApplyGate(), _log.Add,
             navigate: _navigated.Add);
     }
 
@@ -319,6 +322,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
             var start = await vm.ConfirmSavedAsync(ManagementPage.Settings);
             await shown;
 
+            Assert.Equal(1, _locates); // 確認は走っている読み込みを待ち、読み直さない
             Assert.True(start.ShowsConfirm);
             Assert.True(vm.IsConfirmMode);
             Assert.True(vm.IsSavedBasis);
@@ -341,6 +345,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
             var start = await confirming;
             await shown;
 
+            Assert.Equal(1, _locates); // 読み込みは 1 回だけ(走っている読み込みを待った)
             Assert.True(start.ShowsConfirm);
             Assert.True(vm.IsConfirmMode);
             Assert.True(vm.IsSavedBasis);
