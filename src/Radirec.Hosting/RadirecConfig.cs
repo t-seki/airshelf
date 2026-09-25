@@ -43,7 +43,10 @@ public sealed class RadirecConfig
     public int WatchDebounceSeconds { get; set; } = 10;
 
     /// <summary>
-    /// 新規取込時に取込通知(トースト)を出すか。トレイ常駐が in-process で表示する(ADR-0012)。既定 true。
+    /// **旧設定**(#152・ADR-0019)。新規取込のトーストを出すかは、管理画面の設定ページで切り替え、管理画面用の設定ファイル
+    /// (<c>gui-settings.json</c>)に持つ。ここは、その設定ファイルにまだ値が無いときの**初期値としてだけ**読む
+    /// (<c>false</c> なら新規取込のトーストを止めた状態で始める)。取込失敗のトーストと失敗のストアは、この値に関係なく動く。
+    /// 既存の radirec.json を読めなくしないため、キーは残す(未知のキーは読み込みで失敗させるので)。既定 true。
     /// </summary>
     public bool NotificationsEnabled { get; set; } = true;
 

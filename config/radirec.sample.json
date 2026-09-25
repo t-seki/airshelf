@@ -26,7 +26,8 @@
   "ScanIntervalSeconds": 120,
   "WatchDebounceSeconds": 10,
 
-  // 新規取込時に取込通知(トースト)を出す。トレイ常駐が in-process で表示する(ADR-0012)。
+  // 旧設定(#152・ADR-0019)。新規取込のトーストを出すかは管理画面の設定ページで切り替え、gui-settings.json に持つ。
+  // ここは gui-settings.json にまだ値が無いときの初期値としてだけ読む。取込失敗のトーストはこの値に関係なく出る。
   "NotificationsEnabled": true,
 
   // アプリ内自己更新(Velopack。S6)。

@@ -92,6 +92,8 @@ $testCfg = [ordered]@{
     JellyfinApiKey       = ''
     ScanIntervalSeconds  = 30
     WatchDebounceSeconds = 2
+    # 旧設定(#152・ADR-0019)。新規取込のトーストは同じフォルダの gui-settings.json の値が優先で、ここは初期値にしかならない。
+    # 管理画面の設定ページで新規取込のトーストを止めていると、成功パスのトーストは出ない(失敗パスのトーストは出る)。
     NotificationsEnabled = $true
 }
 # Windows PowerShell 5.x の既定は UTF-8 BOM。ConfigLoader は BOM 付き UTF-8 を読める。

@@ -1,0 +1,177 @@
+<!--
+  管理画面の設定ページ(requirements §10.3・#152)。ViewModel は Radirec.Gui.Core の SettingsPageViewModel。
+  文言は docs/mockups/management-window.md の「設定」「縮退パネル」の節に従い、各所に W-ID を書いておく。
+  ページの見出し等のスタイルは ManagementWindow.xaml の Window.Resources にある。この UserControl は親に入る前に
+  InitializeComponent されるので、StaticResource ではなく DynamicResource で引く(StaticResource だと見つからずに落ちる)。
+-->
+<UserControl x:Class="Radirec.Gui.Pages.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:m="clr-namespace:Radirec.Gui.Core.Management;assembly=Radirec.Gui.Core">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="Visible" />
+
+        <!-- 文言が空(null)の行は出さない(結果・注記の 1 行)。 -->
+        <Style x:Key="Optional" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,6,0,0" />
+            <Style.Triggers>
+                <Trigger Property="Text" Value="">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </Trigger>
+                <Trigger Property="Text" Value="{x:Null}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 操作の結果(W-308 / W-310)。失敗・拒否は太字にする(色はダークモードで読めなくなるので使わない)。 -->
+        <Style x:Key="RowMessage" TargetType="TextBlock" BasedOn="{StaticResource Optional}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMessageWarning}" Value="True">
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 読み取り専用の中身。選択・コピーはできる。空(読めていない)なら出さない。 -->
+        <Style x:Key="FileContent" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+            <Setter Property="FontFamily" Value="Consolas, MS Gothic" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="MaxHeight" Value="220" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Style.Triggers>
+                <Trigger Property="Text" Value="">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </Trigger>
+                <Trigger Property="Text" Value="{x:Null}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+
+        <Style x:Key="SmallButton" TargetType="Button">
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="18,14">
+            <TextBlock Style="{DynamicResource PageHeading}" Text="設定" />
+
+            <!-- ========== 縮退パネル(radirec.json を読めない)W-401〜W-405 ========== -->
+            <Border Style="{StaticResource Card}" Visibility="{Binding IsDegraded, Converter={StaticResource Visible}}">
+                <StackPanel>
+                    <!-- W-401 -->
+                    <TextBlock Style="{DynamicResource SectionHeading}" Text="{x:Static m:SettingsPageViewModel.DegradedHeading}" />
+                    <!-- W-402(読み込みの戻り値をそのまま) -->
+                    <TextBlock Style="{StaticResource Optional}" FontWeight="SemiBold" Text="{Binding DegradedReason}" />
+                    <!-- W-403 -->
+                    <TextBlock Style="{StaticResource Optional}" Text="{x:Static m:SettingsPageViewModel.DegradedNote}" />
+                    <TextBlock Style="{DynamicResource Sub}" Margin="0,6,0,0" TextWrapping="Wrap" Text="{Binding ConfigPath}" />
+                    <!-- W-404 -->
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="ファイルを開く" Padding="12,4" Command="{Binding OpenRadirecCommand}" />
+                        <Button Content="再読み込みして再起動" Padding="12,4" Margin="8,0,0,0" Command="{Binding RestartCommand}" />
+                    </StackPanel>
+                    <TextBlock DataContext="{Binding Radirec}" Style="{StaticResource RowMessage}" Text="{Binding Message}" />
+
+                    <TextBlock Style="{DynamicResource SectionHeading}" Margin="0,16,0,6" Text="ほかの設定ファイル" />
+                    <WrapPanel>
+                        <Button Content="programs.json を開く" Padding="10,3" IsEnabled="False" />
+                        <Button Content="stations.json を開く" Padding="10,3" Margin="8,0,0,0" IsEnabled="False" />
+                        <!-- W-405 -->
+                        <TextBlock Style="{DynamicResource Sub}" Margin="12,0,0,0" VerticalAlignment="Center"
+                                   Text="{x:Static m:SettingsPageViewModel.DegradedOtherFiles}" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ========== 通常の設定ページ ========== -->
+            <StackPanel Visibility="{Binding IsNormal, Converter={StaticResource Visible}}">
+                <!-- 取り込みの知らせ W-301〜W-303 -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{DynamicResource SectionHeading}" Text="{x:Static m:SettingsPageViewModel.ToastHeading}" />
+                        <CheckBox Margin="0,8,0,0" IsChecked="{Binding IngestToastsEnabled}"
+                                  Content="{x:Static m:SettingsPageViewModel.ToastLabel}" />
+                        <TextBlock Style="{DynamicResource Sub}" Margin="22,4,0,0" TextWrapping="Wrap"
+                                   Text="{x:Static m:SettingsPageViewModel.ToastNote}" />
+                        <!-- W-314 -->
+                        <TextBlock Style="{StaticResource Optional}" FontWeight="SemiBold" Text="{Binding ToastMessage}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 設定ファイル W-304 -->
+                <TextBlock Style="{DynamicResource SectionHeading}" Margin="0,8,0,4" Text="{x:Static m:SettingsPageViewModel.FilesHeading}" />
+                <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap" Margin="0,0,0,10"
+                           Text="{x:Static m:SettingsPageViewModel.FilesNote}" />
+
+                <!-- radirec.json -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                                <!-- W-305 -->
+                                <Button Style="{StaticResource SmallButton}" Content="ファイルを開く" Command="{Binding OpenRadirecCommand}" />
+                                <Button Style="{StaticResource SmallButton}" Content="再読み込み" Command="{Binding ReloadCommand}" />
+                            </StackPanel>
+                            <StackPanel DataContext="{Binding Radirec}">
+                                <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                                <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap" Text="{Binding Path}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <!-- W-316 -->
+                        <TextBlock Style="{StaticResource Optional}" Text="{Binding ReloadNote}" />
+                        <StackPanel DataContext="{Binding Radirec}">
+                            <!-- W-306 は ViewModel で伏せ済み -->
+                            <TextBox Style="{StaticResource FileContent}" Text="{Binding Content, Mode=OneWay}" />
+                            <!-- W-315 / W-317 -->
+                            <TextBlock Style="{StaticResource Optional}" Text="{Binding Note}" />
+                            <!-- W-308 / W-310 -->
+                            <TextBlock Style="{StaticResource RowMessage}" Text="{Binding Message}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- stations.json(「再読み込み」から再適用の確認へ進む流れは #164) -->
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <DockPanel>
+                            <!-- W-305 -->
+                            <Button DockPanel.Dock="Right" VerticalAlignment="Top" Style="{StaticResource SmallButton}"
+                                    Content="ファイルを開く" Command="{Binding OpenStationsCommand}" />
+                            <StackPanel DataContext="{Binding Stations}">
+                                <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                                <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap" Text="{Binding Path}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <StackPanel DataContext="{Binding Stations}">
+                            <TextBox Style="{StaticResource FileContent}" Text="{Binding Content, Mode=OneWay}" />
+                            <!-- W-307 / W-315 / W-317 -->
+                            <TextBlock Style="{StaticResource Optional}" Text="{Binding Note}" />
+                            <!-- W-308 -->
+                            <TextBlock Style="{StaticResource RowMessage}" Text="{Binding Message}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- W-313 / W-212 -->
+                <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap" Text="{Binding ProgramsNote}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

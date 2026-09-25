@@ -7,6 +7,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:m="clr-namespace:Radirec.Gui.Core.Management;assembly=Radirec.Gui.Core"
+        xmlns:pages="clr-namespace:Radirec.Gui.Pages"
         Title="{x:Static m:ManagementViewModel.Title}"
         Width="1040" Height="700" MinWidth="720" MinHeight="480"
         WindowStartupLocation="CenterScreen">
@@ -221,9 +222,10 @@
             <StackPanel Margin="18,14" Visibility="{Binding IsProgramsPage, Converter={StaticResource Visible}}">
                 <TextBlock Style="{StaticResource PageHeading}" Text="番組" />
             </StackPanel>
-            <StackPanel Margin="18,14" Visibility="{Binding IsSettingsPage, Converter={StaticResource Visible}}">
-                <TextBlock Style="{StaticResource PageHeading}" Text="設定" />
-            </StackPanel>
+            <!-- 設定(#152)。Visibility は外側で結ぶ(ホームと同じ理由)。 -->
+            <Grid Visibility="{Binding IsSettingsPage, Converter={StaticResource Visible}}">
+                <pages:SettingsPage DataContext="{Binding Settings}" />
+            </Grid>
             <StackPanel Margin="18,14" Visibility="{Binding IsAboutPage, Converter={StaticResource Visible}}">
                 <TextBlock Style="{StaticResource PageHeading}" Text="バージョン情報" />
             </StackPanel>

@@ -397,7 +397,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             _ingest = newIngest;
             _resources = newResources;
             _config = newConfig;
-            // トレイの「設定ファイルを開く」(#143)が開く場所も、差し替えた設定に合わせる。
+            // 設定ページの「ファイルを開く」(#143 / #152)が開く場所も、差し替えた設定に合わせる。
             _status = _status with { StationsFile = newConfig.StationsFile, ProgramsFile = newConfig.ProgramsFile };
             StartWatcher();      // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
             StartPeriodicTimer(); // 新 ScanIntervalSeconds で定期タイマーを張り直す。

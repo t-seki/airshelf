@@ -11,7 +11,7 @@ namespace Radirec.Gui;
 internal sealed record OpenConfigResult(bool Ok, string? Message);
 
 /// <summary>
-/// トレイの「設定ファイルを開く」(#143)。設定ファイルを Windows で <c>.json</c> に関連付けたアプリで開く(シェル実行)。
+/// 設定ページの「ファイルを開く」(#143 / #152)。設定ファイルを Windows で <c>.json</c> に関連付けたアプリで開く(シェル実行)。
 /// ファイルが無ければ、起動時と同じ見本から作ってから開く(<see cref="ConfigSeeder.SeedFileIfAbsent"/>)。
 /// 保存しても自動では反映しない(利用者が「設定リロード…」か「統合設定の再適用…」を選ぶ。requirements §8)。
 /// </summary>

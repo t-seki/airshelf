@@ -29,7 +29,7 @@
 - **更新**: トレイメニュー「今すぐ更新を確認」→「更新を適用して再起動」(起動時・定期にも自動チェック)。
   private repo のため、更新フィード読取用トークンを `radirec.json` の `UpdateToken` に設定する。
 - **アンインストール**: 設定 → アプリ →「Radirec」、または `%LOCALAPPDATA%\Radirec\Update.exe --uninstall`。
-- **取込通知**: 新規取込時にトレイが in-process でトースト表示(`NotificationsEnabled: false` で無効化)。
+- **取込通知**: 新規取込時にトレイが in-process でトースト表示(管理画面の設定ページで止められる。取込失敗のトーストは常に出る)。
 
 新版は `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z` で CI(`vpk`)が Setup.exe/更新フィードを Release へ
 発行します。導入・運用・**旧環境からの移行**の詳細は

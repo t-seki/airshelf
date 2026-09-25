@@ -21,18 +21,22 @@ internal sealed class ManagementWindowHost
     private readonly IServiceControl? _control;
     private readonly string? _degradedReason;
     private readonly string? _ledgerPath;
+    private readonly SettingsPageContext _settings;
     private ManagementWindow? _window;
     private bool _closingAfterError;
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="degradedReason">control が null の理由(W-104 / W-105)。</param>
     /// <param name="ledgerPath">台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。</param>
-    public ManagementWindowHost(NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath)
+    /// <param name="settings">設定ページ(#152)に渡すもの。</param>
+    public ManagementWindowHost(
+        NotifyIcon tray, IServiceControl? control, string? degradedReason, string? ledgerPath, SettingsPageContext settings)
     {
         _tray = tray;
         _control = control;
         _degradedReason = degradedReason;
         _ledgerPath = ledgerPath;
+        _settings = settings;
     }
 
     /// <summary>管理画面を開く。開いていれば前面に出す(最小化していれば元の大きさに戻してから)。</summary>
@@ -51,7 +55,11 @@ internal sealed class ManagementWindowHost
 
             var ledgerPath = _ledgerPath;
             Func<IReadOnlyList<IngestHistoryRow>>? loadHistory = ledgerPath is null ? null : () => IngestHistory.Load(ledgerPath);
-            var viewModel = new ManagementViewModel(_control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn);
+            var settings = new SettingsPageViewModel(
+                _control, _settings.ConfigPath, _settings.StartupConfig, _settings.ConfigError,
+                _settings.ToastSetting, new SettingsPageActions(), TrayLog.Warn);
+            var viewModel = new ManagementViewModel(
+                _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn, settings: settings);
 
             var window = new ManagementWindow(viewModel);
             window.Closed += (_, _) =>
