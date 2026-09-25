@@ -21,7 +21,10 @@ public sealed record SavedReapplyStart(bool ShowsConfirm, string? Message, bool 
 /// </summary>
 public interface ISavedReapplyEntry
 {
-    /// <summary>いま始められない理由(W-256)。始められるなら null。入口のボタンの横に出し、ボタンは押せなくする。</summary>
+    /// <summary>
+    /// いま始められない理由(W-256)。始められるなら null。入口のボタンは押せなくし、理由は入口ごとの場所に出す
+    /// (設定ページは stations.json の段、ホームは「再適用の確認へ」〈W-136〉の下)。
+    /// </summary>
     string? BlockedReason { get; }
 
     /// <summary>

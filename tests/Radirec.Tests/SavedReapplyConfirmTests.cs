@@ -1,4 +1,5 @@
 using System.Text;
+using Radirec.Core.Attention;
 using Radirec.Core.Configuration;
 using Radirec.Core.Reapply;
 using Radirec.Gui.Core.Management;
@@ -590,5 +591,37 @@ public sealed class SavedReapplyConfirmTests : IDisposable
         Assert.Equal(ManagementPage.Programs, vm.CurrentPage);
         await vm.Programs.BackCommand.ExecuteAsync(null);
         Assert.Equal(ManagementPage.Home, vm.CurrentPage);
+    }
+
+    [Fact]
+    public async Task Home_reapply_confirm_moves_to_the_programs_confirm_and_back_returns_home_and_recomputes_W136()
+    {
+        // ホームの要対応の「再適用の確認へ」(W-136。#156)。管理画面が、ホームを来たページにした入口をつなぐ。
+        var control = new FakeControl();
+        File.WriteAllText(ProgramsPath, Sample, new UTF8Encoding(false));
+        var computes = 0;
+        var vm = new ManagementViewModel(control, null, null, new NoActions(), _log.Add,
+            locateProgramsFile: () => ProgramsPath, computeAttention: () =>
+            {
+                computes++;
+                return new AttentionItems { SettingsDrift = [new SettingsDriftGroup("TBSラジオ", "前", "後", 2)] };
+            });
+        await vm.Home.AttentionRefreshed;
+        Assert.True(vm.Home.CanReapply);
+        var before = computes;
+
+        await vm.Home.ReapplyCommand.ExecuteAsync(null);
+
+        Assert.Contains("plan-saved", control.Calls);
+        Assert.Equal(ManagementPage.Programs, vm.CurrentPage);
+        Assert.True(vm.Programs.IsConfirmMode);
+        Assert.True(vm.Programs.IsSavedBasis);
+        Assert.False(vm.Home.CanReapply); // 確認の途中は押せない(W-256)
+
+        await vm.Programs.BackCommand.ExecuteAsync(null);
+
+        Assert.Equal(ManagementPage.Home, vm.CurrentPage);
+        await vm.Home.AttentionRefreshed;
+        Assert.True(computes > before); // ホームへ戻ったら要対応を計算し直す
     }
 }
