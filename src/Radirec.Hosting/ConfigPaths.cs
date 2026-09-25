@@ -68,7 +68,7 @@ public static class ConfigPaths
     }
 
     /// <summary>
-    /// 設定ファイル <paramref name="file"/> の場所を、今読み込んでいる設定から求める(トレイの「設定ファイルを開く」#143)。
+    /// 設定ファイル <paramref name="file"/> の場所を、今読み込んでいる設定から求める(設定ページの「ファイルを開く」#143 / #152)。
     /// <c>radirec.json</c> は <paramref name="configFilePath"/> そのもの、<c>stations.json</c> / <c>programs.json</c> は
     /// <see cref="RebaseAgainst"/> 済みの <paramref name="stationsFile"/> / <paramref name="programsFile"/>
     /// (<c>StationsFile</c> / <c>ProgramsFile</c> で既定と違う場所を指していればその場所)。

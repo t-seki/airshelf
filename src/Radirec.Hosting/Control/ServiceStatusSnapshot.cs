@@ -16,7 +16,7 @@ public sealed record ServiceStatusSnapshot
     public required string RadioRoot { get; init; }
 
     /// <summary>
-    /// 今読み込んでいる設定の放送局マスタのパス(解決済み)。トレイの「設定ファイルを開く」(#143)が開く場所。
+    /// 今読み込んでいる設定の放送局マスタのパス(解決済み)。設定ページの「ファイルを開く」(#143 / #152)が開く場所。
     /// 設定リロードの反映に成功したときだけ変わる(失敗なら旧構成のまま = 旧パスのまま)。
     /// </summary>
     public string StationsFile { get; init; } = string.Empty;

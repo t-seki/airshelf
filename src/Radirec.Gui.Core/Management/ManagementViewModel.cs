@@ -16,7 +16,7 @@ public enum ManagementPage
 
 /// <summary>
 /// 管理画面(requirements §10.3・#151)の ViewModel。5 ページの枠と、いま出しているページを持つ。
-/// 番組 / 設定のページは、まだ中身が無い(#152・#154 が足す)。
+/// 番組のページは、まだ中身が無い(#154 が足す)。設定ページは #152、バージョン情報ページは #157。
 /// <para>
 /// 管理画面を開くたびに作り直す(開いた時点の状態・取込履歴から始める)。閉じても常駐は続く。
 /// </para>
@@ -40,6 +40,7 @@ public sealed class ManagementViewModel : ObservableObject
     /// <param name="logWarn">gui.log への記録。</param>
     /// <param name="zone">時刻を表示する時間帯(既定はローカル。テスト用)。</param>
     /// <param name="about">バージョン情報ページ(#157)。省略すると、このアセンブリの版で、更新の項目の無いページ(W-510)にする。</param>
+    /// <param name="settings">設定ページ(#152)。null なら見出しだけ。</param>
     public ManagementViewModel(
         IServiceControl? control,
         string? degradedReason,
@@ -47,7 +48,8 @@ public sealed class ManagementViewModel : ObservableObject
         IHistoryPathActions pathActions,
         Action<string> logWarn,
         TimeZoneInfo? zone = null,
-        AboutPageViewModel? about = null)
+        AboutPageViewModel? about = null,
+        SettingsPageViewModel? settings = null)
     {
         Home = new HomeViewModel(control, degradedReason, loadHistory, logWarn,
             showAll: () => CurrentPage = ManagementPage.History, zone);
@@ -55,11 +57,15 @@ public sealed class ManagementViewModel : ObservableObject
         About = about ?? new AboutPageViewModel(
             AppVersion.Of(typeof(ManagementViewModel).Assembly), UpdateSupport.NotInstalled,
             updater: null, checker: null, _ => false, logWarn);
+        Settings = settings;
     }
 
     public HomeViewModel Home { get; }
 
     public IngestHistoryViewModel History { get; }
+
+    /// <summary>設定ページ(#152)。</summary>
+    public SettingsPageViewModel? Settings { get; }
 
     public AboutPageViewModel About { get; }
 
@@ -77,6 +83,9 @@ public sealed class ManagementViewModel : ObservableObject
             OnPropertyChanged(nameof(IsProgramsPage));
             OnPropertyChanged(nameof(IsSettingsPage));
             OnPropertyChanged(nameof(IsAboutPage));
+            // 設定ページは開くたびにファイルの中身と開く場所を読み直す(読み込みの失敗は中で握る)。
+            if (value == ManagementPage.Settings && Settings is { } settings)
+                _ = settings.RefreshAsync();
         }
     }
 

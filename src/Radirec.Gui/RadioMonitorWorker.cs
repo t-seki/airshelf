@@ -397,7 +397,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             _ingest = newIngest;
             _resources = newResources;
             _config = newConfig;
-            // トレイの「設定ファイルを開く」(#143)が開く場所も、差し替えた設定に合わせる。
+            // 設定ページの「ファイルを開く」(#143 / #152)が開く場所も、差し替えた設定に合わせる。
             _status = _status with { StationsFile = newConfig.StationsFile, ProgramsFile = newConfig.ProgramsFile };
             StartWatcher();      // 新 RadioRoot で監視。status.RadioRoot / Watching も更新する。
             StartPeriodicTimer(); // 新 ScanIntervalSeconds で定期タイマーを張り直す。
@@ -526,7 +526,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 _log.LogWarning("{Message}: {Output}", item.Message, item.OutputPath);
 
             // 統合設定の無い兄弟フォルダ(#127)。取込通知には 1 行しか出せないので、全件をここに残す
-            // (通知を無効にしていても残る)。文言は取込通知と同じ。
+            // (新規取込のトーストを止めていても残る。#152)。文言は取込通知と同じ。
             foreach (var notice in report.SiblingFolderNotices)
                 _log.LogInformation(
                     "{Notice}({Station})",
