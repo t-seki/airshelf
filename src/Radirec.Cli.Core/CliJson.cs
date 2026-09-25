@@ -51,7 +51,9 @@ public static class CliJson
 /// <c>--json</c> の最上位の形。どのコマンドでも同じ。
 /// </summary>
 /// <param name="SchemaVersion">JSON の形の版(<see cref="CliJson.SchemaVersion"/>)。</param>
-/// <param name="Command">コマンド名(<c>ingest</c> など)。使い方の誤りでコマンドが決まらなければ null。</param>
+/// <param name="Command">
+/// コマンド名(<c>ingest</c> など)。コマンドが決まっていれば、解析の誤り・実行中の例外でも入る。知らないコマンドなどで決まらなければ null。
+/// </param>
 /// <param name="ExitCode">プロセスの終了コード(<see cref="ExitCodes"/>)。</param>
 /// <param name="Error">結果が出る前に止まった理由。結果が出たときは null。</param>
 /// <param name="Result">コマンドごとの結果。止まったときは null。</param>

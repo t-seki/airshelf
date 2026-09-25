@@ -117,7 +117,7 @@ public sealed class CliTests
     }
 
     [Fact]
-    public async Task 解析の誤りもjsonなら最上位の形で出す()
+    public async Task 解析の誤りもjsonなら最上位の形で出し_コマンドが決まっていれば名前を入れる()
     {
         var (exitCode, output) = await Run(["refresh", "--config", "x.json", "--json"], new CountingConfigSource());
 
@@ -125,8 +125,53 @@ public sealed class CliTests
         using var doc = JsonDocument.Parse(output);
         Assert.Equal(CliJson.SchemaVersion, doc.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(1, doc.RootElement.GetProperty("exitCode").GetInt32());
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("command").ValueKind);
+        Assert.Equal("refresh", doc.RootElement.GetProperty("command").GetString());
         Assert.Contains("config", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task 知らないコマンドはjsonのcommandがnull()
+    {
+        var (exitCode, output) = await Run(["organize-source", "--json"], new CountingConfigSource());
+
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("command").ValueKind);
+    }
+
+    [Fact]
+    public async Task コマンドの実行中にNASに届かない例外が出たら5でjsonにコマンド名と理由が出る()
+    {
+        var (exitCode, output) = await Run(
+            ["ingest", "--dry-run", "--json"], new ThrowingConfigSource(new IOException("ネットワーク パスが見つかりません")));
+
+        Assert.Equal(ExitCodes.ExternalFailure, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal("ingest", doc.RootElement.GetProperty("command").GetString());
+        Assert.Equal(5, doc.RootElement.GetProperty("exitCode").GetInt32());
+        Assert.Equal("ネットワーク パスが見つかりません", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task コマンドの実行中の想定外の例外は1でjsonにコマンド名と理由が出る()
+    {
+        var (exitCode, output) = await Run(
+            ["reapply", "--json"], new ThrowingConfigSource(new InvalidOperationException("想定外")));
+
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal("reapply", doc.RootElement.GetProperty("command").GetString());
+        Assert.Equal("想定外", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Theory]
+    [InlineData(new[] { "ingest", "--dry-run" }, "ingest")]
+    [InlineData(new[] { "--json", "reapply" }, "reapply")]
+    [InlineData(new[] { "organize-source" }, null)]
+    [InlineData(new[] { "--help" }, null)]
+    public void 引数からコマンド名を決める(string[] args, string? expected)
+    {
+        Assert.Equal(expected, RadirecCli.CommandOf(args));
     }
 
     [Fact]
@@ -295,6 +340,11 @@ public sealed class CliTests
             error = message;
             return false;
         }
+    }
+
+    private sealed class ThrowingConfigSource(Exception ex) : ICliConfigSource
+    {
+        public bool TryLoad(out RadirecConfig? config, out string? error) => throw ex;
     }
 
     private sealed class ThrowingRefresher(Exception? ex) : ILibraryRefresher

@@ -9,7 +9,10 @@ public static class ExitCodes
     /// <summary>成功(失敗した回は 0 件)。</summary>
     public const int Success = 0;
 
-    /// <summary>使い方の誤り(未知のオプション・コマンド)・設定を読めない・版の不一致。引数か設定を直す。</summary>
+    /// <summary>
+    /// 使い方の誤り(未知のオプション・コマンド)・設定を読めない・版の不一致。引数か設定を直す。
+    /// 想定外の例外(内部エラー)もこれで終える(専用の番号は無い。ADR-0020)。そのときは標準エラーか JSON の <c>error</c> に理由が出る。
+    /// </summary>
     public const int UsageOrConfig = 1;
 
     /// <summary>常駐が動いていない(制御チャネルに繋がらない・取り込みが止まっている。#179 から使う)。</summary>

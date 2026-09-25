@@ -1,6 +1,11 @@
 # CLI を普段の運用とエージェントの窓口にし、書き込む操作は制御チャネルで常駐に頼む
 
-Status: accepted(2026-09-25 の grill。[ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の「CLI は dev/batch 専用・named pipe は退役」を改める。[ADR-0010](0010-gui-service-control-via-named-pipe.md) の named pipe を形を変えて戻す。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、[ADR-0017](0017-management-window-owns-programs-json.md) の programs.json の書き手と関連)
+Status: accepted(2026-09-25 の grill。[ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の「CLI は dev/batch 専用・named pipe は退役」を改める。[ADR-0010](0010-gui-service-control-via-named-pipe.md) の named pipe を形を変えて戻す。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、[ADR-0017](0017-management-window-owns-programs-json.md) の programs.json の書き手と関連)。**#178(2026-09-25)で、取込結果に兄弟フォルダの知らせを含める決定は実装しないことに — 下の注記を参照**
+
+> **#178 で改めた(2026-09-25)**:決定の「取込結果には統合設定の無い兄弟フォルダの知らせも含める」は実装しない。
+> #174(#155・[ADR-0018](0018-attention-items-derived-from-state.md))で取り込みの走査から兄弟フォルダの検出そのものが外れ、
+> 取込結果に載せるものが無くなったため。兄弟フォルダは `reapply` の `unintegratedSiblings` と、要対応(#183 の `attention`)で見る。
+> grill の会話では「#155 で検出しないと決まれば外す」と話していたが、この ADR の本文には書いていなかった。
 
 ADR-0012 で `radirec.exe` は「dev/batch の単発 CLI で、制御コマンドの移設先ではない」とし、named pipe の制御チャネルも退役させた。
 その結果、CLI はトレイの常駐と並んで動くことを考えておらず(常駐中に `ingest` / `reapply` を叩くと、台帳と出力先を常駐の直列ループの

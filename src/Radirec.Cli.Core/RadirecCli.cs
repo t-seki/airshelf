@@ -20,12 +20,22 @@ public static class RadirecCli
         var app = new CommandApp();
         app.Configure(config => Configure(
             config, version, console ?? AnsiConsole.Console, configSource ?? new DefaultCliConfigSource(),
-            json: args.Contains("--json", StringComparer.Ordinal)));
+            json: args.Contains("--json", StringComparer.Ordinal), command: CommandOf(args)));
         return app.RunAsync(args);
     }
 
+    /// <summary>
+    /// 引数の先頭の位置引数が既知のコマンドならその名前、そうでなければ null(未知のコマンド・コマンド無し)。例外を JSON に
+    /// するときの <c>command</c> に使う。コマンドが決まっていれば、解析の誤りでも実行中の例外でもその名前を入れる。
+    /// </summary>
+    public static string? CommandOf(string[] args)
+    {
+        var first = args.FirstOrDefault(a => !a.StartsWith('-'));
+        return first is IngestCommand.Name or ReapplyCommand.Name or RefreshCommand.Name ? first : null;
+    }
+
     private static void Configure(
-        IConfigurator config, string version, IAnsiConsole console, ICliConfigSource configSource, bool json)
+        IConfigurator config, string version, IAnsiConsole console, ICliConfigSource configSource, bool json, string? command)
     {
         config.SetApplicationName("radirec");
         config.SetApplicationVersion(version);
@@ -38,7 +48,7 @@ public static class RadirecCli
         config.UseStrictParsing();
 
         // 解析の誤り(未知のオプション・コマンド)は Spectre 既定の -1(= 255)ではなく、使い方の誤り(1)で終える。
-        config.SetExceptionHandler((ex, _) => HandleException(console, ex, json));
+        config.SetExceptionHandler((ex, _) => HandleException(console, ex, json, command));
 
         config.AddCommand<IngestCommand>(IngestCommand.Name)
             .WithDescription("らじれこ録音を正規化して取り込む(--dry-run で予定表示)")
@@ -58,8 +68,9 @@ public static class RadirecCli
     /// <summary>
     /// コマンドの外へ出た例外を終了コードにする。解析の誤りは 1。ファイル・ネットワークの失敗(NAS に届かない等)は
     /// 外部との接続の失敗として 5。それ以外の想定外の例外も 1 にする(ADR-0020 に内部エラーの番号は無い)。
+    /// <paramref name="command"/> は引数から決まったコマンド名(決まらなければ null)。
     /// </summary>
-    private static int HandleException(IAnsiConsole console, Exception ex, bool json)
+    private static int HandleException(IAnsiConsole console, Exception ex, bool json, string? command)
     {
         var exitCode = ex is IOException or UnauthorizedAccessException or HttpRequestException
             ? ExitCodes.ExternalFailure
@@ -67,7 +78,7 @@ public static class RadirecCli
 
         if (json)
         {
-            CliJson.Write(console, CliJson.Failure(command: null, exitCode, ex.Message));
+            CliJson.Write(console, CliJson.Failure(command, exitCode, ex.Message));
             return exitCode;
         }
 

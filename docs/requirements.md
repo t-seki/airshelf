@@ -571,7 +571,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
     版表示・状態の文言)と、管理画面の ViewModel(§10.3。CommunityToolkit.Mvvm)。**CI で走らせられない
     WinRT/WPF/WinForms シェルから隔離**する置き場([ADR-0012])。
   - `Radirec.Tests` — 単体テスト(xUnit 等)。
-  - **参照グラフ**: `Gui → {Gui.Core, Hosting}` / `Gui.Core → {Core, Hosting}` / `Cli → {Hosting, Core}` /
+  - **参照グラフ**: `Gui → {Gui.Core, Hosting}` / `Gui.Core → {Core, Hosting}` / `Cli → Cli.Core → {Hosting, Core}` /
     `Hosting → Core`。`Gui → Core` の直接参照は無く、Core の型は推移参照で乗る([ADR-0012])。
     `Gui.Core → Hosting` は管理画面の ViewModel が制御面(`IServiceControl` / `ServiceStatusSnapshot`)をそのまま
     受け取るための辺(#151。Gui.Core 側にインタフェースを切ると写しとアダプタを二重に保守することになるため)。
