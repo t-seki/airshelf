@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Text;
 using Radirec.Core.Configuration;
 using Radirec.Core.Reapply;
@@ -211,17 +212,32 @@ public sealed class ProgramsPageViewModelTests : IDisposable
 
     // ---------- 読んでいるあいだに始めた作業(#185) ----------
 
-    // 読み込みを、gate が開くまで止めておける番組ページ(最初の読み込みは止めない)。
-    private async Task<(ProgramsPageViewModel Vm, Func<TaskCompletionSource> HoldNextLoads)> CreateLoadedWithLoadGate()
+    // 読み込みを、gate が開くまで止めておける番組ページ(最初の読み込みは止めない)。止めた読み込みは、読み始めたときの
+    // 中身(読めなかったことも)を返す(遅い NAS と同じく、読んでいるあいだに書かれても、書かれる前の中身になる)。
+    private async Task<(ProgramsPageViewModel Vm, Func<TaskCompletionSource> HoldNextLoads)> CreateLoadedWithLoadGate(
+        FakeControl? control = null)
     {
         File.WriteAllText(ProgramsPath, Sample, new UTF8Encoding(false));
         TaskCompletionSource? gate = null;
-        var vm = new ProgramsPageViewModel(new FakeControl(), () => ProgramsPath, _gate, _log.Add, _log.Add, now: () => Now,
+        var vm = new ProgramsPageViewModel(control ?? new FakeControl(), () => ProgramsPath, _gate, _log.Add, _log.Add,
+            now: () => Now,
             readForLoad: async path =>
             {
+                ProgramsFileSnapshot? read = null;
+                Exception? failed = null;
+                try
+                {
+                    read = ProgramsFileWriter.Read(path);
+                }
+                catch (Exception ex)
+                {
+                    failed = ex;
+                }
                 if (gate is not null)
                     await gate.Task;
-                return ProgramsFileWriter.Read(path);
+                if (failed is not null)
+                    ExceptionDispatchInfo.Throw(failed);
+                return read!;
             });
         await vm.LoadAsync();
         return (vm, () => gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
@@ -244,6 +260,40 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.True(vm.HasChanges);
         Assert.Equal("パンサー向井のふらっと", vm.Programs[1].Album); // 読んだ結果は捨てた(前の一覧のまま)
         Assert.Contains(_log, l => l.Contains("作り直しませんでした"));
+    });
+
+    [Fact]
+    public void Saving_while_loading_is_not_undone_by_the_older_read() => UiThreadContext.Run(async () =>
+    {
+        // 読んでいるあいだに「編集 → 確認 → 保存して適用」まで済むと、保存した後の読み直しが一覧を作り直し、結果の画面
+        // (変更なし)になる。後から終わった読み込み(保存の前の中身)で作り直すと、保存した番組が消えたように見える。
+        var control = new FakeControl();
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate(control);
+        var gate = holdNextLoads();
+
+        var shown = vm.OnShownAsync(); // 一覧で変更が無いので読み直す(保存の前の中身を読んで止まる)
+        Assert.False(shown.IsCompleted);
+        AddAnzu(vm);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveAndApplyCommand.ExecuteAsync(null);
+        Assert.True(vm.IsResultMode);
+        Assert.Equal(3, vm.Programs.Count);
+        Assert.False(vm.HasChanges);
+        gate.SetResult(); // 保存の前の中身を読み終わる
+        await shown;
+
+        Assert.True(vm.IsResultMode); // 結果を出したまま
+        Assert.Equal(3, vm.Programs.Count); // 保存した番組を消さない
+        Assert.Contains(_log, l => l.Contains("読んだ結果を捨てました"));
+
+        // 次の保存の基準も、保存した後の中身のまま(古い中身に戻ると、W-275 を誤って出す)。
+        await vm.BackCommand.ExecuteAsync(null);
+        vm.SelectedProgram = vm.Programs[2];
+        vm.DeleteProgramCommand.Execute(null);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveOnlyCommand.ExecuteAsync(null);
+        Assert.False(vm.IsConflict);
+        Assert.Equal(2, ProgramsFileWriter.Read(ProgramsPath).Config.Programs.Count);
     });
 
     [Fact]
@@ -300,6 +350,29 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.True(vm.IsListMode);
         Assert.False(vm.IsConflict);
         Assert.False(vm.HasChanges); // この画面での変更は消える
+        Assert.Equal(2, vm.Programs.Count);
+    });
+
+    [Fact]
+    public void Reload_W276_joining_a_running_load_discards_changes() => UiThreadContext.Run(async () =>
+    {
+        // 「読み込み直す」を押したとき、ほかの経路(ページを出し直した等)が始めた読み込みがすでに走っていれば、新しく始めずに
+        // それに合流する。そのときも、読み終えたら変更を捨てて作り直すことを、その読み込みに伝える。
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+        var shown = vm.OnShownAsync(); // 一覧で変更が無いので、読み直しを始める(止めておく)
+        Assert.False(shown.IsCompleted);
+        AddAnzu(vm); // 読んでいるあいだに編集した(このままなら、読み終えても消さない)
+        Assert.True(vm.HasChanges);
+
+        var reload = vm.ReloadCommand.ExecuteAsync(null); // 走っている読み込みに合流する
+        Assert.False(reload.IsCompleted);
+        gate.SetResult();
+        await shown;
+        await reload;
+
+        Assert.True(vm.IsListMode);
+        Assert.False(vm.HasChanges); // 利用者が捨てると決めたので、作り直した
         Assert.Equal(2, vm.Programs.Count);
     });
 
