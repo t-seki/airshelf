@@ -100,13 +100,15 @@ dotnet run --project src/Radirec.Cli -- ingest
 列挙の値(`outcome`・`action`・`status`)は camelCase の文字列です(`skippedAlreadyImported` など)。日本語は
 エスケープせずにそのまま出し、出力は UTF-8 です。
 
+常駐に頼む `status` / `reload` の `result` は §6「CLI から状態を見る・設定リロードを頼む」にあります。
+
 **終了コード**は、`--json` の有無に関係なく次の意味です(値は変えません):
 
 | コード | 意味 | 次にすること |
 |------|------|------|
 | 0 | 成功(失敗した回は 0 件) | 次へ進む |
 | 1 | 使い方の誤り(知らないオプション・コマンド)・設定を読めない・Jellyfin が未設定か URL の形式が不正(`refresh`)。想定外の例外(内部エラー)も 1 | 引数か設定を直す。想定外の例外なら、理由は `gui.log` ではなく出力(`--json` なら `error`)にある |
-| 2 | 常駐が動いていない(#179 以降の、常駐に頼むコマンドで使う) | トレイを起動する |
+| 2 | 常駐が動いていない・取り込みが止まっている(`reload` など常駐に頼むコマンド。`status` は答えとして 0。§6「CLI から状態を見る」) | トレイを起動する(縮退なら設定を直してトレイを再起動する) |
 | 3 | 確かめた予定が変わった(#181 以降の `reapply` で使う) | dry-run からやり直す |
 | 4 | 完了したが、一部の回が失敗した | 明細(`items[]` の `failed`)を調べる |
 | 5 | 外部との接続に失敗した(Jellyfin に繋がらない・エラー・時間切れ、NAS に届かない) | 時間をおいて再試行する |
@@ -531,7 +533,8 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 ### 制御・更新(トレイメニュー)
 
 トレイアイコンの右クリックから(かつての `radirec status/rescan/reload`〔named pipe〕は in-process 化で
-**メニューに統合**。ADR-0012 で pipe は退役):
+**メニューに統合**。ADR-0012 で pipe は退役。`status` / `reload` は ADR-0020 で CLI から頼めるよう戻した。下の
+「CLI から状態を見る・設定リロードを頼む」):
 
 - **Radirec を開く**: 管理画面を開きます(上記)。
 - **今すぐ再スキャン**: 自動トリガを待たず今すぐ 1 回スキャン(受理まで。バルーンで知らせます)。
@@ -546,6 +549,36 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 - **状態 / 最終スキャン**: 稼働状態・監視ルート・最終スキャン時刻/件数。
 - **更新 vX を適用して再起動**: 更新が保留中のときだけ出ます。アプリ内更新(下記)。更新の確認は管理画面の
   バージョン情報ページで行います(#157)。
+
+### CLI から状態を見る・設定リロードを頼む(`radirec status` / `radirec reload`)
+
+トレイを起動していれば、CLI からも常駐の状態を見たり、設定リロードを頼んだりできます(AI エージェントやスクリプト向け。
+[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) / #179)。CLI はトレイの**制御チャネル**(named pipe)へ
+頼み、トレイが答えます。パイプはユーザーごとの名前(`radirec-control-<ユーザーの SID>`)で、同じユーザーからしか繋げません。
+
+```powershell
+radirec status          # 稼働中か・版・監視ルート・最終スキャン・設定ファイルの場所
+radirec status --json
+radirec reload          # radirec.json などを直した後に(管理画面の設定ページの「設定リロード」と同じ)
+```
+
+| コマンド | 状況 | 終了コード |
+|------|------|------|
+| `status` | 常駐が答えた(取り込みが止まっている〔縮退〕ときも、`running: false` と理由を答える) | 0 |
+| `status` | 取り込みワーカーが起動した後に止まった(異常終了・更新の適用中) | 0(`running: false` と理由) |
+| `status` | トレイが起動していない(2 秒で繋ぐのを諦める) | 0(`reachable: false`・`running: false` と理由) |
+| `status` | 繋がったが応答を読めない(時間切れ・形が違う) | 0(`reachable: true`・`running: false` と理由) |
+| `reload` | 受理した(反映は取り込みの合間に後追いで行う。反映に失敗したら前の設定のまま動き続け、`gui.log` に残る) | 0 |
+| `reload` | 設定が不正で拒否した(理由を添える。前の設定のまま動き続ける) | 1 |
+| `reload` | トレイが起動していない・取り込みが止まっている(縮退・ワーカーが止まった。トレイの再起動はしない)・応答を読めない | 2 |
+| どちらも | トレイと CLI でプロトコルの版が違う(「トレイと CLI の版が違います(トレイ vX / CLI vY)」) | 1 |
+
+`--json` の `result`:
+
+- `status`: `reachable`(トレイに繋がったか)、`running`(取り込みが動いているか)、`reason`(動いていない理由)、
+  `tray`(`version`・`startedUtc`・`configPath`・`radioRoot`・`watching`・`lastScanCompletedUtc`・`lastScanTrigger`・
+  `lastImported`・`lastFailed`・`stationsFile`・`programsFile`・`degradedReason`。繋がらなければ null)
+- `reload`: `accepted`、`error`(拒否した理由)
 
 ### 導入(Velopack Setup.exe・非 admin)
 

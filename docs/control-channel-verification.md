@@ -4,6 +4,9 @@
 > named pipe 制御チャネルは退役し、制御(rescan/reload/status)はトレイメニューからの in-process 呼び出しに
 > なった。本ランブックと `deploy/verify-control-channel.ps1`(削除済み)が検証する pipe/ACL/`radirec.exe status`
 > verb は存在しない。歴史的記録として残す。
+> → **#179 で形を変えて戻った**([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md)):CLI の `radirec status` / `reload` が
+> トレイの受け口へ頼む。パイプはユーザーごとの名前(`radirec-control-<SID>`)で、同じユーザーへは `PipeOptions.CurrentUserOnly` で絞る
+> (本ランブックの固定名・`PipeSecurity` とは違う)。今の実機検証の手順は #163。
 
 制御チャネル([ADR-0010](adr/0010-gui-service-control-via-named-pipe.md))は、WSL では named pipe の
 ACL(`PipeSecurity` は `PlatformNotSupported`)・実サービスの listener+worker 疎通・SQLite 再オープンが
