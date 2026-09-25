@@ -51,9 +51,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     // スレッド、読み手 = UI スレッド)。ADR-0010/0012。
     private volatile ServiceStatusSnapshot _status;
 
-    // 直列コンシューマループが reload を処理できる状態か。起動〜稼働中は true(ループ開始前の reload も
-    // チャネルにバッファされ処理される)、ループ終了(停止)後に false。停止後の reload を誤受理しないため。
-    private volatile bool _running = true;
+    // 直列コンシューマループの生死(#197)。起動〜稼働中は true(ループ開始前の reload もチャネルにバッファされ処理される)、
+    // ループ終了(停止・起動処理の失敗)後に false。停止後の reload を誤受理しない・状態取得で「稼働中」と偽らないため。
+    private readonly SerialLoop _loop = new();
 
     // 容量1・満杯時は書き捨て = 複数トリガを1回のスキャンに束ねる(コアレス)。
     private readonly Channel<string> _requests = Channel.CreateBounded<string>(
@@ -134,14 +134,14 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// </summary>
     public Task<ScanRunResult> RunScanAsync()
     {
-        if (!_running)
+        if (!_loop.Running)
             return Task.FromResult(ScanRunResult.Failed(ScanRunFailure.Stopped, "取り込みが停止中のため受理できません"));
 
         var result = _scanRuns.Enqueue();
         Request(ScanRunTrigger);
 
         // 積んだ直後にループが抜けていた(停止と競合)なら、誰も処理しないので自分で中止にする。
-        if (!_running)
+        if (!_loop.Running)
             _scanRuns.FailPending();
 
         return result;
@@ -149,10 +149,10 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 
     /// <summary>
     /// ライブ状態のスナップショット(在中スキャン中でも直列チャネルを介さず即応)。
-    /// 取り込みループの生死(<see cref="_running"/>)を毎回反映する。トレイは生存したまま
+    /// 取り込みループの生死(<see cref="SerialLoop.Running"/>)を毎回反映する。トレイは生存したまま
     /// ワーカーだけ異常終了した場合に「稼働中」と偽らないため(ADR-0012)。
     /// </summary>
-    public ServiceStatusSnapshot GetStatus() => _status with { Running = _running };
+    public ServiceStatusSnapshot GetStatus() => _status with { Running = _loop.Running };
 
     /// <summary>
     /// 設定リロード。新 config の読込+構文検証だけ**同期実行**(グラフに触れない)し、妥当なら再構築を
@@ -162,7 +162,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     public ReloadResult RequestReload()
     {
         // 停止処理中は直列ループが要求を Take しない(誤って「受理」を返さない)。
-        if (!_running)
+        if (!_loop.Running)
             return ReloadResult.Failed("取り込みが停止中のため受理できません");
 
         // 制御は並行に捌かれる(#43)ので reload も同時に来うる。読込→Set を lock で直列化し、
@@ -185,7 +185,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// </summary>
     public Task<ReapplyResult> PlanReapplyAsync()
     {
-        if (!_running)
+        if (!_loop.Running)
             return Task.FromResult(ReapplyResult.Failed("取り込みが停止中のため受理できません"));
 
         lock (_reloadGate)
@@ -205,7 +205,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// </summary>
     public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs)
     {
-        if (!_running)
+        if (!_loop.Running)
             return Task.FromResult(ReapplyResult.Failed("取り込みが停止中のため受理できません"));
 
         return EnqueueReapply(new ReapplyJob(Plan: null, Draft: programs));
@@ -214,7 +214,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// <summary>確認した再適用の実行(#126)。直列ループの上で、確認のときと設定が同じ場合だけ実行する。</summary>
     public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan)
     {
-        if (!_running)
+        if (!_loop.Running)
             return Task.FromResult(ReapplyResult.Failed("取り込みが停止中のため受理できません"));
 
         return EnqueueReapply(new ReapplyJob(plan, Draft: null));
@@ -226,7 +226,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// </summary>
     public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan)
     {
-        if (!_running)
+        if (!_loop.Running)
             return Task.FromResult(ReapplyResult.Failed("取り込みが停止中のため受理できません"));
 
         return EnqueueReapply(new ReapplyJob(plan, Draft: null, ReloadFirst: true));
@@ -238,7 +238,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         Request("再適用");
 
         // 積んだ直後にループが抜けていた(停止と競合)なら、誰も処理しないので自分で失敗にする。
-        if (!_running)
+        if (!_loop.Running)
             FailPendingReapplyJobs();
 
         return job.Completion.Task;
@@ -251,7 +251,23 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             job.Completion.TrySetResult(ReapplyResult.Failed("取り込みが停止したため中止しました"));
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    // 起動処理(掃除・監視・タイマー)もループと同じ SerialLoop の中で走らせ、そこで例外が出ても(NAS 未接続など)「停止」に反映して
+    // 以降の要求を受理しない(#197)。例外そのものは投げ直すので、Program.cs のホスト起動の失敗として gui.log に残る。
+    // 停止要求ではないのにループが抜けたとき(#204)も gui.log に残す(トレイは生きたまま取り込みだけが黙って止まらないように)。
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        _loop.RunAsync(
+            StartLoop,
+            ConsumeAsync,
+            onStopped: () =>
+            {
+                FailPendingReapplyJobs();
+                _scanRuns.FailPending();
+                SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+            },
+            onUnexpectedExit: ex => _log.LogWarning(ex, "停止要求ではないのに取り込みのループが終わりました。取り込みは停止しています"),
+            stoppingToken);
+
+    private void StartLoop()
     {
         _log.LogInformation("Radirec 常駐取り込み開始。監視ルート: {Root}", _config.RadioRoot);
 
@@ -264,79 +280,61 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         Request("起動時");
+    }
 
-        try
+    private async Task ConsumeAsync(CancellationToken stoppingToken)
+    {
+        // 単一直列コンシューマ。停止時はこのループが在中スキャン完了後に抜ける(StopAsync が待つ)。
+        await foreach (var trigger in _requests.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
         {
-            // 単一直列コンシューマ。停止時はこのループが在中スキャン完了後に抜ける(StopAsync が待つ)。
-            await foreach (var trigger in _requests.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
+            // 在中スキャン完了後(= 反復の先頭)にのみ reload を適用する。ADR-0010 の直列不変条件を保つ。
+            if (_pendingReload.Take() is { } newConfig)
+                ApplyReload(newConfig);
+
+            // 再適用(#126)は reload の反映の後、スキャンの前に処理する。取り込みと同時には走らない。
+            // トレイは別スレッドで「reload の Set → ジョブの Enqueue」を行うので、上の Take の後・ここの
+            // Dequeue の前に割り込まれうる。ジョブを取り出した後にもう一度 Take し、ジョブより先に置かれた
+            // reload を必ず反映してから処理する(Dequeue でジョブが見えたなら、その前の Set も見える)。
+            while (_reapplyJobs.TryDequeue(out var job))
             {
-                // 在中スキャン完了後(= 反復の先頭)にのみ reload を適用する。ADR-0010 の直列不変条件を保つ。
-                if (_pendingReload.Take() is { } newConfig)
-                    ApplyReload(newConfig);
+                if (_pendingReload.Take() is { } configBeforeJob)
+                    ApplyReload(configBeforeJob);
 
-                // 再適用(#126)は reload の反映の後、スキャンの前に処理する。取り込みと同時には走らない。
-                // トレイは別スレッドで「reload の Set → ジョブの Enqueue」を行うので、上の Take の後・ここの
-                // Dequeue の前に割り込まれうる。ジョブを取り出した後にもう一度 Take し、ジョブより先に置かれた
-                // reload を必ず反映してから処理する(Dequeue でジョブが見えたなら、その前の Set も見える)。
-                while (_reapplyJobs.TryDequeue(out var job))
-                {
-                    if (_pendingReload.Take() is { } configBeforeJob)
-                        ApplyReload(configBeforeJob);
-
-                    await RunReapplyAsync(job, stoppingToken);
-                }
-
-                // 走査の実行(#180)。積まれた分をまとめて 1 回の走査で処理する(新規取込のトーストは出さない)。
-                // 再適用と同じく、取り出した**後**に保留中の reload を反映する(頼む側は「reload の Set → 走査の実行の Enqueue」の
-                // 順に行うので、取り出せた走査の実行より前に置かれた reload は必ず見える。radirec reload → radirec ingest 等)。
-                if (_scanRuns.TakePending() is { } scanRuns)
-                {
-                    if (_pendingReload.Take() is { } configBeforeScanRun)
-                        ApplyReload(configBeforeScanRun);
-                    await _scanRuns.RunAsync(scanRuns, ct => RunScanAsync(ScanRunTrigger, ct), stoppingToken);
-
-                    // この反復で走査の実行を行ったなら、トリガが何であれ通常の走査はもう走らせない(トリガはどれも走査の実行の
-                    // 走査より前に来ているので、その走査が覆っている。容量 1 のチャネルで捨てられたトリガも同じ)。
-                    continue;
-                }
-
-                // 走査の実行の起こしだけが残っていてキューが空(前の反復が先に処理した)なら、その間に捨てられたトリガがありうるので、
-                // 通常の走査として 1 回走らせる。
-                await ScanAsync(trigger == ScanRunTrigger ? CoalescedTrigger : trigger, stoppingToken);
+                await RunReapplyAsync(job, stoppingToken);
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // 停止要求。正常終了。
-        }
-        finally
-        {
-            _running = false; // 以降の reload 要求は受理しない(誤成功を返さない)。
-            FailPendingReapplyJobs();
-            _scanRuns.FailPending();
-            SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+
+            // 走査の実行(#180)。積まれた分をまとめて 1 回の走査で処理する(新規取込のトーストは出さない)。
+            // 再適用と同じく、取り出した**後**に保留中の reload を反映する(頼む側は「reload の Set → 走査の実行の Enqueue」の
+            // 順に行うので、取り出せた走査の実行より前に置かれた reload は必ず見える。radirec reload → radirec ingest 等)。
+            if (_scanRuns.TakePending() is { } scanRuns)
+            {
+                if (_pendingReload.Take() is { } configBeforeScanRun)
+                    ApplyReload(configBeforeScanRun);
+                await _scanRuns.RunAsync(scanRuns, ct => RunScanAsync(ScanRunTrigger, ct), stoppingToken);
+
+                // この反復で走査の実行を行ったなら、トリガが何であれ通常の走査はもう走らせない(トリガはどれも走査の実行の
+                // 走査より前に来ているので、その走査が覆っている。容量 1 のチャネルで捨てられたトリガも同じ)。
+                continue;
+            }
+
+            // 走査の実行の起こしだけが残っていてキューが空(前の反復が先に処理した)なら、その間に捨てられたトリガがありうるので、
+            // 通常の走査として 1 回走らせる。
+            await ScanAsync(trigger == ScanRunTrigger ? CoalescedTrigger : trigger, stoppingToken);
         }
     }
 
     // 再適用のジョブを 1 つ処理し、必ず結果で完了させる。ここから例外を漏らすと BackgroundService が fault して
-    // 常駐ごと落ちるので、停止要求(OCE)以外はすべて結果にして返す。
-    private async Task RunReapplyAsync(ReapplyJob job, CancellationToken cancellationToken)
-    {
-        try
-        {
-            job.Completion.TrySetResult(await ReapplyAsync(job, cancellationToken));
-        }
-        catch (OperationCanceledException)
-        {
-            job.Completion.TrySetResult(ReapplyResult.Failed("取り込みが停止したため中止しました"));
-            throw; // 停止要求はコンシューマループへ伝播させて終了する。
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "統合設定の再適用で想定外の例外");
-            job.Completion.TrySetResult(ReapplyResult.Failed($"再適用に失敗しました: {ex.Message}"));
-        }
-    }
+    // 常駐ごと落ちるので、停止要求以外はすべて結果にして返す(停止要求でない取り消しも失敗の結果にする。#204)。
+    private Task RunReapplyAsync(ReapplyJob job, CancellationToken cancellationToken) =>
+        SerialLoop.RunStepAsync(
+            async ct => job.Completion.TrySetResult(await ReapplyAsync(job, ct)),
+            onFailure: ex =>
+            {
+                _log.LogError(ex, "統合設定の再適用で想定外の例外");
+                job.Completion.TrySetResult(ReapplyResult.Failed($"再適用に失敗しました: {ex.Message}"));
+            },
+            cancellationToken,
+            onStopRequested: () => job.Completion.TrySetResult(ReapplyResult.Failed("取り込みが停止したため中止しました")));
 
     // plan が null なら確認(dry-run)、あれば実行(ReloadFirst なら設定リロードから)。
     private Task<ReapplyResult> ReapplyAsync(ReapplyJob job, CancellationToken cancellationToken) => job switch
@@ -636,21 +634,12 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     }
 
     // トリガの走査。例外は gui.log に残して握る(常駐を落とさない)。停止要求だけはループへ伝える。
-    private async Task ScanAsync(string trigger, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await RunScanAsync(trigger, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw; // 停止要求はコンシューマループへ伝播させて終了する。
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "{Trigger}スキャンで想定外の例外", trigger);
-        }
-    }
+    // 停止要求だけはループへ伝播させて終了する。それ以外(停止要求でない取り消しを含む。#204)は gui.log に残し、次のトリガで走査する。
+    private Task ScanAsync(string trigger, CancellationToken cancellationToken) =>
+        SerialLoop.RunStepAsync(
+            ct => RunScanAsync(trigger, ct),
+            onFailure: ex => _log.LogError(ex, "{Trigger}スキャンで想定外の例外", trigger),
+            cancellationToken);
 
     // 走査を 1 回行い、結果を gui.log と status に残して返す。例外は呼び手へ投げる(走査の実行では、結果にして CLI へ返す)。
     private async Task<IngestReport> RunScanAsync(string trigger, CancellationToken cancellationToken)
