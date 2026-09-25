@@ -101,7 +101,7 @@ radirec refresh
 
 ### 統合設定を取り込み済みの回へ再適用する(`reapply`)
 
-`config/programs.json` の正規名・統合は、新しく取り込む回にだけ効きます。あとから統合設定を足した(外した・
+`programs.json`(`radirec.json` と同じフォルダ。既定は `%LOCALAPPDATA%\RadirecData\`)の正規名・統合は、新しく取り込む回にだけ効きます。あとから統合設定を足した(外した・
 正規名を変えた)ときは、`reapply` で**取り込み済みの回を今の設定に揃えます**
 ([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))。ソースから取り込み直すのではなく、
 出力済みのファイルを動かし、台帳の記録を書き換えます。
@@ -192,15 +192,17 @@ radikool 固有の扱い:
 設定が要るのは次の 2 つだけです:
 
 - **放送局の表記ゆれ**(`NHKラジオ第1(radiko)` → `NHKラジオ第1`、radikool の局コード等)を
-  `config/stations.json` の別名で正規名へ寄せる。
-- **表示名の整形 / 複数フォルダの統合**を `config/programs.json` で行う(任意)。
+  `stations.json` の別名で正規名へ寄せる。
+- **表示名の整形 / 複数フォルダの統合**を `programs.json` で行う(任意)。
+
+どちらも `radirec.json` と同じフォルダ(既定は `%LOCALAPPDATA%\RadirecData\`。§2)に置きます。
 
 ```jsonc
-// config/stations.json
+// stations.json
 { "Stations": [ { "Canonical": "ニッポン放送", "Aliases": ["LFR", "ニッポン放送"] } ] }
 ```
 ```jsonc
-// config/programs.json
+// programs.json
 {
   "Programs": [
     // ラテン名の空白除去フォルダを綺麗な表示名に
@@ -220,7 +222,7 @@ radikool 固有の扱い:
 **メモと、分けておく兄弟フォルダ**(任意。どちらも取り込み・再適用で動かす回は変えません):
 
 ```jsonc
-// config/programs.json
+// programs.json
 {
   "Programs": [
     { "Match": { "Station": "TBSラジオ", "Folders": ["パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"] },
