@@ -745,7 +745,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <button class="btn" data-go="ver:latest" data-w="W-502">今すぐ更新を確認</button>
         <button class="btn primary" data-if="upd:pending" data-go="ver:applyconfirm" data-w="W-507">更新 v0.13.0 を適用して再起動</button>
       </div>
-      <p class="sub an" data-if="upd:dev" data-w="W-510">この版は自己更新の対象外です(開発版・portable)</p>
+      <p class="sub" data-if="upd:dev" data-w="W-510">この版は自己更新の対象外です(開発版・portable)</p>
 
       <div data-if="upd:none,pending">
         <div class="msg info" data-if="ver:latest" data-w="W-503">最新版です。</div>
@@ -763,8 +763,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <div class="dh">更新の適用</div>
         <div class="db"><p data-w="W-508">更新 v0.13.0 を適用してアプリを再起動します。取り込み中の走査は完了を待ってから安全に再起動します。よろしいですか?</p></div>
         <div class="df">
-          <button class="btn primary" style="outline: 2px solid var(--accent);">OK</button>
-          <button class="btn" data-go="ver:idle">キャンセル</button>
+          <button class="btn primary">OK</button>
+          <button class="btn" data-go="ver:idle" style="outline: 2px solid var(--accent);">キャンセル</button>
         </div>
       </div>
     </div>
@@ -826,7 +826,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 
     <h3>バルーン(トレイに残した操作)</h3>
     <div class="toast"><div class="app">Radirec</div><div data-w="W-608">手動再スキャンを要求しました</div></div>
-    <div class="toast"><div class="app">Radirec</div><div class="an" data-w="W-609">更新があります(v0.13.0)。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。</div></div>
+    <div class="toast"><div class="app">Radirec</div><div data-w="W-609">更新があります(v0.13.0)。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。</div></div>
 
     <h3>バルーン(管理画面が開けない・閉じた)</h3>
     <div class="toast"><div class="app">Radirec</div><div data-w="W-004">管理画面でエラーが起きたため閉じました(gui.log 参照)</div></div>

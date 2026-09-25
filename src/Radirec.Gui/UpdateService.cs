@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Radirec.Gui.Core.Updates;
 using Velopack;
 using Velopack.Sources;
 
@@ -8,9 +9,10 @@ namespace Radirec.Gui;
 /// アプリ内自己更新(Velopack。S6 / ADR-0013)。GitHub Releases をフィードに新版を照会・DL・適用する。
 /// private repo のため config のトークンを <see cref="GithubSource"/> に渡す。**Velopack 未インストール
 /// (dev/portable 実行)では何もしない**(<see cref="IsInstalled"/> が false)。
+/// 管理画面のバージョン情報ページと自動の確認には <see cref="IAppUpdater"/> として渡す(#157)。
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal sealed class UpdateService
+internal sealed class UpdateService : IAppUpdater
 {
     // 更新フィード = 本アプリ自身の GitHub リポジトリ(Release アセットを Velopack フィードにする)。
     private const string RepoUrl = "https://github.com/t-seki/radirec-tool";
@@ -62,4 +64,12 @@ internal sealed class UpdateService
             await drainBeforeRestart();
         _manager.ApplyUpdatesAndRestart(update);
     }
+
+    /// <summary>
+    /// 適用の直前に取り込みを安全に止めるコールバック(<see cref="ApplyAndRestartAsync(Func{Task}?)"/> の引数)。
+    /// ワーカーを起動した後に Program が入れる(ワーカーが無ければ null のまま)。<see cref="IAppUpdater"/> から適用するときに使う。
+    /// </summary>
+    public Func<Task>? DrainBeforeRestart { get; set; }
+
+    Task IAppUpdater.ApplyAndRestartAsync() => ApplyAndRestartAsync(DrainBeforeRestart);
 }
