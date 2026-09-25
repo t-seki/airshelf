@@ -170,7 +170,7 @@ public sealed class IngestHistoryViewModel : ObservableObject
         var path = output ? row.OutputPath : row.SourcePath;
         if (string.IsNullOrWhiteSpace(path))
         {
-            ActionMessage = output ? "出力先が記録されていません" : "取込元が記録されていません";
+            ActionMessage = output ? "出力先が記録されていません" : "取込元が記録されていません"; // W-152
             return;
         }
 

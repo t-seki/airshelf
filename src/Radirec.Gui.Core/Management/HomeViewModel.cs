@@ -24,7 +24,7 @@ public sealed class HomeViewModel : ObservableObject
     /// <summary>W-112。取り込みが止まっている(W-103〜W-105)ときのボタン横の説明。</summary>
     public const string RescanUnavailable = "取り込みが止まっているため、再スキャンできません";
 
-    /// <summary>再スキャンの要求が例外で失敗したとき(文言表に無い。PR #151 の「未決・要確認」)。</summary>
+    /// <summary>W-113。再スキャンの要求が例外で失敗したとき(ボタンの横に出す)。</summary>
     public const string RescanFailed = "再スキャンを要求できませんでした(gui.log 参照)";
 
     private readonly IServiceControl? _control;

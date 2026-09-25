@@ -14,7 +14,7 @@ namespace Radirec.Gui;
 [SupportedOSPlatform("windows")]
 internal sealed class ManagementWindowHost
 {
-    /// <summary>UI スレッドの未捕捉例外で管理画面を閉じたときのバルーン(#151 の設計の決定 5)。</summary>
+    /// <summary>W-004。UI スレッドの未捕捉例外で管理画面を閉じたときのバルーン(#151 の設計の決定 5)。</summary>
     public const string ClosedAfterErrorBalloon = "管理画面でエラーが起きたため閉じました(gui.log 参照)";
 
     private readonly NotifyIcon _tray;
@@ -70,7 +70,7 @@ internal sealed class ManagementWindowHost
             var broken = _window;
             _window = null;
             TryClose(broken);
-            _tray.ShowBalloonTip(4000, "Radirec", "管理画面を開けませんでした(gui.log 参照)", ToolTipIcon.Warning);
+            _tray.ShowBalloonTip(4000, "Radirec", "管理画面を開けませんでした(gui.log 参照)", ToolTipIcon.Warning); // W-005
         }
     }
 

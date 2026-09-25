@@ -115,7 +115,7 @@ internal sealed class ControlTrayMenu
             _applyUpdate = new ToolStripMenuItem("更新を適用して再起動", image: null, OnApplyUpdate) { Visible = false };
             Menu.Items.Add(_applyUpdate);
         }
-        AddSeparatorIfNeeded(); // 直前が separator なら足さない(二重線防止)
+        Menu.Items.Add(new ToolStripSeparator()); // 直前は最終スキャンの行か更新の項目(区切り線にはならない)
         // 縮退(設定未読込 / ワーカー起動失敗)時は、設定修正後にプロセスごと再起動して復帰できる導線を出す
         // (control==null は復旧経路が無く、再起動しないと取り込みが始まらないため)。
         if (_control is null)
@@ -127,17 +127,10 @@ internal sealed class ControlTrayMenu
 
     public ContextMenuStrip Menu { get; }
 
-    // 末尾が既に区切り線なら足さない(オプション項目が無い縮退時の二重線を防ぐ)。
-    private void AddSeparatorIfNeeded()
-    {
-        if (Menu.Items.Count > 0 && Menu.Items[^1] is not ToolStripSeparator)
-            Menu.Items.Add(new ToolStripSeparator());
-    }
-
     private void OnOpening(object? sender, CancelEventArgs e)
     {
         RefreshUpdateItem(); // 直近のチェックで見つかった保留更新を反映(S6)
-        RefreshConfigFileItems(); // 取り込みの状態に依らず更新する(下の早期 return より前に置く。#143)
+        RefreshConfigFileItems(); // 取り込みの状態(停止中・再適用の途中)に依らず更新する(#143)
 
         // 取り込みワーカー未起動(設定未読込 or 起動失敗)なら理由を、あれば in-process のスナップショットを
         // 直接・即時に読んで出す(W-101〜W-108。文言は管理画面のホームと共有する)。ワーカーが異常終了しても
