@@ -1,4 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Radirec.Core.Attention;
+using Radirec.Core.Normalization;
 using Radirec.Gui.Core.Updates;
 using Radirec.Hosting.Control;
 
@@ -48,6 +50,9 @@ public sealed class ManagementViewModel : ObservableObject
     /// <param name="now">番組ページの保存でバックアップの名前に使う時刻(テスト用)。</param>
     /// <param name="about">バージョン情報ページ(#157)。省略すると、このアセンブリの版で、更新の項目の無いページ(W-510)にする。</param>
     /// <param name="settings">設定ページ(#152)。null なら見出しだけ。</param>
+    /// <param name="computeAttention">
+    /// ホームの要対応(#155・ADR-0018)を、台帳とディスクの設定ファイルから計算する。設定を読めない(縮退)なら null(W-137)。
+    /// </param>
     public ManagementViewModel(
         IServiceControl? control,
         string? degradedReason,
@@ -59,14 +64,17 @@ public sealed class ManagementViewModel : ObservableObject
         Action<string>? logInfo = null,
         Func<DateTime>? now = null,
         AboutPageViewModel? about = null,
-        SettingsPageViewModel? settings = null)
+        SettingsPageViewModel? settings = null,
+        Func<AttentionItems>? computeAttention = null)
     {
         _logWarn = logWarn;
         var applyGate = new ProgramsApplyGate();
-        Home = new HomeViewModel(control, degradedReason, loadHistory, logWarn,
-            showAll: () => CurrentPage = ManagementPage.History, zone, applyGate);
-        History = new IngestHistoryViewModel(loadHistory, pathActions, logWarn);
+        // 番組ページを先に作る(ホームの要対応の「統合する」「分けておく」が使う)。
         Programs = new ProgramsPageViewModel(control, locateProgramsFile, applyGate, logWarn, logInfo, now);
+        Home = new HomeViewModel(control, degradedReason, loadHistory, logWarn,
+            showAll: () => CurrentPage = ManagementPage.History, zone, applyGate,
+            computeAttention is null ? null : new AttentionActions(this, computeAttention));
+        History = new IngestHistoryViewModel(loadHistory, pathActions, logWarn);
         About = about ?? new AboutPageViewModel(
             AppVersion.Of(typeof(ManagementViewModel).Assembly), UpdateSupport.NotInstalled,
             updater: null, checker: null, _ => false, logWarn);
@@ -101,6 +109,9 @@ public sealed class ManagementViewModel : ObservableObject
             OnPropertyChanged(nameof(IsAboutPage));
             if (value == ManagementPage.Programs)
                 _ = ShowProgramsAsync();
+            // 要対応は、番組ページで保存した後などにホームへ戻ったら計算し直す(2 秒ごとには計算しない。#155)。
+            if (value == ManagementPage.Home)
+                Home.RefreshAttention();
             // 設定ページは開くたびにファイルの中身と開く場所を読み直す(読み込みの失敗は中で握る)。
             if (value == ManagementPage.Settings && Settings is { } settings)
                 _ = settings.RefreshAsync();
@@ -136,6 +147,45 @@ public sealed class ManagementViewModel : ObservableObject
         Home.Refresh();
         Programs.RefreshStatus();
         About.Refresh();
+    }
+
+    // 要対応の「統合する」「分けておく」(#155)。下書きは番組ページに作り、そのページへ移る。
+    private sealed class AttentionActions(ManagementViewModel owner, Func<AttentionItems> compute) : IAttentionActions
+    {
+        public AttentionItems Compute() => compute();
+
+        public string? KeepApartBlockedReason =>
+            owner.Programs.HasUnsavedWork ? ProgramsPageViewModel.KeepApartBlocked : null; // W-138
+
+        public void Integrate(SiblingFolderGroup group)
+            => _ = owner.ShowDraftAsync(programs => programs.DraftIntegration(group));
+
+        public async Task<string?> KeepApartAsync(SiblingFolderGroup group)
+        {
+            var result = await owner.Programs.KeepApartAsync(group);
+            if (result.Outcome == KeepApartOutcome.NeedsDraft)
+            {
+                await owner.ShowDraftAsync(programs => programs.DraftKeepApart(group));
+                return null;
+            }
+            return result.Message;
+        }
+    }
+
+    // 番組ページを読み込んでから下書きを入れ、そのページへ移る(ページを出すときの読み込みは、下書きがあれば読み直さない)。
+    // 下書きを作れなかった(読めない・編集の途中等)ときも移り、番組ページの状態をそのまま見せる。
+    private async Task ShowDraftAsync(Func<ProgramsPageViewModel, bool> draft)
+    {
+        try
+        {
+            await Programs.OnShownAsync();
+            draft(Programs);
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"管理画面: 要対応から番組ページの下書きを作れませんでした: {ex}");
+        }
+        CurrentPage = ManagementPage.Programs;
     }
 
     // 番組ページを出したら programs.json を読む(まだ読んでいない・変更が無いときだけ)。例外は gui.log に書いて握る

@@ -112,7 +112,6 @@ public sealed class ReapplyServiceTests : IDisposable
             new EpisodeAssembler(
                 new StationResolver(stations ?? new StationMasterConfig()),
                 new ProgramResolver(programs)),
-            new SiblingFolderDetector(new ProgramResolver(programs), new RajirekoImporter()),
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), new TagLibAudioContentComparer(), outputRoot ?? OutputRoot),
             ledger,
             TimeProvider.System,
@@ -138,7 +137,8 @@ public sealed class ReapplyServiceTests : IDisposable
             new LocalFolderTarget(fileSystem, tagWriter ?? new TagLibTagWriter(), comparer, OutputRoot),
             new TagLibTagReader(),
             comparer,
-            refresher ?? new NullLibraryRefresher());
+            refresher ?? new NullLibraryRefresher(),
+            programs.KeepSeparate);
     }
 
     // (1) の 1 回だけを統合設定の無いまま取り込み、統合先の名前へファイルを mv しただけ(タグは (1) のまま)の状態を作る。
@@ -815,6 +815,23 @@ public sealed class ReapplyServiceTests : IDisposable
 
         var after = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
         Assert.Empty(after.UnintegratedSiblings);
+    }
+
+    [Fact]
+    public async Task Report_DoesNotListSiblingFoldersKeptApart()
+    {
+        // 要対応と同じ計算(#155):分けておく組に記録した組は、再適用の確認にも出さない。
+        var ledger = await IngestSplitAsync();
+        var programs = NoPrograms();
+        programs.KeepSeparate.Add(new KeptApartSiblings
+        {
+            Match = new ProgramMatch { Station = Station, Folders = [Folder1, Folder2] },
+        });
+
+        var report = await Reapply(ledger, programs).RunAsync(dryRun: true);
+
+        Assert.Empty(report.UnintegratedSiblings);
+        Assert.Empty(report.Items);
     }
 
     [Fact]

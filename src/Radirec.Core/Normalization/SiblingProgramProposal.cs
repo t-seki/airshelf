@@ -11,8 +11,8 @@ namespace Radirec.Core.Normalization;
 /// 新しいエントリなら組の全フォルダをパートの順に(<c>Match.Folders</c>)。既存の統合番組へ足すなら、統合設定の無いフォルダだけ。
 /// </param>
 /// <param name="JoinsExisting">
-/// 兄弟が既に統合番組に入っているか。このときは既存のエントリに触れず、<see cref="Folders"/> を
-/// その統合番組の <c>Folders</c> の末尾に足すよう案内するだけにする。
+/// 兄弟が既に統合番組に入っているか。このときは <see cref="Folders"/> を、その統合番組の <c>Folders</c> の末尾に足す
+/// (管理画面の要対応の「統合する」は、その統合番組の編集の下書きにする。#155)。
 /// </param>
 public sealed record SiblingProgramProposal(string Station, string Album, IReadOnlyList<string> Folders, bool JoinsExisting);
 
@@ -22,10 +22,11 @@ public sealed record SiblingProgramProposal(string Station, string Album, IReadO
 /// </summary>
 public static class SiblingProgramProposals
 {
-    /// <param name="groups">兄弟フォルダの組(再適用の dry-run が見つけた組)。</param>
+    /// <param name="groups">兄弟フォルダの組(要対応が見つけた組)。</param>
     /// <param name="resolver">
-    /// 追記する先の <c>programs.json</c> の**今の中身**から作った解決器。「統合設定が無い」はこれで決め直す
-    /// (dry-run の後に利用者が programs.json を直していることがあるため)。統合設定の無いフォルダが残らない組は提案しない。
+    /// 下書きを入れる先の番組の設定(管理画面の番組ページの、保存していない変更を含む一覧)から作った解決器。
+    /// 「統合設定が無い」はこれで決め直す(要対応を計算した後に設定が変わっていることがあるため)。
+    /// 統合設定の無いフォルダが残らない組は提案しない。
     /// </param>
     public static IReadOnlyList<SiblingProgramProposal> Build(IEnumerable<SiblingFolderGroup> groups, IProgramResolver resolver)
     {

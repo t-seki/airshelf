@@ -1,10 +1,15 @@
 # programs.json の書き手を管理画面にし、書くときはファイル全体を書き直す
 
-Status: accepted(#5 の GUI 設計、2026-09-25。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、#144 / #148 の追記と関連)。**[ADR-0020](0020-cli-as-agent-front-via-control-channel.md)(2026-09-25)で、エディタ・AI エージェントの直接編集の位置づけを変更 — 下の注記を参照**
+Status: accepted(#5 の GUI 設計、2026-09-25。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、#144 / #148 の追記と関連)。**[ADR-0020](0020-cli-as-agent-front-via-control-channel.md)(2026-09-25)で、エディタ・AI エージェントの直接編集の位置づけを変更 — 下の注記を参照**。**#155(2026-09-25)で `KeepSeparate` を読む先が増え、#148 の追記は退役 — 下の追記を参照**
 
 > **[ADR-0020](0020-cli-as-agent-front-via-control-channel.md) で一部を改めた**:エディタや AI エージェントが `programs.json` を直接編集して
 > から `radirec reapply` を叩くのも、正式な使い方として認める(「エディタで直すのは逃げ道」ではなくなった)。管理画面が主な書き手であること、
 > 書くときに全体を書き直すこと、読み込んだ後に変わっていれば書かないことは変わらない。
+
+> **追記(#155、2026-09-25。本文は決定当時の記録なので直さない)**:
+>
+> - **`KeepSeparate` を読むのは要対応の計算だけ、ではなくなった**(「結果」の節)。統合設定の無い兄弟フォルダの計算を要対応と再適用で共有したので、再適用の確認(`radirec reapply` の「統合設定の無い兄弟フォルダ」)も `KeepSeparate` に記録した組を出さなくなった。取り込みと再適用で**動かす回**(解決)には、今も使わない。
+> - **#148 の追記(`ProgramsFileAppender`)は退役した**。要対応の「統合する」が番組ページの下書きを作り、「分けておく」は `ProgramsFileWriter` でその場で書く(`programs.json` にコメントがあるときは、書かずに番組ページの下書きへ回し、コメントが消えることを番組ページの保存で確かめる)。
 
 管理画面(requirements §10.3)で番組の設定を編集できるようにするにあたり、`programs.json` を誰がどう書くかを決める。
 いまの `programs.json` は利用者がエディタで直すファイルで、`//` コメント付きの JSON(JSONC)として読まれている。

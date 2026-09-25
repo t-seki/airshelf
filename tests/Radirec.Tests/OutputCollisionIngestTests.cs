@@ -82,7 +82,6 @@ public sealed class OutputCollisionIngestTests : IDisposable
             new EpisodeAssembler(
                 new StationResolver(new StationMasterConfig()),
                 new ProgramResolver(new ProgramMasterConfig())),
-            new SiblingFolderDetector(new ProgramResolver(new ProgramMasterConfig()), new RajirekoImporter()),
             new LocalFolderTarget(fileSystem, new TagLibTagWriter(), new TagLibAudioContentComparer(), OutputRoot),
             ledger,
             TimeProvider.System,

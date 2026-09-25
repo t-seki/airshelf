@@ -1,6 +1,8 @@
 # 新規取込のトーストの切り替えは管理画面用の設定ファイルに持つ
 
-Status: accepted(#152 の grill、2026-09-25。requirements §10.3、[ADR-0011](0011-ingest-failure-as-separate-eventlog-signal.md) の失敗の de-dup、[ADR-0017](0017-management-window-owns-programs-json.md)、[ADR-0018](0018-attention-items-derived-from-state.md) の要対応と関連)
+Status: accepted(#152 の grill、2026-09-25。requirements §10.3、[ADR-0011](0011-ingest-failure-as-separate-eventlog-signal.md) の失敗の de-dup、[ADR-0017](0017-management-window-owns-programs-json.md)、[ADR-0018](0018-attention-items-derived-from-state.md) の要対応と関連)。**#155(2026-09-25)で兄弟フォルダの知らせを取り込みから外した — 下の追記を参照**
+
+> **追記(#155、2026-09-25。本文は決定当時の記録なので直さない)**:「結果」の節の「兄弟フォルダの知らせ(新規取込のトーストの 1 行)は、止めると一緒に出なくなる(`gui.log` には残る)」は、もう当てはまらない。#155 で兄弟フォルダの知らせは取込要約シグナル・新規取込のトースト・`gui.log` のどれからも外し、取り込みの走査も兄弟フォルダを調べなくなった(管理画面のホームの要対応が台帳から毎回計算する)。新規取込のトーストの切り替えは、新規取込の行だけに効く。
 
 管理画面の設定ページ(requirements §10.3)で、新規取込のトーストを出すかを切り替えられるようにする。
 いまは `radirec.json` の `NotificationsEnabled`(既定 `true`)がこれを決めているが、`false` にすると新規取込のトーストだけでなく、

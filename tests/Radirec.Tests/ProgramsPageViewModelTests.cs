@@ -409,7 +409,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.Equal("設定の読み込みに失敗しました: x", vm.ResultBody);
         Assert.False(_gate.IsBusy);
 
-        vm.BackCommand.Execute(null);
+        await vm.BackCommand.ExecuteAsync(null);
         Assert.True(vm.IsListMode);
         Assert.Equal(1, vm.ChangeCount);
     }
@@ -442,7 +442,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.False(vm.ResultIsError);
 
         // 保存した中身で一覧を作り直す(変更は無くなる)
-        vm.BackCommand.Execute(null);
+        await vm.BackCommand.ExecuteAsync(null);
         Assert.Equal(3, vm.Programs.Count);
         Assert.False(vm.HasChanges);
         Assert.False(vm.ConfirmCommand.CanExecute(null));
@@ -532,7 +532,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.NotNull(vm.SavedMessage); // 保存はできている
 
         // 保存は済んでいるので変更は無いが、再適用をやり直すために「確認」を押せる
-        vm.BackCommand.Execute(null);
+        await vm.BackCommand.ExecuteAsync(null);
         Assert.False(vm.HasChanges);
         Assert.True(vm.ConfirmCommand.CanExecute(null));
 
@@ -547,7 +547,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.Equal(written, File.ReadAllBytes(ProgramsPath));
         Assert.Equal("統合設定の再適用が完了しました", vm.ResultHeading);
 
-        vm.BackCommand.Execute(null);
+        await vm.BackCommand.ExecuteAsync(null);
         Assert.False(vm.ConfirmCommand.CanExecute(null)); // 実行できたので、もう確認は要らない
     }
 
@@ -572,7 +572,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.False(_gate.IsBusy);
 
         // 設定を変えずに(直したのは stations.json だけ)、もう一度実行できる。リロードも試し直す
-        vm.BackCommand.Execute(null);
+        await vm.BackCommand.ExecuteAsync(null);
         Assert.False(vm.HasChanges);
         Assert.True(vm.ConfirmCommand.CanExecute(null));
 
@@ -598,7 +598,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         AddAnzu(vm);
         await vm.ConfirmCommand.ExecuteAsync(null);
         await vm.SaveAndApplyCommand.ExecuteAsync(null);
-        vm.BackCommand.Execute(null);
+        await vm.BackCommand.ExecuteAsync(null);
         Assert.True(vm.ConfirmCommand.CanExecute(null)); // 中止された再適用を続けられる
 
         await vm.OnShownAsync(); // ページを出し直しても、ファイルが同じなら読み直さない
@@ -642,7 +642,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.Equal(Sample, File.ReadAllText(ProgramsPath));
         Assert.Equal(["plan"], control.Calls);
 
-        vm.BackCommand.Execute(null);
+        await vm.BackCommand.ExecuteAsync(null);
         Assert.Equal(1, vm.ChangeCount); // もう一度やり直せる
     }
 
@@ -667,7 +667,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         vm.Home.Refresh(); // 2 秒ごとの読み直しでも戻らない
         Assert.False(vm.Home.CanRescan);
 
-        vm.Programs.BackCommand.Execute(null);
+        await vm.Programs.BackCommand.ExecuteAsync(null);
 
         Assert.True(vm.Home.CanRescan);
     }

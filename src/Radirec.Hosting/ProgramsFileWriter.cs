@@ -34,7 +34,7 @@ public sealed record ProgramsFileSnapshot(string Path, byte[]? Original, Program
 /// <remarks>
 /// <para>
 /// 書く前に同じフォルダへ <c>programs.json.bak-YYYYMMDD-HHmmss</c> を作り、本体は一時ファイルに書き切ってから置き換える
-/// (<see cref="ProgramsFileAppender"/> と同じ仕組み)。読み込んだときの中身と、書く直前の中身が違っていたら書かない。
+/// (<see cref="FileBackup"/> / <see cref="ReplacingFileWriter"/>)。読み込んだときの中身と、書く直前の中身が違っていたら書かない。
 /// </para>
 /// <para>
 /// 書き出しは字下げあり・非 ASCII(日本語)をエスケープしない・UTF-8(BOM なし)。<see cref="ProgramAlias.Note"/> が null の

@@ -200,7 +200,11 @@ public static class ReapplyDialogFormatter
         return string.Join(" / ", parts);
     }
 
-    private static string SiblingLine(UnintegratedSiblingGroup sibling)
+    /// <summary>
+    /// 統合設定の無い兄弟フォルダの 1 組(W-123:<c>{局}: {フォルダ} / {フォルダ}(設定なし)</c>)。再適用の確認と、
+    /// 管理画面の要対応で同じものを使う。
+    /// </summary>
+    public static string SiblingLine(UnintegratedSiblingGroup sibling)
     {
         var folders = string.Join(" / ", sibling.Group.Folders.Select(f =>
             sibling.FoldersWithoutSetting.Contains(f) ? $"{f}(設定なし)" : f));

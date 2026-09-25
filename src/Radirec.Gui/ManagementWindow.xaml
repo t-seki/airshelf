@@ -99,6 +99,65 @@
                     </Grid>
                 </Border>
 
+                <!-- ===== 要対応(W-120〜W-139。ADR-0018)===== -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,20,0,6">
+                    <TextBlock Style="{StaticResource SectionHeading}" Text="要対応" />
+                    <!-- W-120(件数) -->
+                    <TextBlock Style="{StaticResource Sub}" Margin="12,0,0,0" VerticalAlignment="Bottom"
+                               Text="{Binding AttentionCountText}" />
+                </StackPanel>
+                <!-- W-137(縮退・計算できなかった) -->
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Text="{Binding AttentionError}"
+                           Visibility="{Binding IsAttentionErrorVisible, Converter={StaticResource Visible}}" />
+                <!-- W-121 -->
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource Sub}" Text="{x:Static m:AttentionText.None}"
+                           Visibility="{Binding IsAttentionEmpty, Converter={StaticResource Visible}}" />
+                <!-- W-139(「分けておく」で書けなかった) -->
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="DarkRed"
+                           Text="{Binding AttentionNote}"
+                           Visibility="{Binding IsAttentionNoteVisible, Converter={StaticResource Visible}}" />
+                <!-- 組が多いと取込履歴が押し出されるので、要対応の欄の中でスクロールする -->
+                <ScrollViewer DockPanel.Dock="Top" MaxHeight="280" VerticalScrollBarVisibility="Auto"
+                              Visibility="{Binding HasSiblings, Converter={StaticResource Visible}}">
+                    <Border Padding="14,8" CornerRadius="4" BorderThickness="1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+                        <StackPanel>
+                            <!-- W-122 -->
+                            <TextBlock FontWeight="SemiBold" Margin="0,0,0,4" Text="{x:Static m:AttentionText.SiblingsHeading}" />
+                            <!-- W-138(番組ページに保存していない変更がある) -->
+                            <TextBlock Style="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                       Text="{Binding KeepApartBlocked}"
+                                       Visibility="{Binding IsKeepApartBlockedVisible, Converter={StaticResource Visible}}" />
+                            <ItemsControl ItemsSource="{Binding SiblingRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <!-- W-124 / W-125 -->
+                                                <TextBlock TextWrapping="Wrap" Text="{Binding Heading}"
+                                                           Visibility="{Binding HasHeading, Converter={StaticResource Visible}}" />
+                                                <!-- W-123 -->
+                                                <TextBlock TextWrapping="Wrap" Text="{Binding Line}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0"
+                                                        VerticalAlignment="Center">
+                                                <!-- W-126 / W-127 -->
+                                                <Button Content="統合する" Padding="10,2" Command="{Binding IntegrateCommand}" />
+                                                <Button Content="分けておく" Padding="10,2" Margin="6,0,0,0"
+                                                        Command="{Binding KeepApartCommand}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+
                 <!-- 取込履歴(新しい方の 5 件)。W-140 -->
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,20,0,6">
                     <TextBlock Style="{StaticResource SectionHeading}" Text="取込履歴" />

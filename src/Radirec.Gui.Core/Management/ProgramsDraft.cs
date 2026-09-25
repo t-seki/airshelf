@@ -2,6 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Radirec.Core.Configuration;
+using Radirec.Core.Normalization;
 
 namespace Radirec.Gui.Core.Management;
 
@@ -118,6 +119,38 @@ public static class ProgramsDraft
     /// <summary>メモの欄。空なら null(programs.json に書かない)。</summary>
     public static string? ParseNote(string? text)
         => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+
+    /// <summary>
+    /// 要対応の「分けておく」(W-127)で記録する、分けておく組 1 つ。組と重なる分けておく組がすでにあれば(W-125。記録した組に
+    /// フォルダが加わった)、それらを 1 つにまとめる:元の組のフォルダの後ろに、加わったフォルダを足す。メモは最初の組のもの。
+    /// 重なる組が無ければ、組のフォルダをパートの順に並べた新しい組にする。
+    /// </summary>
+    /// <returns>記録する組と、それに置き換える(一覧から消す)元の組。</returns>
+    public static (KeptApartSiblings Entry, IReadOnlyList<KeptApartSiblings> Replaced) KeepApart(
+        IEnumerable<KeptApartSiblings> keepSeparate, SiblingFolderGroup group)
+    {
+        var stationKey = TextNormalizer.ToMatchKey(group.Station);
+        var groupKeys = group.Folders.Select(TextNormalizer.ToMatchKey).ToHashSet();
+        var replaced = keepSeparate
+            .Where(k => TextNormalizer.ToMatchKey(k.Match.Station) == stationKey
+                        && k.Match.Folders.Any(f => groupKeys.Contains(TextNormalizer.ToMatchKey(f))))
+            .ToList();
+
+        var folders = new List<string>();
+        var keys = new HashSet<string>();
+        foreach (var folder in replaced.SelectMany(k => k.Match.Folders).Concat(SiblingFolders.OrderAsParts(group.Folders)))
+        {
+            if (keys.Add(TextNormalizer.ToMatchKey(folder)))
+                folders.Add(folder);
+        }
+
+        var entry = new KeptApartSiblings
+        {
+            Match = new ProgramMatch { Station = replaced.FirstOrDefault()?.Match.Station ?? group.Station, Folders = folders },
+            Note = replaced.FirstOrDefault()?.Note,
+        };
+        return (entry, replaced);
+    }
 
     /// <summary>W-241 の片側。エントリを 1 つずつ JSON で並べる。無ければ <see cref="Nothing"/>。</summary>
     public static string Describe(IEnumerable<object> entries)
