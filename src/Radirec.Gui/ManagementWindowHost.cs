@@ -35,7 +35,10 @@ internal sealed class ManagementWindowHost
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="degradedReason">control が null の理由(W-104 / W-105)。</param>
-    /// <param name="ledgerPath">台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。</param>
+    /// <param name="ledgerPath">
+    /// 起動時に読めた設定の台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。ワーカーがあるときは、読むたびに
+    /// 今の状態の台帳の場所を使う(設定リロードに追従する。#196)。
+    /// </param>
     /// <param name="settings">
     /// 設定ページ(#152)に渡すもの。radirec.json の場所と起動時に読めた設定は、番組ページ(#154)の programs.json の場所の
     /// 計算にも使う。
@@ -71,8 +74,9 @@ internal sealed class ManagementWindowHost
                 return;
             }
 
-            var ledgerPath = _ledgerPath;
-            Func<IReadOnlyList<IngestHistoryRow>>? loadHistory = ledgerPath is null ? null : () => IngestHistory.Load(ledgerPath);
+            // 台帳の場所は読むたびに決め直す(設定リロードで LedgerPath が変わったら、次の読み込みから新しい台帳。#196)。
+            var ledger = LedgerLocator.Create(_control, _ledgerPath);
+            Func<IReadOnlyList<IngestHistoryRow>>? loadHistory = ledger is null ? null : () => IngestHistory.Load(ledger());
             var about = new AboutPageViewModel(
                 AppVersion.Of(typeof(ManagementWindowHost).Assembly), _updateSupport, _updater, _updateChecker,
                 ConfirmApplyUpdate, TrayLog.Warn);
@@ -82,7 +86,7 @@ internal sealed class ManagementWindowHost
             var viewModel = new ManagementViewModel(
                 _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn,
                 locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info, about: about, settings: settings,
-                computeAttention: AttentionComputer());
+                computeAttention: AttentionComputer(ledger));
 
             var window = new ManagementWindow(viewModel);
             window.Closed += (_, _) =>
@@ -155,11 +159,11 @@ internal sealed class ManagementWindowHost
     }
 
     // ホームの要対応(#155・ADR-0018)。台帳と、ディスクの programs.json / stations.json から計算する(取り込みが読み込んだ設定では
-    // なく、「統合する」「分けておく」が書く先と同じもの)。場所は番組ページと同じく、ワーカーがあれば status(設定リロードに追従)、
-    // 無ければ起動時に読めた設定から。設定を読めていなければ(縮退)null(W-137)。
-    private Func<Radirec.Core.Attention.AttentionItems>? AttentionComputer()
+    // なく、「統合する」「分けておく」が書く先と同じもの)。場所は台帳も含めて番組ページと同じく、ワーカーがあれば status(設定リロード
+    // に追従。#196)、無ければ起動時に読めた設定から。設定を読めていなければ(縮退)null(W-137)。
+    private Func<Radirec.Core.Attention.AttentionItems>? AttentionComputer(Func<string>? ledger)
     {
-        if (_ledgerPath is not { } ledgerPath || _settings.ConfigPath is not { } configPath
+        if (ledger is null || _settings.ConfigPath is not { } configPath
             || _settings.StartupConfig is not { } startup)
             return null;
 
@@ -170,7 +174,7 @@ internal sealed class ManagementWindowHost
                 ? (status.StationsFile, status.ProgramsFile)
                 : (startup.StationsFile, startup.ProgramsFile);
             return AttentionLoader.Load(
-                ledgerPath,
+                ledger(),
                 ConfigPaths.Locate(ConfigFile.Stations, configPath, stationsFile, programsFile),
                 ConfigPaths.Locate(ConfigFile.Programs, configPath, stationsFile, programsFile),
                 startup.KnownRecordingKinds);
