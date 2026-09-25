@@ -4,64 +4,70 @@ using Radirec.Core.Reapply;
 
 namespace Radirec.Gui.Core;
 
-/// <summary>ダイアログの表題(太字の 1 行)と本文。</summary>
+/// <summary>確認・完了の表題(太字の 1 行)と本文。</summary>
 public sealed record ReapplyDialogText(string Heading, string Body);
 
+/// <summary>どの設定で再適用を確かめたか。確認の表題と 1 行目の言い方が変わる。</summary>
+public enum ReapplyBasis
+{
+    /// <summary>保存済みの設定(W-252 / W-253)。</summary>
+    Saved,
+
+    /// <summary>管理画面の番組ページで編集した、まだ保存していない設定(W-242 / W-243 / W-248。#154)。</summary>
+    Draft,
+}
+
 /// <summary>
-/// トレイからの統合設定の再適用(ADR-0016 / #126)で出すダイアログの文言と、<c>gui.log</c> に書く明細行を
-/// <see cref="ReapplyReport"/> から組み立てる(表示専用・純粋)。語は CLI(<c>radirec reapply</c>)と
-/// <c>docs/usage.md</c> の表に揃える。ダイアログはスクロールしないので、アルバムと兄弟フォルダの行数に上限を持ち、
-/// 超えた分は「…ほか」に畳んで 1 回ずつの明細は <c>gui.log</c> へ回す。
+/// 統合設定の再適用(ADR-0016 / #126)の確認・完了の文言と、<c>gui.log</c> に書く明細行を <see cref="ReapplyReport"/> から
+/// 組み立てる(表示専用・純粋)。管理画面の番組ページ(#154)が画面の中に出す。語は CLI(<c>radirec reapply</c>)と
+/// <c>docs/usage.md</c> の表に揃える。アルバムの行数に上限を持ち、超えた分は「…ほか」に畳んで 1 回ずつの明細は
+/// <c>gui.log</c> へ回す。統合設定の無い兄弟フォルダは確認に出さない(管理画面の要対応へ移る。#155)。明細には残す。
 /// </summary>
 public static class ReapplyDialogFormatter
 {
-    /// <summary>確認ダイアログに並べるアルバム(変更前 → 変更後の組)の上限。超えた分は「…ほか N アルバム」。</summary>
+    /// <summary>確認に並べるアルバム(変更前 → 変更後の組)の上限。超えた分は「…ほか N アルバム」(W-245)。</summary>
     public const int MaxAlbums = 8;
 
-    /// <summary>ダイアログに並べる、統合設定の無い兄弟フォルダの組の上限。</summary>
-    public const int MaxSiblingGroups = 5;
-
-    /// <summary>明細の置き場所(利用者が辿れるように、ダイアログにそのまま書く)。</summary>
+    /// <summary>明細の置き場所(利用者が辿れるように、そのまま書く)。</summary>
     public const string LogLocation = @"%LOCALAPPDATA%\RadirecData\gui.log";
 
+    // W-247
     private static readonly string DetailsInLog = $"1 回ずつの明細は gui.log({LogLocation})に書きました。";
 
     // ---- 確認(dry-run の結果)----
 
+    /// <summary>確認で変える回の数(移動・台帳とタグ・台帳だけ・重複。対象外は含めない)。</summary>
+    public static int ChangeCount(ReapplyReport plan)
+        => plan.Count(ReapplyAction.Move) + plan.Count(ReapplyAction.LedgerAndTags)
+           + plan.Count(ReapplyAction.LedgerOnly) + plan.Count(ReapplyAction.DuplicateLeft);
+
     /// <summary>
-    /// dry-run の結果が揃っている(<see cref="ReapplyReport.IsAligned"/>)ときの表示。対象外の回が残っていれば件数を添え、
-    /// 統合設定の無い兄弟フォルダも示す(揃っていても、分割されたままの番組に気づけるように)。
+    /// dry-run の結果が揃っている(<see cref="ReapplyReport.IsAligned"/>)ときの表示(W-248)。対象外の回が残っていれば
+    /// 件数を添える。
     /// </summary>
-    /// <param name="canAppend">[統合設定を追記して開く] を出すか(兄弟フォルダの段に案内を 1 行添える。#144)。</param>
-    public static ReapplyDialogText BuildAligned(ReapplyReport plan, bool canAppend = false)
+    public static ReapplyDialogText BuildAligned(ReapplyReport plan, ReapplyBasis basis = ReapplyBasis.Saved)
     {
-        var sections = new List<string>();
-
         var excluded = plan.Count(ReapplyAction.Excluded);
-        if (excluded > 0)
-            sections.Add($"ただし、対象外の回が {excluded} 回あります(衝突・放送局の変更など。動かしません)。\n{DetailsInLog}");
-        else
-            sections.Add("変更するものはありません。");
+        var body = excluded > 0
+            ? $"ただし、対象外の回が {excluded} 回あります(衝突・放送局の変更など。動かしません)。\n{DetailsInLog}"
+            : "変更するものはありません。";
 
-        if (Siblings(plan, canAppend) is { } siblings)
-            sections.Add(siblings);
-
-        return new ReapplyDialogText("取り込み済みの回は今の設定と揃っています", Join(sections));
+        var heading = basis == ReapplyBasis.Draft
+            ? "取り込み済みの回は編集した設定と揃っています"
+            : "取り込み済みの回は今の設定と揃っています";
+        return new ReapplyDialogText(heading, body);
     }
 
-    /// <summary>
-    /// dry-run の結果に変える回があるときの確認ダイアログの文言。ボタンは [適用] / [キャンセル] で、
-    /// <paramref name="canAppend"/> のときは [統合設定を追記して開く] も加えた 3 つ(#144)。
-    /// </summary>
-    /// <param name="canAppend">[統合設定を追記して開く] を出すか(兄弟フォルダの段に案内を 1 行添える。#144)。</param>
-    public static ReapplyDialogText BuildConfirmation(ReapplyReport plan, bool canAppend = false)
+    /// <summary>dry-run の結果に変える回があるときの確認の文言(W-242〜W-247 / W-252〜W-253)。</summary>
+    public static ReapplyDialogText BuildConfirmation(ReapplyReport plan, ReapplyBasis basis = ReapplyBasis.Saved)
     {
-        var changes = plan.Count(ReapplyAction.Move) + plan.Count(ReapplyAction.LedgerAndTags)
-            + plan.Count(ReapplyAction.LedgerOnly) + plan.Count(ReapplyAction.DuplicateLeft);
+        var changes = ChangeCount(plan);
 
         var sections = new List<string>
         {
-            "今の programs.json の設定で、取り込み済みの回を次のように揃えます。",
+            basis == ReapplyBasis.Draft
+                ? "まだ保存していない設定で、取り込み済みの回を次のように揃えます。"
+                : "今の programs.json の設定で、取り込み済みの回を次のように揃えます。",
             "合計: " + Totals(plan),
             Albums(plan),
         };
@@ -78,19 +84,19 @@ public static class ReapplyDialogFormatter
         if (notes.Count > 0)
             sections.Add(string.Join("\n", notes));
 
-        if (Siblings(plan, canAppend) is { } siblings)
-            sections.Add(siblings);
-
         sections.Add(DetailsInLog);
 
-        return new ReapplyDialogText($"{changes} 回を今の設定に揃えます", Join(sections));
+        var heading = basis == ReapplyBasis.Draft
+            ? $"{changes} 回を編集した設定に揃えます"
+            : $"{changes} 回を今の設定に揃えます";
+        return new ReapplyDialogText(heading, Join(sections));
     }
 
     // ---- 完了(実行の結果)----
 
     /// <summary>
-    /// 実行後の完了表示。件数は確認時の予定ではなく実行の結果から出す(確認ダイアログを開いている間に取り込みが
-    /// 挟まりうるため)。ファイルを書き換えた回(移動・台帳とタグ・タグも直した重複)があれば Jellyfin でのメタデータ更新を案内する
+    /// 実行後の完了表示(W-272〜W-274 / W-247)。件数は確認時の予定ではなく実行の結果から出す(確認を見せている間に
+    /// 取り込みが挟まりうるため)。ファイルを書き換えた回(移動・台帳とタグ・タグも直した重複)があれば Jellyfin でのメタデータ更新を案内する
     /// (CLI と同じ条件。ADR-0016)。
     /// </summary>
     public static ReapplyDialogText BuildCompletion(ReapplyReport result)
@@ -118,78 +124,6 @@ public static class ReapplyDialogFormatter
 
         return new ReapplyDialogText(heading, Join(sections));
     }
-
-    // ---- 統合設定の追記(#144)----
-
-    /// <summary>確認ダイアログの「統合設定の無い兄弟フォルダ」から、提案を programs.json に追記して開くボタン。</summary>
-    public const string AppendButton = "統合設定を追記して開く";
-
-    /// <summary>追記した後に出すバルーン(その回の再適用は行わないので、保存してから選び直してもらう)。</summary>
-    /// <param name="seeded">programs.json が無かったので、追記の前に見本から作ったか。</param>
-    public static string AppendedBalloon(string fileName, bool seeded = false)
-        => (seeded ? $"{fileName} が無かったので見本から作り、" : $"{fileName} に")
-           + "統合設定の提案を追記しました。確かめて保存したら、もう一度「統合設定の再適用…」を選んでください";
-
-    /// <summary>programs.json が無く、見本からも作れなかった(追記も開くこともできない)。</summary>
-    public static ReapplyDialogText BuildSeedFailed(string fileName) => new(
-        $"{fileName} に追記できませんでした",
-        $"{fileName} が無く、見本から作ることもできませんでした(理由は gui.log({LogLocation})にあります)。");
-
-    /// <summary>
-    /// 追記の確認([追記] / [キャンセル])。何を追記するかを組ごとに 1 行で示す(追記する中身そのものはダイアログの
-    /// 「詳細」に出す)。<paramref name="proposals"/> は追記する全部(確認ダイアログの兄弟フォルダの上限では切らない)。
-    /// </summary>
-    public static ReapplyDialogText BuildAppendConfirmation(IReadOnlyList<SiblingProgramProposal> proposals, string fileName)
-    {
-        var lines = proposals.Take(MaxAppendLines).Select(p => p.JoinsExisting
-            ? $"・{p.Station} 統合番組『{p.Album}』に足すフォルダ {p.Folders.Count} つ(コメントで案内します。既存の設定は変えません)"
-            : $"・{p.Station}「{p.Album}」: {p.Folders.Count} フォルダを統合する設定").ToList();
-        if (proposals.Count > MaxAppendLines)
-            lines.Add($"…ほか {proposals.Count - MaxAppendLines} 組");
-
-        var sections = new List<string>
-        {
-            string.Join("\n", lines),
-            $"追記する中身は「詳細」にあります。追記の前に、同じフォルダへバックアップ({fileName}.bak-日時)を作ります。",
-            "追記したらエディタで開きます。確かめて直し、保存してから、もう一度「統合設定の再適用…」を選んでください" +
-            "(今回の再適用は行いません)。",
-        };
-        return new ReapplyDialogText($"次の {proposals.Count} 組を {fileName} に追記して開きます", Join(sections));
-    }
-
-    /// <summary>今の programs.json では、どの組にも統合設定の無いフォルダが残っていない(dry-run の後に直した等)。</summary>
-    public static ReapplyDialogText BuildNothingToAppend(string fileName) => new(
-        "追記するものはありません",
-        $"{fileName} には、兄弟フォルダの統合設定が既にあります。{fileName} を開きます。\n\n" +
-        "保存済みなら、もう一度「統合設定の再適用…」を選んでください。");
-
-    /// <summary>追記できなかった(壊れている・"Programs" の配列が無い・確認中に変わった等)。何も書かずにファイルだけ開く。</summary>
-    /// <param name="seeded">
-    /// programs.json が無かったので、追記の前に見本から作ったか(このときは「何も書き込んでいない」とは言えない)。
-    /// </param>
-    public static ReapplyDialogText BuildAppendFailed(string fileName, string reason, bool seeded = false) => new(
-        $"{fileName} に追記できませんでした",
-        seeded
-            ? $"{reason}\n\n{fileName} が無かったので見本から作りましたが、提案の追記はできませんでした。{fileName} を開きます。"
-            : $"{reason}\n\n{fileName} には何も書き込んでいません。{fileName} を開きます。");
-
-    /// <summary>追記の確認の「詳細」に見せる、追記する中身の行数の上限(ダイアログはスクロールしないため)。</summary>
-    public const int MaxSnippetLines = 30;
-
-    /// <summary>
-    /// 追記の確認の「詳細」に見せる中身。<see cref="MaxSnippetLines"/> を超えた分は畳む(全部は追記した後に開くファイルで見られる)。
-    /// </summary>
-    public static string SnippetPreview(string snippet)
-    {
-        var lines = snippet.TrimEnd('\n').Split('\n');
-        if (lines.Length <= MaxSnippetLines)
-            return string.Join("\n", lines);
-        return string.Join("\n", lines.Take(MaxSnippetLines))
-            + $"\n…ほか {lines.Length - MaxSnippetLines} 行(追記した後に開くファイルで確かめてください)";
-    }
-
-    // 追記の確認に並べる組の上限(超えた分も追記する)。
-    private const int MaxAppendLines = 8;
 
     // ---- gui.log の明細 ----
 
@@ -264,22 +198,6 @@ public static class ReapplyDialogFormatter
         if (album.Excluded > 0) parts.Add($"対象外 {album.Excluded}");
         if (album.Failed > 0) parts.Add($"失敗 {album.Failed}");
         return string.Join(" / ", parts);
-    }
-
-    // 統合設定の無い兄弟フォルダ(#127 の補い)。無ければ null。
-    private static string? Siblings(ReapplyReport report, bool canAppend)
-    {
-        var groups = report.UnintegratedSiblings;
-        if (groups.Count == 0)
-            return null;
-
-        var lines = new List<string> { "統合設定の無い兄弟フォルダ(programs.json で統合するか確かめてください):" };
-        lines.AddRange(groups.Take(MaxSiblingGroups).Select(g => "・" + SiblingLine(g)));
-        if (groups.Count > MaxSiblingGroups)
-            lines.Add($"…ほか {groups.Count - MaxSiblingGroups} 組(gui.log 参照)");
-        if (canAppend)
-            lines.Add($"[{AppendButton}] で、統合設定の提案を programs.json に追記して開けます(今回の再適用は行いません)。");
-        return string.Join("\n", lines);
     }
 
     private static string SiblingLine(UnintegratedSiblingGroup sibling)

@@ -1,0 +1,388 @@
+<!--
+  管理画面の番組ページ(#154・requirements §10.3・ADR-0017)。DataContext は Radirec.Gui.Core の ProgramsPageViewModel。
+  文言は docs/mockups/management-window.md の「番組」の節に従い、各所に W-ID を書いておく。
+  スタイルと変換はこのファイルの中で持つ(UserControl は InitializeComponent の時点で親ウィンドウの StaticResource を探せない)。
+-->
+<UserControl x:Class="Radirec.Gui.Pages.ProgramsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:m="clr-namespace:Radirec.Gui.Core.Management;assembly=Radirec.Gui.Core">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="Visible" />
+
+        <Style x:Key="PageHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="SectionHeading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="Sub" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" />
+        </Style>
+        <Style x:Key="SmallButton" TargetType="Button">
+            <Setter Property="Padding" Value="12,3" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+        </Style>
+        <Style x:Key="Button" TargetType="Button">
+            <Setter Property="Padding" Value="16,5" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,10,0,3" />
+        </Style>
+        <Style x:Key="Error" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="Firebrick" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+        </Style>
+        <!-- 変更前 → 変更後(W-241)。JSON を等幅で見せ、折り返さずに横に流す -->
+        <Style x:Key="Json" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="FontFamily" Value="Consolas, MS Gothic" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="MaxHeight" Value="200" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+        <!-- 複数行の読み取り専用の本文(確認・結果)。選んでコピーできる -->
+        <Style x:Key="Body" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,6,0,0" />
+        </Style>
+        <Style x:Key="MultiLine" TargetType="TextBox">
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+            <Setter Property="MinHeight" Value="64" />
+            <Setter Property="MaxHeight" Value="140" />
+        </Style>
+        <Style x:Key="Wrapped" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Resources>
+
+    <DockPanel Margin="18,14">
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource PageHeading}" Text="番組" />
+
+        <!-- W-211(縮退:radirec.json を読めない) -->
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
+                   Text="{x:Static m:ProgramsPageViewModel.Unavailable}"
+                   Visibility="{Binding IsUnavailable, Converter={StaticResource Visible}}" />
+
+        <!-- W-212 / W-213(programs.json を使わない設定) -->
+        <Border DockPanel.Dock="Top" Style="{StaticResource Card}"
+                Visibility="{Binding IsUnused, Converter={StaticResource Visible}}">
+            <StackPanel>
+                <TextBlock TextWrapping="Wrap" Text="{x:Static m:ProgramsPageViewModel.Unused}" />
+                <TextBlock Style="{StaticResource Sub}" Margin="0,6,0,0" Text="{x:Static m:ProgramsPageViewModel.UnusedHint}" />
+            </StackPanel>
+        </Border>
+
+        <!-- programs.json を読めない(壊れている等)。直してから読み込み直す(W-276) -->
+        <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsLoadFailed, Converter={StaticResource Visible}}">
+            <TextBlock Style="{StaticResource Error}" Text="{Binding LoadError}" />
+            <Button HorizontalAlignment="Left" Style="{StaticResource SmallButton}" Margin="0,8,0,0"
+                    Content="読み込み直す" Command="{Binding ReloadCommand}" />
+        </StackPanel>
+
+        <Grid>
+            <!-- ========== 一覧 ========== -->
+            <DockPanel Visibility="{Binding IsListMode, Converter={StaticResource Visible}}">
+                <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsReady, Converter={StaticResource Visible}}">
+                    <!-- W-201 -->
+                    <TextBlock Style="{StaticResource Sub}" Text="{x:Static m:ProgramsPageViewModel.Intro}" />
+                    <!-- W-208 / W-209 -->
+                    <DockPanel Margin="0,8,0,0" Visibility="{Binding HasChanges, Converter={StaticResource Visible}}">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SmallButton}" Content="変更を取り消す"
+                                Command="{Binding RevertCommand}" />
+                        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding ChangesText}" />
+                    </DockPanel>
+                </StackPanel>
+
+                <!-- W-207(確認)/ W-214(取り込みが止まっている) -->
+                <DockPanel DockPanel.Dock="Bottom" Margin="0,12,0,0" LastChildFill="False"
+                           Visibility="{Binding IsReady, Converter={StaticResource Visible}}">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Button}" Content="確認"
+                            Command="{Binding ConfirmCommand}" />
+                    <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Style="{StaticResource Sub}"
+                               Text="{Binding ConfirmNote}" />
+                </DockPanel>
+
+                <Grid Visibility="{Binding IsReady, Converter={StaticResource Visible}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="2*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- W-202 / W-206 / W-210(件数) -->
+                    <DockPanel Grid.Row="0" Margin="0,14,0,6">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Style="{StaticResource SmallButton}" Content="追加" Command="{Binding AddProgramCommand}" />
+                            <Button Style="{StaticResource SmallButton}" Content="編集" Command="{Binding EditProgramCommand}" />
+                            <Button Style="{StaticResource SmallButton}" Content="削除" Command="{Binding DeleteProgramCommand}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource SectionHeading}" Text="アルバム名と統合" />
+                            <TextBlock Style="{StaticResource Sub}" Margin="12,0,0,0" VerticalAlignment="Center"
+                                       Text="{Binding ProgramsCountText}" />
+                        </StackPanel>
+                    </DockPanel>
+                    <!-- W-203 / W-204。行のダブルクリックで編集 -->
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding Programs}"
+                              SelectedItem="{Binding SelectedProgram, Mode=TwoWay}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              CanUserAddRows="False" CanUserDeleteRows="False"
+                              CanUserSortColumns="False" CanUserReorderColumns="False"
+                              HeadersVisibility="Column" SelectionMode="Single"
+                              GridLinesVisibility="Horizontal" MinHeight="80">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <EventSetter Event="MouseDoubleClick" Handler="OnProgramRowDoubleClick" />
+                                <Style.Triggers>
+                                    <!-- 保存していない行(追加・編集)を目立たせる -->
+                                    <DataTrigger Binding="{Binding IsChanged}" Value="True">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="100" />
+                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folders}" Width="250"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="230"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                            <DataGridTextColumn Header="種類" Binding="{Binding Kind}" Width="100" />
+                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="*"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- W-205 / W-206 -->
+                    <DockPanel Grid.Row="2" Margin="0,14,0,6">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Style="{StaticResource SmallButton}" Content="追加" Command="{Binding AddKeepCommand}" />
+                            <Button Style="{StaticResource SmallButton}" Content="編集" Command="{Binding EditKeepCommand}" />
+                            <Button Style="{StaticResource SmallButton}" Content="削除" Command="{Binding DeleteKeepCommand}" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource SectionHeading}" Text="分けておく兄弟フォルダ" />
+                    </DockPanel>
+                    <!-- W-205(列) -->
+                    <DataGrid Grid.Row="3" ItemsSource="{Binding KeepSeparate}"
+                              SelectedItem="{Binding SelectedKeep, Mode=TwoWay}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              CanUserAddRows="False" CanUserDeleteRows="False"
+                              CanUserSortColumns="False" CanUserReorderColumns="False"
+                              HeadersVisibility="Column" SelectionMode="Single"
+                              GridLinesVisibility="Horizontal" MinHeight="60">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <EventSetter Event="MouseDoubleClick" Handler="OnKeepRowDoubleClick" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsChanged}" Value="True">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="100" />
+                            <DataGridTextColumn Header="フォルダの組" Binding="{Binding Folders}" Width="480"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="*"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <!-- W-210 -->
+                    <TextBlock Grid.Row="4" Style="{StaticResource Sub}" Margin="0,4,0,0" Text="{Binding KeepCountText}" />
+                </Grid>
+            </DockPanel>
+
+            <!-- ========== 編集フォーム(W-220〜W-229) ========== -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding IsFormMode, Converter={StaticResource Visible}}">
+                <StackPanel MaxWidth="720" HorizontalAlignment="Left" MinWidth="480">
+                    <!-- W-220 / W-228 / W-229 -->
+                    <TextBlock Style="{StaticResource SectionHeading}" Text="{Binding FormHeading}" />
+
+                    <TextBlock Style="{StaticResource Label}" Text="放送局" />
+                    <TextBox Text="{Binding FormStation, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <!-- アルバム名と統合:フォルダ(W-222)/ 分けておく:フォルダの組(W-228) -->
+                    <TextBlock Style="{StaticResource Label}" Text="フォルダ"
+                               Visibility="{Binding IsProgramFormMode, Converter={StaticResource Visible}}" />
+                    <TextBlock Style="{StaticResource Label}" Text="フォルダの組"
+                               Visibility="{Binding IsKeepFormMode, Converter={StaticResource Visible}}" />
+                    <TextBox Style="{StaticResource MultiLine}"
+                             Text="{Binding FormFolders, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Style="{StaticResource Sub}" Margin="0,3,0,0"
+                               Text="{x:Static m:ProgramsPageViewModel.FoldersHint}" />
+
+                    <!-- アルバム名(W-223)。分けておく兄弟フォルダには無い -->
+                    <StackPanel Visibility="{Binding IsProgramFormMode, Converter={StaticResource Visible}}">
+                        <TextBlock Style="{StaticResource Label}" Text="アルバム名" />
+                        <TextBox Text="{Binding FormAlbum, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Style="{StaticResource Sub}" Margin="0,3,0,0"
+                                   Text="{x:Static m:ProgramsPageViewModel.AlbumHint}" />
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource Label}" Text="メモ" />
+                    <TextBox Style="{StaticResource MultiLine}" TextWrapping="Wrap"
+                             Text="{Binding FormNote, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <!-- W-224 / W-225 -->
+                    <TextBlock Style="{StaticResource Error}" Text="{Binding FormErrorText}" />
+
+                    <!-- W-227。Enter / Esc は、いま出している画面のボタンにだけ結ぶ(隠れた画面の既定のボタンと取り合わない) -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                        <Button Style="{StaticResource Button}" Content="決定" IsDefault="{Binding IsFormMode}"
+                                Command="{Binding CommitFormCommand}" />
+                        <Button Style="{StaticResource Button}" Content="キャンセル" IsCancel="{Binding IsFormMode}"
+                                Command="{Binding CancelFormCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ========== 確かめている途中(W-240) ========== -->
+            <Border VerticalAlignment="Top" Style="{StaticResource Card}"
+                    Visibility="{Binding IsCheckingMode, Converter={StaticResource Visible}}">
+                <TextBlock TextWrapping="Wrap" Text="{Binding CheckingText}" MinHeight="18" />
+            </Border>
+
+            <!-- ========== 確認(W-241〜W-250) ========== -->
+            <DockPanel Visibility="{Binding IsConfirmMode, Converter={StaticResource Visible}}">
+                <!-- W-249。既定のボタン(Enter)は「戻る」(ファイルを動かす側を既定にしない) -->
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <Button Style="{StaticResource Button}" Content="保存して適用" Command="{Binding SaveAndApplyCommand}" />
+                    <Button Style="{StaticResource Button}" Content="保存だけ" Command="{Binding SaveOnlyCommand}"
+                            Visibility="{Binding HasChanges, Converter={StaticResource Visible}}" />
+                    <Button Style="{StaticResource Button}" Content="戻る"
+                            IsDefault="{Binding IsConfirmBackDefault}" IsCancel="{Binding IsConfirmBackDefault}"
+                            Command="{Binding BackCommand}" />
+                </StackPanel>
+
+                <!-- W-260〜W-262(コメントが消える確認)。確認の画面の上に出す -->
+                <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}" Margin="0,12,0,0"
+                        BorderBrush="DarkOrange" BorderThickness="2"
+                        Visibility="{Binding IsCommentsPromptVisible, Converter={StaticResource Visible}}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionHeading}" Text="{Binding CommentsHeading}" />
+                        <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Text="{Binding CommentsBody}" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                            <Button Style="{StaticResource Button}" Content="保存する"
+                                    Command="{Binding ProceedAfterCommentsCommand}" />
+                            <!-- 既定は「戻る」(W-262) -->
+                            <Button Style="{StaticResource Button}" Content="戻る"
+                                    IsDefault="{Binding IsCommentsPromptVisible}" IsCancel="{Binding IsCommentsPromptVisible}"
+                                    Command="{Binding CancelCommentsCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- W-241 -->
+                        <TextBlock Style="{StaticResource SectionHeading}" Text="設定の変更" />
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Style="{StaticResource Sub}" Text="変更前" />
+                                <TextBox Style="{StaticResource Json}" Text="{Binding DiffBefore, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Style="{StaticResource Sub}" Text="変更後" />
+                                <TextBox Style="{StaticResource Json}" Text="{Binding DiffAfter, Mode=OneWay}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- W-242〜W-248 -->
+                        <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionHeading}" TextWrapping="Wrap"
+                                           Text="{Binding ConfirmHeading}" />
+                                <TextBox Style="{StaticResource Body}" Text="{Binding ConfirmBody, Mode=OneWay}" />
+                                <!-- W-250 -->
+                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" Foreground="DarkOrange"
+                                           Text="{Binding SaveOnlyNote}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+
+            <!-- ========== 保存と実行・結果(W-251 / W-270〜W-279) ========== -->
+            <StackPanel Visibility="{Binding IsApplyingMode, Converter={StaticResource Visible}}">
+                <!-- W-270 -->
+                <TextBlock TextWrapping="Wrap" Text="{Binding SavedMessage}"
+                           Visibility="{Binding IsSavedMessageVisible, Converter={StaticResource Visible}}" />
+                <!-- W-271 -->
+                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" Text="{x:Static m:ProgramsPageViewModel.ApplyingText}" />
+            </StackPanel>
+
+            <DockPanel Visibility="{Binding IsResultMode, Converter={StaticResource Visible}}">
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <!-- W-276(読み込んだ後に変わっていた) -->
+                    <TextBlock VerticalAlignment="Center" Style="{StaticResource Sub}"
+                               Text="{x:Static m:ProgramsPageViewModel.ReloadDiscards}"
+                               Visibility="{Binding IsConflict, Converter={StaticResource Visible}}" />
+                    <Button Style="{StaticResource Button}" Content="読み込み直す" Command="{Binding ReloadCommand}"
+                            Visibility="{Binding IsConflict, Converter={StaticResource Visible}}" />
+                    <!-- 結果から一覧に戻る(W-249 の「戻る」と同じ語) -->
+                    <Button Style="{StaticResource Button}" Content="戻る" IsDefault="{Binding IsResultBackDefault}"
+                            Command="{Binding BackCommand}"
+                            Visibility="{Binding CanReturnFromResult, Converter={StaticResource Visible}}" />
+                </StackPanel>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- W-270 -->
+                        <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Text="{Binding SavedMessage}"
+                                   Visibility="{Binding IsSavedMessageVisible, Converter={StaticResource Visible}}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <!-- W-251 / W-272 / W-275 / W-277 / W-278 / W-279 -->
+                                <TextBlock TextWrapping="Wrap" FontWeight="SemiBold" Text="{Binding ResultHeading}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ResultIsError}" Value="True">
+                                                    <Setter Property="Foreground" Value="Firebrick" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <!-- W-272〜W-274 / W-247 / W-277(2 行目) -->
+                                <TextBox Style="{StaticResource Body}" Text="{Binding ResultBody, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</UserControl>

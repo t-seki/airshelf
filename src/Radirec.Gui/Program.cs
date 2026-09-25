@@ -181,6 +181,7 @@ internal static class Program
 
             // 管理画面(#151)。トレイの「Radirec を開く」とアイコンのダブルクリックで開く。縮退時も開ける。
             // バージョン情報ページ(#157)は、更新の確認が作れたとき(Velopack で入れた版)だけ更新の項目を出す。
+            // 番組ページ(#154)は、設定ページと同じ radirec.json の場所と起動時に読めた設定から programs.json の場所を求める。
             var windowHost = new ManagementWindowHost(
                 trayIcon, control, degradedReason, ledgerPath,
                 new SettingsPageContext(configPath, startupConfig, configError, toastSetting),
@@ -189,11 +190,10 @@ internal static class Program
             managementHost = windowHost;
             trayIcon.DoubleClick += (_, _) => windowHost.Show();
 
-            // 制御(rescan/status/reload)を in-process でトレイメニューに載せる(ADR-0012)。
+            // 制御(rescan/status)を in-process でトレイメニューに載せる(ADR-0012。reload と再適用は管理画面。#152 / #154)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
             trayIcon.ContextMenuStrip = new ControlTrayMenu(
-                trayIcon, windowHost.Show, control, degradedReason, updateService, drainWorker,
-                configPath, startupConfig).Menu;
+                trayIcon, windowHost.Show, control, degradedReason, updateService, drainWorker).Menu;
 
             TrayLog.Info("Radirec トレイを起動");
         }

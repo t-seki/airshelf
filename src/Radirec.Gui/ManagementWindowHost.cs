@@ -3,6 +3,7 @@ using System.Windows.Forms;
 using Radirec.Gui.Core;
 using Radirec.Gui.Core.Management;
 using Radirec.Gui.Core.Updates;
+using Radirec.Hosting;
 using Radirec.Hosting.Control;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
@@ -35,7 +36,10 @@ internal sealed class ManagementWindowHost
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="degradedReason">control が null の理由(W-104 / W-105)。</param>
     /// <param name="ledgerPath">台帳の絶対パス。設定を読めず場所が決まらないなら null(W-150)。</param>
-    /// <param name="settings">設定ページ(#152)に渡すもの。</param>
+    /// <param name="settings">
+    /// 設定ページ(#152)に渡すもの。radirec.json の場所と起動時に読めた設定は、番組ページ(#154)の programs.json の場所の
+    /// 計算にも使う。
+    /// </param>
     /// <param name="updateSupport">バージョン情報ページで更新の項目を出せるか。出せないときの理由(W-510 / W-511。#157)。</param>
     /// <param name="updater">自己更新(#157)。作れなかった・Velopack で入れていない版なら null。</param>
     /// <param name="updateChecker">更新の確認(トレイの自動の確認と共有する。#157)。</param>
@@ -77,7 +81,7 @@ internal sealed class ManagementWindowHost
                 _settings.ToastSetting, new SettingsPageActions(), TrayLog.Warn);
             var viewModel = new ManagementViewModel(
                 _control, _degradedReason, loadHistory, new HistoryPathActions(), TrayLog.Warn,
-                about: about, settings: settings);
+                locateProgramsFile: ProgramsFileLocator(), logInfo: TrayLog.Info, about: about, settings: settings);
 
             var window = new ManagementWindow(viewModel);
             window.Closed += (_, _) =>
@@ -123,6 +127,27 @@ internal sealed class ManagementWindowHost
             _closingAfterError = false;
         }
         _tray.ShowBalloonTip(5000, "Radirec", ClosedAfterErrorBalloon, ToolTipIcon.Warning);
+    }
+
+    // 番組ページ(#154)の programs.json の場所。ワーカーがあれば status(設定リロードの反映に追従する)、無ければ起動時に
+    // 読めた設定から(トレイの「設定ファイルを開く」と同じ。#143)。設定を読めていなければ null(W-211)。
+    // 返す値が null なら programs.json を使わない設定(ProgramsFile が空。W-212)。
+    private Func<string?>? ProgramsFileLocator()
+    {
+        if (_settings.ConfigPath is not { } configPath || (_control is null && _settings.StartupConfig is null))
+            return null;
+
+        var control = _control;
+        var startup = _settings.StartupConfig;
+        return () =>
+        {
+            if (control is not null)
+            {
+                var status = control.GetStatus();
+                return ConfigPaths.Locate(ConfigFile.Programs, configPath, status.StationsFile, status.ProgramsFile);
+            }
+            return ConfigPaths.Locate(ConfigFile.Programs, configPath, startup?.StationsFile, startup?.ProgramsFile);
+        };
     }
 
     // W-508 の確認(#157)。管理画面を持ち主にして出す。既定はキャンセル側(#157 の設計の決定 3)。
