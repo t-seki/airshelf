@@ -604,7 +604,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
             locateProgramsFile: () => ProgramsPath, computeAttention: () =>
             {
                 computes++;
-                return new AttentionItems { SettingsDrift = [new SettingsDriftGroup("TBSラジオ", "前", "TBSラジオ", "後", 2)] };
+                return new AttentionItems { SettingsDrift = [new SettingsDriftGroup("TBSラジオ", "前", "後", 2)] };
             });
         await vm.Home.AttentionRefreshed;
         Assert.True(vm.Home.CanReapply);

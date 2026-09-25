@@ -249,12 +249,17 @@ public sealed class HomeViewModel : ObservableObject
 
     public bool HasFailures => FailureRows.Count > 0;
 
-    /// <summary>W-134 の各まとまり(W-135)。</summary>
+    /// <summary>
+    /// W-134 の各まとまり(W-135)。計算し直して中身が変わったら、「再適用の確認へ」を前に押した結果(W-254 / W-255)を消す
+    /// (押していない食い違いに、前の結果が出ないように)。中身が同じなら残す(スキャンが終わっただけでは消さない)。
+    /// </summary>
     public IReadOnlyList<DriftAttentionRow> DriftRows
     {
         get => _driftRows;
         private set
         {
+            if (!_driftRows.Select(r => r.Drift).SequenceEqual(value.Select(r => r.Drift)))
+                _reapplyResult = null;
             if (!SetProperty(ref _driftRows, value))
                 return;
             OnPropertyChanged(nameof(HasDrift));
@@ -324,7 +329,7 @@ public sealed class HomeViewModel : ObservableObject
         HasDrift && _canControl && _savedReapply is not null && ReadBlockedReason() is null && !_reapplyChecking;
 
     /// <summary>
-    /// W-136 の横の 1 行。確かめている途中(W-240)、押せない理由(W-119 / W-256)、押した結果(W-254 / W-255)の順に、
+    /// W-136 の下の 1 行。確かめている途中(W-240)、押せない理由(W-119 / W-256)、押した結果(W-254 / W-255)の順に、
     /// 出すものがあれば 1 つ。食い違った回が無ければ null。
     /// </summary>
     public string? ReapplyNote

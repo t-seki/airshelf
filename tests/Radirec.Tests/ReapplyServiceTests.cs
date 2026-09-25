@@ -202,6 +202,30 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(aligned, attention.SettingsDrift.Sum(d => d.Count));
     }
 
+    [Fact]
+    public async Task AttentionDrift_leaves_out_station_changes_as_reapply_does()
+    {
+        // stations.json で局の正規名を変えた。再適用は局の変更を対象外にして揃えない(ADR-0016)。要対応の食い違いも、
+        // 局が変わる回を数えない(再適用で解消できないため。#156)。両者の数は一致する(ここでは 0)。
+        var ledger = await IngestSplitAsync();
+        var stations = new StationMasterConfig
+        {
+            Stations = [new StationAlias { Canonical = "TBS", Aliases = [Station] }],
+        };
+        var programs = Merged(station: "TBS");
+
+        var plan = await Reapply(ledger, programs, stations).RunAsync(dryRun: true);
+        var resolver = new LedgerEpisodeResolver(
+            new FileSystem().Path, new RajirekoImporter(), new StationResolver(stations), new ProgramResolver(programs));
+        var attention = Radirec.Core.Attention.AttentionCalculator.Compute(
+            ledger.ListAll(), resolver, new Radirec.Core.Attention.AttentionPrograms(programs));
+
+        Assert.NotEmpty(plan.Items);
+        Assert.All(plan.Items, i => Assert.Equal(ReapplyAction.Excluded, i.Action));
+        Assert.Equal(plan.Items.Count(i => i.Action != ReapplyAction.Excluded), attention.SettingsDrift.Sum(d => d.Count));
+        Assert.Empty(attention.SettingsDrift);
+    }
+
     // ---- 確認した予定と実行直前の予定の照合(トレイ #126)----
 
     [Fact]

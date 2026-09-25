@@ -80,8 +80,7 @@ public sealed class HomeFailuresDriftTests
     private static IngestFailureRecord Failure(string path, string? reason = "壊れています", DateTimeOffset? at = null)
         => new(path, reason, at);
 
-    private static SettingsDriftGroup Drift(string from, string to, int count = 2, string? toStation = null)
-        => new(Tbs, from, toStation ?? Tbs, to, count);
+    private static SettingsDriftGroup Drift(string from, string to, int count = 2) => new(Tbs, from, to, count);
 
     private static UnintegratedSiblingGroup Sibling()
         => new(new SiblingFolderGroup(Tbs, "番組", ["番組(1)", "番組(2)"]), ["番組(2)"]);
@@ -199,8 +198,6 @@ public sealed class HomeFailuresDriftTests
     {
         Assert.Equal("TBSラジオ「前」→「後」 2 回", AttentionText.DriftLine(Drift("前", "後")));
         Assert.Equal("TBSラジオ「番組」 パートの番号が変わる 3 回", AttentionText.DriftLine(Drift("番組", "番組", 3)));
-        Assert.Equal("TBSラジオ「前」→ 文化放送「後」 1 回(放送局の変更は再適用しません)",
-            AttentionText.DriftLine(Drift("前", "後", 1, toStation: "文化放送")));
     }
 
     [Fact]
@@ -232,6 +229,27 @@ public sealed class HomeFailuresDriftTests
         await home.ReapplyCommand.ExecuteAsync(null);
         Assert.Equal(ProgramsPageViewModel.SavedAborted("理由"), home.ReapplyNote); // W-255
         Assert.True(home.IsReapplyNoteWarning);
+    }
+
+    [Fact]
+    public async Task Previous_result_is_kept_while_drift_is_the_same_and_cleared_when_it_changes()
+    {
+        _items = new AttentionItems { SettingsDrift = [Drift("前", "後")] };
+        var home = await Create();
+        _entry.Start = SavedReapplyStart.Stay(ProgramsPageViewModel.SavedAborted("理由"), isWarning: true);
+        await home.ReapplyCommand.ExecuteAsync(null);
+        Assert.Equal(ProgramsPageViewModel.SavedAborted("理由"), home.ReapplyNote); // W-255
+
+        // スキャンが終わって計算し直しても、食い違いの中身が同じなら前の結果を残す。
+        _items = new AttentionItems { SettingsDrift = [Drift("前", "後")] };
+        await home.RefreshAttentionAsync();
+        Assert.Equal(ProgramsPageViewModel.SavedAborted("理由"), home.ReapplyNote);
+
+        // 食い違いが解消し、別の食い違いが出た。押していないのに前の結果を出さない。
+        _items = new AttentionItems { SettingsDrift = [Drift("別", "設定")] };
+        await home.RefreshAttentionAsync();
+        Assert.Null(home.ReapplyNote);
+        Assert.False(home.IsReapplyNoteWarning);
     }
 
     [Fact]

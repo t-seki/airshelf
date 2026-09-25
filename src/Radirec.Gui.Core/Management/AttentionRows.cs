@@ -47,17 +47,13 @@ public static class AttentionText
     public const string DriftHeading = "再適用が要る番組";
 
     /// <summary>
-    /// W-135。番組の設定と食い違ったままの回の 1 まとまり。放送局が変わる回(再適用では揃えない)と、パートだけが違う回は
-    /// 形を変える。
+    /// W-135。番組の設定と食い違ったままの回の 1 まとまり。パートだけが違う回(アルバムは同じ)は 2 つ目の形にする。
+    /// 放送局が変わる回は、再適用で揃えないので要対応に出さない(<see cref="AttentionItems.SettingsDrift"/>)。
     /// </summary>
     public static string DriftLine(SettingsDriftGroup group)
-    {
-        if (group.ToStation != group.Station)
-            return $"{group.Station}「{group.FromAlbum}」→ {group.ToStation}「{group.ToAlbum}」 {group.Count} 回(放送局の変更は再適用しません)";
-        if (group.ToAlbum == group.FromAlbum)
-            return $"{group.Station}「{group.FromAlbum}」 パートの番号が変わる {group.Count} 回";
-        return $"{group.Station}「{group.FromAlbum}」→「{group.ToAlbum}」 {group.Count} 回";
-    }
+        => group.ToAlbum == group.FromAlbum
+            ? $"{group.Station}「{group.FromAlbum}」 パートの番号が変わる {group.Count} 回"
+            : $"{group.Station}「{group.FromAlbum}」→「{group.ToAlbum}」 {group.Count} 回";
 
     /// <summary>W-136(ボタン)。</summary>
     public const string ReapplyConfirm = "再適用の確認へ";
