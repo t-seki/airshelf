@@ -11,7 +11,12 @@ namespace Radirec.Tests;
 /// <summary>
 /// 制御チャネル(CLI → トレイの常駐。ADR-0020 / #179)の往復。named pipe を実際に使う(Linux では Unix ドメインソケット)。
 /// 名前はテストごとに一意にする(既定のユーザーごとの名前は使わない)。
+/// <para>
+/// 接続の時間切れ・わざと止めた設定リロードでスレッドプールのスレッドを持つので、ほかのテストと並べて走らせない
+/// (<see cref="ControlChannelCollection"/>)。並べると、スレッドプールが増えた分、タイミングに依るほかのテストの結果が変わりうる。
+/// </para>
 /// </summary>
+[Collection(ControlChannelCollection.Name)]
 public sealed class ControlChannelTests
 {
     private static readonly TimeSpan ShortConnect = TimeSpan.FromMilliseconds(300);
@@ -406,4 +411,11 @@ public sealed class ControlChannelTests
         public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
         public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
     }
+}
+
+/// <summary>制御チャネルのテストを、ほかのテストと並べずに走らせる(<see cref="ControlChannelTests"/>)。</summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ControlChannelCollection
+{
+    public const string Name = "制御チャネル(並べない)";
 }
