@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>管理画面のモック(#150)- Radirec</title>
+<style>
+  :root {
+    --bg: #f3f3f3; --win: #ffffff; --line: #d6d6d6; --text: #1b1b1b; --sub: #5f5f5f;
+    --accent: #005fb8; --accent-bg: #e5f0fa; --warn: #9d5d00; --warn-bg: #fff4ce; --err: #c42b1c; --err-bg: #fde7e9;
+    --ok: #0f7b0f; --an: #c05800;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #d9dde3; color: var(--text);
+         font-family: "Yu Gothic UI", "Meiryo UI", "Segoe UI", system-ui, sans-serif; font-size: 14px; }
+  button { font: inherit; }
+  code, pre { font-family: Consolas, "BIZ UDGothic", monospace; font-size: 12.5px; }
+
+  /* ---- モックの外側(利用者には見えない) ---- */
+  .banner { background: #fff8e1; border-bottom: 2px solid #e0b000; padding: 10px 16px; line-height: 1.6; }
+  .banner strong { color: #8a5a00; }
+  .controls { background: #2b2f36; color: #e8e8e8; padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 13px; }
+  .controls label { display: inline-flex; gap: 4px; align-items: center; }
+  .controls select { font: inherit; font-size: 12px; }
+  .controls .scene button { background: #444a54; color: #fff; border: 1px solid #666; padding: 3px 10px; border-radius: 3px; cursor: pointer; }
+  .controls .scene button.on { background: #0a64c2; border-color: #4aa0ff; }
+  .stage { padding: 20px; display: flex; justify-content: center; }
+  .mocknote { background: #fffbe6; border: 1px dashed #d0a000; color: #6b5200; padding: 6px 10px; margin: 8px 0; font-size: 12.5px; border-radius: 3px; }
+  .mocknote::before { content: "モックの注記:"; font-weight: bold; margin-right: 4px; }
+  body.show-an .an { text-decoration: underline dotted var(--an); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  [hidden] { display: none !important; }
+
+  /* ---- ウィンドウ ---- */
+  .window { width: 1000px; min-height: 680px; background: var(--win); border: 1px solid #8f8f8f; box-shadow: 0 8px 28px rgba(0,0,0,.25);
+            display: grid; grid-template-rows: 32px 1fr 26px; grid-template-columns: 170px 1fr; position: relative; }
+  .titlebar { grid-column: 1 / 3; display: flex; align-items: center; justify-content: space-between; padding: 0 0 0 12px; background: #f3f3f3; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .titlebar .caps span { display: inline-block; width: 44px; text-align: center; line-height: 32px; color: #333; }
+  nav { background: var(--bg); border-right: 1px solid var(--line); padding: 8px 6px; }
+  nav button { display: block; width: 100%; text-align: left; padding: 8px 12px; margin: 2px 0; background: none; border: none; border-radius: 4px; cursor: pointer; color: var(--text); }
+  nav button:hover { background: #e6e6e6; }
+  nav button.on { background: #e1e1e1; font-weight: bold; box-shadow: inset 3px 0 0 var(--accent); }
+  .content { padding: 16px 20px; overflow: auto; }
+  .statusbar { grid-column: 1 / 3; border-top: 1px solid var(--line); background: var(--bg); font-size: 12px; color: var(--sub); padding: 4px 12px; }
+
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  h3 { font-size: 15px; margin: 18px 0 8px; }
+  h4 { font-size: 13.5px; margin: 12px 0 6px; }
+  .card { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin-bottom: 14px; background: #fff; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .sub { color: var(--sub); font-size: 12.5px; }
+  .btn { padding: 4px 14px; border: 1px solid #c4c4c4; border-radius: 4px; background: #fdfdfd; cursor: pointer; }
+  .btn:hover { background: #f0f0f0; }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn[disabled] { color: #a0a0a0; background: #f5f5f5; cursor: default; }
+  .btn.small { padding: 2px 10px; font-size: 12.5px; }
+  .msg { padding: 6px 10px; border-radius: 4px; margin: 8px 0; font-size: 13px; }
+  .msg.info { background: var(--accent-bg); }
+  .msg.ok { background: #dff6dd; }
+  .msg.warn { background: var(--warn-bg); }
+  .msg.err { background: var(--err-bg); }
+  .status-line { font-size: 14px; margin: 2px 0; }
+  table.grid { border-collapse: collapse; width: 100%; font-size: 13px; table-layout: fixed; }
+  table.grid th { text-align: left; font-weight: normal; color: var(--sub); border-bottom: 1px solid var(--line); padding: 4px 6px; background: #fafafa; }
+  table.grid td { border-bottom: 1px solid #ececec; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+  table.grid td.wrap { white-space: normal; }
+  table.grid tr.sel td { background: #cce4f7; }
+  table.grid tr.changed td { background: #fff7e0; }
+  .attn { border-left: 3px solid #e0a000; padding: 6px 10px; margin: 6px 0 10px; background: #fffdf5; }
+  .attn.fail { border-left-color: var(--err); background: #fffafa; }
+  .attn.mis { border-left-color: var(--accent); background: #f7fbff; }
+  .attn .item { padding: 6px 0; border-top: 1px dashed #e8e8e8; display: flex; justify-content: space-between; gap: 12px; }
+  .attn .item:first-of-type { border-top: none; }
+  .badge { display: inline-block; background: #e0a000; color: #fff; border-radius: 10px; padding: 0 8px; font-size: 12px; margin-left: 6px; }
+  .form { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; align-items: start; }
+  .form input, .form textarea { font: inherit; padding: 4px 6px; border: 1px solid #b8b8b8; border-radius: 3px; width: 100%; }
+  .form textarea { min-height: 54px; }
+  .form .hint { grid-column: 2; color: var(--sub); font-size: 12px; margin-top: -4px; }
+  .form .err { grid-column: 2; color: var(--err); font-size: 12px; margin-top: -4px; }
+  .diff { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .diff pre { margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: #fafafa; white-space: pre-wrap; min-height: 60px; }
+  .diff .after pre { background: #f3fbf3; }
+  .confirm-body p { margin: 6px 0; }
+  .albums { margin: 6px 0; line-height: 1.6; }
+  .albums .cnt { padding-left: 2em; color: var(--sub); }
+  .readonly pre { margin: 6px 0; padding: 8px; background: #fafafa; border: 1px solid var(--line); border-radius: 4px; max-height: 190px; overflow: auto; }
+  .overlay { position: absolute; inset: 32px 0 26px 0; background: rgba(0,0,0,.18); display: flex; align-items: center; justify-content: center; }
+  .dialog { background: #fff; width: 520px; border: 1px solid #888; box-shadow: 0 6px 24px rgba(0,0,0,.3); }
+  .dialog .dh { background: #f3f3f3; padding: 6px 12px; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+  .dialog .db { padding: 14px 18px; }
+  .dialog .db h3 { margin-top: 0; }
+  .dialog .df { padding: 10px 18px; background: #f3f3f3; display: flex; justify-content: flex-end; gap: 8px; }
+  .panel-degraded { border: 1px solid var(--err); border-radius: 6px; padding: 16px 18px; background: #fffafa; }
+  .ctxmenu { display: inline-block; border: 1px solid #aaa; background: #fff; box-shadow: 2px 2px 6px rgba(0,0,0,.2); padding: 3px 0; font-size: 13px; }
+  .ctxmenu div { padding: 4px 24px; }
+  .ctxmenu hr { border: none; border-top: 1px solid #ddd; margin: 3px 0; }
+
+  /* ---- トレイと通知 ---- */
+  .tray-scene { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; width: 100%; }
+  .tray-col h3 { color: #222; }
+  .traymenu { width: 300px; background: #f9f9f9; border: 1px solid #a0a0a0; box-shadow: 2px 3px 10px rgba(0,0,0,.25); padding: 4px 0; font-size: 13px; }
+  .traymenu div { padding: 5px 28px; }
+  .traymenu .dis { color: #8a8a8a; }
+  .traymenu .def { font-weight: bold; }
+  .traymenu hr { border: none; border-top: 1px solid #d5d5d5; margin: 4px 2px; }
+  .toast { width: 360px; background: #2b2b2b; color: #f0f0f0; border-radius: 6px; padding: 12px 14px; margin: 10px 0; box-shadow: 0 4px 14px rgba(0,0,0,.35); font-size: 13px; line-height: 1.55; }
+  .toast .app { font-size: 11.5px; color: #bbb; margin-bottom: 4px; }
+  .toast .t { font-weight: bold; }
+  .gone { text-decoration: line-through; color: #777; }
+</style>
+</head>
+<body class="show-an" data-scene="window" data-page="home" data-run="watching" data-upd="none" data-attn="items" data-pf="used"
+      data-hist="ok" data-rescan="idle" data-prog="list" data-set="normal" data-ver="idle">
+
+<div class="banner">
+  <strong>これはスクリーンショットではなくモックです。</strong>
+  WPF の実物ではなく、見た目と文言を決めるためにブラウザで描いたもの(#150、requirements §10.3)。
+  データはすべて架空。フォント・余白・列幅は実機で変わる。
+  文言の ID(<code>W-###</code>)・出る条件・根拠と、実機でしか確かめられない項目は
+  <a href="management-window.md">management-window.md</a> にある。
+  <span class="an">点線の下線</span>は、根拠が無くこのモックで決めた文言(<b>案</b>)。
+  <label><input type="checkbox" id="toggle-an" checked> 案に下線を引く</label>
+</div>
+
+<div class="controls">
+  <span class="scene">
+    <button data-go="scene:window" class="on">管理画面</button>
+    <button data-go="scene:tray">トレイと通知</button>
+  </span>
+  <label>常駐の状態
+    <select data-key="run">
+      <option value="watching">稼働中(監視中)</option>
+      <option value="polling">稼働中(定期スキャンのみ)・失敗あり</option>
+      <option value="noscan">稼働中・未走査</option>
+      <option value="crashed">停止(異常終了)</option>
+      <option value="startfail">起動に失敗(設定は読めた)</option>
+      <option value="noconfig">縮退(設定を読めない)</option>
+    </select></label>
+  <label>要対応
+    <select data-key="attn">
+      <option value="items">3 種あり</option>
+      <option value="empty">なし</option>
+    </select></label>
+  <label>取込履歴
+    <select data-key="hist">
+      <option value="ok">読める</option>
+      <option value="error">読み込み失敗</option>
+    </select></label>
+  <label>番組ページの段
+    <select data-key="prog">
+      <option value="list">一覧</option>
+      <option value="dirty">一覧(保存していない変更)</option>
+      <option value="empty">一覧(分けておく が空)</option>
+      <option value="edit">編集フォーム</option>
+      <option value="invalid">編集フォーム(入力エラー)</option>
+      <option value="draft">編集フォーム(要対応からの下書き)</option>
+      <option value="keepedit">分けておく の編集</option>
+      <option value="checking">確認(確かめている途中)</option>
+      <option value="confirm">確認(変更前→変更後)</option>
+      <option value="aligned">確認(揃っている)</option>
+      <option value="comments">コメントが消える確認</option>
+      <option value="applying">保存して適用(実行中)</option>
+      <option value="done">保存して適用(完了)</option>
+      <option value="saveonly">保存だけ(完了)</option>
+      <option value="conflict">保存できない(ファイルが変わった)</option>
+      <option value="writefail">保存できない(書き込み失敗)</option>
+      <option value="stale">実行しない(確認の後に設定が変わった)</option>
+      <option value="abort">再適用を中止</option>
+      <option value="reapply">再適用の確認(要対応から)</option>
+    </select></label>
+  <label>設定ページ
+    <select data-key="set">
+      <option value="normal">通常</option>
+      <option value="opened">ファイルを開いた結果</option>
+      <option value="reloadconfirm">radirec.json の再読み込み(確認)</option>
+      <option value="reloaded">再読み込みの結果</option>
+      <option value="stations">stations.json の再読み込み → 確認</option>
+      <option value="nostations">stations.json を使わない設定</option>
+    </select></label>
+  <label>programs.json
+    <select data-key="pf">
+      <option value="used">使う</option>
+      <option value="unused">使わない設定(ProgramsFile が空)</option>
+    </select></label>
+  <label>更新
+    <select data-key="upd">
+      <option value="none">保留なし</option>
+      <option value="pending">保留中(v0.13.0)</option>
+      <option value="dev">開発版・portable</option>
+    </select></label>
+  <label>バージョン情報の結果
+    <select data-key="ver">
+      <option value="idle">なし</option>
+      <option value="latest">最新版</option>
+      <option value="found">更新あり</option>
+      <option value="busy">確認中と重なった</option>
+      <option value="fail">確認に失敗</option>
+      <option value="applyconfirm">適用の確認</option>
+      <option value="applyfail">適用できない / 失敗</option>
+    </select></label>
+</div>
+
+<div class="stage">
+
+<!-- ================= 管理画面 ================= -->
+<div class="window" data-if="scene:window">
+  <div class="titlebar"><span data-w="W-001" class="an">Radirec</span><span class="caps"><span>—</span><span>☐</span><span>✕</span></span></div>
+  <nav>
+    <button data-go="page:home" class="on" data-w="W-002">ホーム</button>
+    <button data-go="page:history" data-w="W-002">取込履歴</button>
+    <button data-go="page:programs" data-w="W-002">番組</button>
+    <button data-go="page:settings" data-w="W-002">設定</button>
+    <button data-go="page:version" data-w="W-002">バージョン情報</button>
+  </nav>
+
+  <div class="content">
+
+  <!-- ========== ホーム ========== -->
+  <section data-if="page:home">
+    <h2>ホーム</h2>
+    <div class="card">
+      <div class="row" style="justify-content: space-between; align-items: flex-start;">
+        <div>
+          <div class="status-line" data-if="run:watching,noscan" data-w="W-101">状態: 稼働中(監視中)</div>
+          <div class="status-line" data-if="run:polling" data-w="W-102">状態: 稼働中(定期スキャンのみ)</div>
+          <div class="status-line" data-if="run:crashed" data-w="W-103">状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)</div>
+          <div class="status-line" data-if="run:startfail" data-w="W-104">状態: 取り込み停止中(取り込みの起動に失敗しました(gui.log 参照))</div>
+          <div class="status-line" data-if="run:noconfig" data-w="W-105">状態: 取り込み停止中(設定を読み込めませんでした)</div>
+          <div class="status-line" data-if="run:watching" data-w="W-106">最終スキャン: 9/25 10:42 検知(取込 3)</div>
+          <div class="status-line" data-if="run:polling" data-w="W-106">最終スキャン: 9/25 10:40 定期(取込 0・失敗 1)</div>
+          <div class="status-line" data-if="run:noscan" data-w="W-107">最終スキャン: 未走査</div>
+          <div class="status-line" data-if="run:crashed,startfail,noconfig" data-w="W-108">最終スキャン: —</div>
+        </div>
+        <div style="text-align: right;">
+          <button class="btn primary" data-if="run:watching,polling,noscan" data-go="rescan:done" data-w="W-110">今すぐ再スキャン</button>
+          <button class="btn" disabled data-if="run:crashed,startfail,noconfig" data-w="W-110">今すぐ再スキャン</button>
+          <div class="sub an" data-if="run:crashed,startfail,noconfig" data-w="W-112">取り込みが止まっているため、再スキャンできません</div>
+        </div>
+      </div>
+      <div class="msg info" data-if="rescan:done run:watching,polling,noscan" data-w="W-111">手動再スキャンを要求しました</div>
+      <div class="mocknote">「最終スキャン」のきっかけは
+        <span data-w="W-109">検知 / 定期 / 起動時 / スリープ復帰 / 手動 / リロード / 再適用</span> の 7 種。
+        「今すぐ再スキャン」を押すと、結果はバルーンではなくこの枠の中に出る。</div>
+    </div>
+
+    <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startfail" data-w="W-120">要対応 7 件</span></h3>
+    <div data-if="run:noconfig" class="msg warn an" data-w="W-137">設定を読めないため、要対応を出せません</div>
+    <div data-if="attn:empty run:watching,polling,noscan,crashed,startfail" class="sub an" data-w="W-121">要対応はありません</div>
+
+    <div data-if="attn:items run:watching,polling,noscan,crashed,startfail">
+      <div class="attn">
+        <h4 data-w="W-122">統合設定の無い兄弟フォルダ</h4>
+        <div class="item">
+          <div><span data-w="W-123">TBSラジオ: 安住紳一郎の日曜天国(1)(設定なし) / 安住紳一郎の日曜天国(2)(設定なし)</span></div>
+          <div class="row" style="flex-wrap: nowrap;">
+            <button class="btn small" data-go="page:programs prog:draft" data-w="W-126">統合する</button>
+            <button class="btn small" data-w="W-127">分けておく</button>
+          </div>
+        </div>
+        <div class="item">
+          <div><div data-w="W-124">統合番組『パンサー向井のふらっと』に入っていないフォルダ『パンサー向井のふらっと(3)』があります</div>
+               <div class="sub" data-w="W-123">TBSラジオ: パンサー向井のふらっと(1) / パンサー向井のふらっと(2) / パンサー向井のふらっと(3)(設定なし)</div></div>
+          <div class="row" style="flex-wrap: nowrap;">
+            <button class="btn small" data-go="page:programs prog:draft" data-w="W-126">統合する</button>
+            <button class="btn small" data-w="W-127">分けておく</button>
+          </div>
+        </div>
+        <div class="item">
+          <div><div class="an" data-w="W-125">分けておく組に、新しいフォルダ『大竹まこと ゴールデンラジオ!(3)』が加わりました</div>
+               <div class="sub" data-w="W-123">文化放送: 大竹まこと ゴールデンラジオ!(1) / 大竹まこと ゴールデンラジオ!(2) / 大竹まこと ゴールデンラジオ!(3)(設定なし)</div></div>
+          <div class="row" style="flex-wrap: nowrap;">
+            <button class="btn small" data-go="page:programs prog:draft" data-w="W-126">統合する</button>
+            <button class="btn small" data-w="W-127">分けておく</button>
+          </div>
+        </div>
+        <div class="mocknote">「分けておく」は programs.json の <code>KeepSeparate</code> に書く(番組ページの保存と同じ書き手。初めての保存ならコメントの確認 W-260 が先に出る)。</div>
+      </div>
+
+      <div class="attn fail">
+        <h4 data-w="W-128">解決していない取込失敗</h4>
+        <div class="sub an" data-w="W-133">録音ファイルを直すか置き直して、取り込みに成功すると消えます</div>
+        <div class="item">
+          <div data-w="W-129" class="an"><div>[ニッポン放送]オードリーのオールナイトニッポン(TimeFree)_20270229010000.m4a</div>
+               <div class="sub">放送日時が不正です (20270229010000): [ニッポン放送]オードリーのオールナイトニッポン(TimeFree)_20270229010000.m4a</div>
+               <div class="sub">失敗: 2026-09-25 10:40</div></div>
+          <div><button class="btn small" data-w="W-132">取込元をエクスプローラーで開く</button></div>
+        </div>
+        <div class="item">
+          <div><div data-w="W-129" class="an">[J-WAVE]TOKYO M.A.A.D SPIN(TimeFree)_2026091.m4a</div>
+               <div class="sub an" data-w="W-130">(理由の記録なし)</div></div>
+          <div><button class="btn small" data-w="W-132">取込元をエクスプローラーで開く</button></div>
+        </div>
+        <div class="item">
+          <div><div data-w="W-129" class="an">[文化放送]レコメン!(TimeFree)_20260801220000.m4a</div>
+               <div class="sub an" data-w="W-131">取込元のファイルがありません</div></div>
+          <div><button class="btn small" disabled data-w="W-132">取込元をエクスプローラーで開く</button></div>
+        </div>
+      </div>
+
+      <div class="attn mis">
+        <div class="row" style="justify-content: space-between;">
+          <h4 data-w="W-134">再適用が要る番組</h4>
+          <button class="btn small an" data-go="page:programs prog:reapply" data-w="W-136">再適用の確認へ</button>
+        </div>
+        <div class="item"><div class="an" data-w="W-135">TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」 24 回</div></div>
+      </div>
+    </div>
+
+    <h3><span data-w="W-140">取込履歴</span>
+      <span class="sub an" data-if="hist:ok run:watching,polling,noscan,crashed,startfail" data-w="W-140">新しい方の 5 件</span></h3>
+    <div data-if="run:noconfig" class="msg warn an" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
+    <div data-if="hist:error run:watching,polling,noscan,crashed,startfail" class="msg err" data-w="W-149">読み込みに失敗しました</div>
+    <div data-if="hist:ok run:watching,polling,noscan,crashed,startfail">
+      <table class="grid">
+        <colgroup><col style="width:240px"><col style="width:120px"><col style="width:150px"><col style="width:140px"><col></colgroup>
+        <tr data-w="W-141"><th>番組</th><th>放送局</th><th>放送</th><th>取込日時</th><th>ファイル</th></tr>
+        <tr class="sel"><td>安住紳一郎の日曜天国</td><td>TBSラジオ</td><td>2026-09-21 10:00 (1)</td><td>2026-09-25 10:42</td><td>安住紳一郎の日曜天国_20260921.m4a</td></tr>
+        <tr><td>オードリーのオールナイトニッポン</td><td>ニッポン放送</td><td>2026-09-20 01:00</td><td>2026-09-25 10:42</td><td>オードリーのオールナイトニッポン_20260920.m4a</td></tr>
+        <tr><td>LOGISTEED RADIONOMICS</td><td>J-WAVE</td><td>2026-09-19 22:00</td><td>2026-09-25 10:42</td><td>LOGISTEED RADIONOMICS_20260919.m4a</td></tr>
+        <tr><td>パンサー向井のふらっと</td><td>TBSラジオ</td><td>2026-09-19 08:30 (2)</td><td>2026-09-24 09:12</td><td>パンサー向井のふらっと_20260919.m4a</td></tr>
+        <tr><td>大竹まこと ゴールデンラジオ!(1)</td><td>文化放送</td><td>2026-09-18</td><td>2026-09-24 09:12</td><td>大竹まこと ゴールデンラジオ!(1)_20260918.m4a</td></tr>
+      </table>
+      <div class="row" style="justify-content: flex-end; margin-top: 6px;">
+        <button class="btn small an" data-go="page:history" data-w="W-142">すべて表示</button>
+      </div>
+      <div class="mocknote">「すべて表示」は取込履歴ページへ移る(ホームの中では広げない。広げると要対応が押し出される)。</div>
+    </div>
+  </section>
+
+  <!-- ========== 取込履歴 ========== -->
+  <section data-if="page:history">
+    <h2>取込履歴</h2>
+    <div data-if="run:noconfig" class="msg warn an" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
+    <div data-if="hist:error run:watching,polling,noscan,crashed,startfail">
+      <div class="row" style="margin-bottom: 6px;">
+        <button class="btn small" data-w="W-143">更新</button>
+        <span class="sub" data-w="W-149">読み込みに失敗しました</span>
+      </div>
+    </div>
+    <div data-if="hist:ok run:watching,polling,noscan,crashed,startfail">
+      <div class="row" style="margin-bottom: 6px;">
+        <button class="btn small" data-w="W-143">更新</button>
+        <span class="sub" data-w="W-151">248 件</span>
+        <span class="sub" style="margin-left: 16px;" data-w="W-146">エクスプローラーで開きました: 安住紳一郎の日曜天国_20260921.m4a</span>
+      </div>
+      <table class="grid">
+        <colgroup><col style="width:240px"><col style="width:120px"><col style="width:150px"><col style="width:140px"><col></colgroup>
+        <tr data-w="W-141"><th>番組</th><th>放送局</th><th>放送</th><th>取込日時 ▼</th><th>ファイル</th></tr>
+        <tr class="sel"><td>安住紳一郎の日曜天国</td><td>TBSラジオ</td><td>2026-09-21 10:00 (1)</td><td>2026-09-25 10:42</td><td>安住紳一郎の日曜天国_20260921.m4a</td></tr>
+        <tr><td>オードリーのオールナイトニッポン</td><td>ニッポン放送</td><td>2026-09-20 01:00</td><td>2026-09-25 10:42</td><td>オードリーのオールナイトニッポン_20260920.m4a</td></tr>
+        <tr><td>LOGISTEED RADIONOMICS</td><td>J-WAVE</td><td>2026-09-19 22:00</td><td>2026-09-25 10:42</td><td>LOGISTEED RADIONOMICS_20260919.m4a</td></tr>
+        <tr><td>パンサー向井のふらっと</td><td>TBSラジオ</td><td>2026-09-19 08:30 (2)</td><td>2026-09-24 09:12</td><td>パンサー向井のふらっと_20260919.m4a</td></tr>
+        <tr><td>大竹まこと ゴールデンラジオ!(1)</td><td>文化放送</td><td>2026-09-18</td><td>2026-09-24 09:12</td><td>大竹まこと ゴールデンラジオ!(1)_20260918.m4a</td></tr>
+        <tr><td>レコメン!</td><td>文化放送</td><td>2026-09-17 22:00</td><td>2026-09-23 23:05</td><td>レコメン!_20260917.m4a</td></tr>
+        <tr><td>安住紳一郎の日曜天国</td><td>TBSラジオ</td><td>2026-09-14 10:00 (2)</td><td>2026-09-22 08:01</td><td>安住紳一郎の日曜天国_20260914.m4a</td></tr>
+        <tr><td colspan="5" class="sub">…(全件。新しい順。列の見出しで並べ替えられる)</td></tr>
+      </table>
+      <div style="margin-top: 8px;">
+        <div class="form" data-w="W-145" style="grid-template-columns: 60px 1fr; font-size: 13px;">
+          <span>出力先</span><span>\\NAS\share\media\radio\TBSラジオ\安住紳一郎の日曜天国\安住紳一郎の日曜天国_20260921.m4a</span>
+          <span>取込元</span><span>I:\radio\tmp\RADIO\TBSラジオ\安住紳一郎の日曜天国(1)\[TBSラジオ]安住紳一郎の日曜天国(TimeFree)_20260921100000.m4a</span>
+        </div>
+        <div class="row" style="margin-top: 8px; align-items: flex-start;">
+          <div class="ctxmenu" data-w="W-144">
+            <div>出力先をエクスプローラーで開く</div><div>取込元をエクスプローラーで開く</div><hr>
+            <div>出力先のパスをコピー</div><div>取込元のパスをコピー</div>
+          </div>
+          <div class="mocknote" style="flex: 1; margin-top: 0;">左は行を右クリックしたときのメニュー(ダブルクリック・Enter は出力先を開く)。操作の結果は「更新」の横に 1 行で出る:
+            <span data-w="W-146">エクスプローラーで開いています…</span> /
+            <span data-w="W-147">ファイルが見つからないため親フォルダを開きました: {パス}</span> /
+            <span data-w="W-147">見つかりません: {パス}</span> /
+            <span data-w="W-147">エクスプローラーを開けませんでした(gui.log 参照)</span> /
+            <span data-w="W-148">パスをコピーしました</span> /
+            <span data-w="W-148">パスをコピーできませんでした</span></div>
+        </div>
+        <div class="mocknote">いまの取込履歴ウィンドウ(IngestHistoryWindow)の中身を、このページに引き継ぐ。開いた時点のスナップショットで、「更新」で読み直す。</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 番組 ========== -->
+  <section data-if="page:programs">
+    <h2>番組</h2>
+
+    <!-- 縮退:radirec.json を読めない -->
+    <div data-if="run:noconfig" class="msg warn an" data-w="W-211">設定を読めないため、番組の設定を出せません</div>
+
+    <!-- programs.json を使わない設定(ProgramsFile が空) -->
+    <div data-if="pf:unused run:watching,polling,noscan,crashed,startfail" class="card">
+      <p class="an" style="margin-top: 0;" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
+      <p class="sub an" data-w="W-213">番組の設定を使うには、radirec.json の ProgramsFile にファイル名(例 programs.json)を書き、設定ページの「再読み込み」を押してください。</p>
+      <div class="mocknote">この設定では、どのフォルダもフォルダ名がそのままアルバム名になる(統合もしない)。</div>
+    </div>
+
+    <div data-if="pf:used run:watching,polling,noscan,crashed,startfail">
+    <!-- 一覧 -->
+    <div data-if="prog:list,dirty,empty">
+      <p class="sub an" data-w="W-201">番組の設定 — programs.json の中身です。保存するまでファイルは変わりません</p>
+      <div class="msg warn row" data-if="prog:dirty" style="justify-content: space-between;">
+        <span class="an" data-w="W-208">保存していない変更があります(1 件)</span>
+        <button class="btn small an" data-go="prog:list" data-w="W-209">変更を取り消す</button>
+      </div>
+
+      <div class="row" style="justify-content: space-between;">
+        <h3 class="an" data-w="W-202">アルバム名と統合</h3>
+        <div class="row">
+          <button class="btn small" data-go="prog:edit" data-w="W-206">追加</button>
+          <button class="btn small" data-go="prog:edit" data-w="W-206">編集</button>
+          <button class="btn small" data-w="W-206">削除</button>
+        </div>
+      </div>
+      <table class="grid">
+        <colgroup><col style="width:100px"><col style="width:250px"><col style="width:230px"><col style="width:100px"><col></colgroup>
+        <tr class="an" data-w="W-203"><th>放送局</th><th>フォルダ</th><th>アルバム名</th><th>種類</th><th>メモ</th></tr>
+        <tr><td>J-WAVE</td><td>LOGISTEEDRADIONOMICS</td><td>LOGISTEED RADIONOMICS</td><td class="an" data-w="W-204">アルバム名だけ</td><td>空白を入れて読みやすく</td></tr>
+        <tr class="sel"><td>J-WAVE</td><td>SONYSONPOQUESTFORTHEFUTURE</td><td>SONY SONPO QUEST FOR THE FUTURE</td><td class="an" data-w="W-204">アルバム名だけ</td><td></td></tr>
+        <tr><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(1)<br>パンサー向井のふらっと(2)</td><td>パンサー向井のふらっと</td><td data-w="W-204">統合番組</td><td class="wrap">時間帯で 2 つに分けて録っている</td></tr>
+        <tr class="changed" data-if="prog:dirty"><td>TBSラジオ</td><td class="wrap">安住紳一郎の日曜天国(1)<br>安住紳一郎の日曜天国(2)</td><td>安住紳一郎の日曜天国</td><td data-w="W-204">統合番組</td><td>(追加・未保存)</td></tr>
+      </table>
+
+      <div class="row" style="justify-content: space-between; margin-top: 10px;">
+        <h3 data-w="W-205">分けておく兄弟フォルダ</h3>
+        <div class="row">
+          <button class="btn small" data-go="prog:keepedit" data-w="W-206">追加</button>
+          <button class="btn small" data-go="prog:keepedit" data-w="W-206">編集</button>
+          <button class="btn small" data-w="W-206">削除</button>
+        </div>
+      </div>
+      <table class="grid">
+        <colgroup><col style="width:100px"><col style="width:480px"><col></colgroup>
+        <tr data-w="W-205"><th>放送局</th><th>フォルダの組</th><th>メモ</th></tr>
+        <tr data-if="prog:list,dirty"><td>文化放送</td><td class="wrap">大竹まこと ゴールデンラジオ!(1) / 大竹まこと ゴールデンラジオ!(2)</td><td class="wrap">1 部と 2 部を別のアルバムで聞く</td></tr>
+        <tr data-if="prog:empty"><td colspan="3" class="sub an" data-w="W-210">まだありません</td></tr>
+      </table>
+      <p class="sub" data-if="prog:list,dirty"><span class="an" data-w="W-210">1 件</span></p>
+
+      <div class="row" style="justify-content: flex-end; margin-top: 14px;">
+        <button class="btn" disabled data-if="prog:list,empty" data-w="W-207">確認</button>
+        <button class="btn primary" data-if="prog:dirty" data-go="prog:confirm" data-w="W-207">確認</button>
+      </div>
+      <div class="mocknote">「確認」は変更が無いと押せない。一覧の「追加・編集・削除」はファイルに書かず、この画面の中の変更として溜める。</div>
+    </div>
+
+    <!-- 編集フォーム -->
+    <div data-if="prog:edit,invalid,draft">
+      <h3 class="an" data-if="prog:edit,invalid" data-w="W-220">アルバム名と統合を編集</h3>
+      <h3 class="an" data-if="prog:draft" data-w="W-220">アルバム名と統合を追加</h3>
+      <div class="msg info an" data-if="prog:draft" data-w="W-226">要対応の兄弟フォルダから下書きを作りました。アルバム名を確かめてください</div>
+      <div class="form card">
+        <label class="an" data-w="W-221">放送局</label>
+        <input data-if="prog:edit,draft" value="TBSラジオ"><input data-if="prog:invalid" value="">
+        <div class="err an" data-if="prog:invalid" data-w="W-224">放送局を入れてください</div>
+
+        <label class="an" data-w="W-221">フォルダ</label>
+        <textarea data-if="prog:edit">パンサー向井のふらっと(1)
+パンサー向井のふらっと(2)</textarea><textarea data-if="prog:draft">安住紳一郎の日曜天国(1)
+安住紳一郎の日曜天国(2)</textarea><textarea data-if="prog:invalid">パンサー向井のふらっと(1)
+SONYSONPOQUESTFORTHEFUTURE</textarea>
+        <div class="hint an" data-w="W-222">1 行に 1 フォルダ。上から順にパート番号 1, 2, … が付きます</div>
+        <div class="err an" data-if="prog:invalid" data-w="W-225">フォルダ『SONYSONPOQUESTFORTHEFUTURE』は『SONY SONPO QUEST FOR THE FUTURE』の設定にも入っています</div>
+
+        <label class="an" data-w="W-221">アルバム名</label>
+        <input data-if="prog:edit" value="パンサー向井のふらっと"><input data-if="prog:draft" value="安住紳一郎の日曜天国"><input data-if="prog:invalid" value="">
+        <div class="hint" data-w="W-223">未登録のフォルダは、フォルダ名がそのままアルバム名になります</div>
+        <div class="err an" data-if="prog:invalid" data-w="W-224">アルバム名を入れてください</div>
+
+        <label class="an" data-w="W-221">メモ</label>
+        <textarea data-if="prog:edit">時間帯で 2 つに分けて録っている</textarea><textarea data-if="prog:draft,invalid"></textarea>
+      </div>
+      <div class="mocknote">入力エラーの残り 1 つは <span class="an" data-w="W-224">フォルダを 1 つ以上入れてください</span>。</div>
+      <div class="row" style="justify-content: flex-end;">
+        <button class="btn primary an" data-go="prog:dirty" data-w="W-227">決定</button>
+        <button class="btn an" data-go="prog:list" data-w="W-227">キャンセル</button>
+      </div>
+    </div>
+
+    <!-- 分けておく の編集 -->
+    <div data-if="prog:keepedit">
+      <h3 data-w="W-228">分けておく兄弟フォルダを編集</h3>
+      <div class="form card">
+        <label class="an" data-w="W-228">放送局</label><input value="文化放送">
+        <label class="an" data-w="W-228">フォルダの組</label><textarea>大竹まこと ゴールデンラジオ!(1)
+大竹まこと ゴールデンラジオ!(2)</textarea>
+        <label class="an" data-w="W-228">メモ</label><textarea>1 部と 2 部を別のアルバムで聞く</textarea>
+      </div>
+      <div class="row" style="justify-content: flex-end;">
+        <button class="btn primary an" data-go="prog:dirty" data-w="W-227">決定</button>
+        <button class="btn an" data-go="prog:list" data-w="W-227">キャンセル</button>
+      </div>
+    </div>
+
+    <!-- 確かめている途中 -->
+    <div data-if="prog:checking" class="card">
+      <p class="an" data-w="W-240">再適用の内容を確かめています(取り込み中なら完了後)</p>
+      <div class="mocknote">すぐ終われば出さない(いまのトレイは 1.5 秒待っても終わらないときだけバルーンを出す。ControlTrayMenu.cs:229)。</div>
+    </div>
+
+    <!-- 確認 -->
+    <div data-if="prog:confirm,aligned,comments">
+      <h3 class="an" data-w="W-241">設定の変更</h3>
+      <div class="diff">
+        <div><div class="sub an" data-w="W-241">変更前</div><pre>(なし)</pre></div>
+        <div class="after"><div class="sub an" data-w="W-241">変更後</div><pre>{
+  "Match": { "Station": "TBSラジオ",
+             "Folders": ["安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)"] },
+  "Canonical": { "Album": "安住紳一郎の日曜天国" }
+}</pre></div>
+      </div>
+
+      <div class="card confirm-body" style="margin-top: 12px;" data-if="prog:confirm,comments">
+        <h3 class="an" style="margin-top: 0;" data-w="W-242">47 回を編集した設定に揃えます</h3>
+        <p class="an" data-w="W-243">まだ保存していない設定で、取り込み済みの回を次のように揃えます。</p>
+        <p data-w="W-244">合計: 移動・リネーム 47 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 1 回</p>
+        <div class="albums" data-w="W-245">
+          <div>・TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」</div>
+          <div class="cnt">移動・リネーム 23 / 対象外 1</div>
+          <div>・TBSラジオ「安住紳一郎の日曜天国(2)」→「安住紳一郎の日曜天国」</div>
+          <div class="cnt">移動・リネーム 24</div>
+        </div>
+        <p data-w="W-246">対象外の回(衝突・放送局の変更など)は動かしません。</p>
+        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\RadirecData\gui.log)に書きました。</p>
+        <div class="msg warn an" data-w="W-250">「保存だけ」にすると、揃っていない 47 回は要対応の「再適用が要る番組」に残ります</div>
+      </div>
+      <div class="card confirm-body" style="margin-top: 12px;" data-if="prog:aligned">
+        <h3 class="an" style="margin-top: 0;" data-w="W-248">取り込み済みの回は編集した設定と揃っています</h3>
+        <p data-w="W-248">変更するものはありません。</p>
+      </div>
+      <div class="row" style="justify-content: flex-end;">
+        <button class="btn primary" data-go="prog:comments" data-w="W-249">保存して適用</button>
+        <button class="btn" data-go="prog:saveonly" data-w="W-249">保存だけ</button>
+        <button class="btn" data-go="prog:dirty" data-w="W-249" style="outline: 2px solid var(--accent);">戻る</button>
+      </div>
+      <div class="mocknote">既定のボタン(Enter)は「戻る」。いまのトレイの確認と同じく、ファイルを動かす側を既定にしない。
+        いまのトレイの確認にある「統合設定の無い兄弟フォルダ」の段と「統合設定を追記して開く」は出さない(要対応へ移る)。</div>
+    </div>
+
+    <!-- 再適用の確認(要対応から) -->
+    <div data-if="prog:reapply">
+      <div class="card confirm-body">
+        <h3 style="margin-top: 0;" data-w="W-252">24 回を今の設定に揃えます</h3>
+        <p data-w="W-253">今の programs.json の設定で、取り込み済みの回を次のように揃えます。</p>
+        <p data-w="W-244">合計: 移動・リネーム 24 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 0 回</p>
+        <div class="albums" data-w="W-245">
+          <div>・TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」</div>
+          <div class="cnt">移動・リネーム 24</div>
+        </div>
+        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\RadirecData\gui.log)に書きました。</p>
+      </div>
+      <div class="row" style="justify-content: flex-end;">
+        <button class="btn primary" data-go="prog:applying" data-w="W-312">適用</button>
+        <button class="btn" data-go="page:home prog:list" data-w="W-312" style="outline: 2px solid var(--accent);">戻る</button>
+      </div>
+      <div class="mocknote">保存するものが無いので「保存だけ」は出さない。設定ページの stations.json の「再読み込み」からも、同じ確認に来る。</div>
+    </div>
+
+    <!-- 結果 -->
+    <div data-if="prog:applying,done,saveonly,conflict,writefail,stale,abort">
+      <div class="msg ok an" data-if="prog:applying,done" data-w="W-270">programs.json を保存しました(バックアップ: programs.json.bak-20260925-104512)</div>
+      <div class="msg info" data-if="prog:applying" data-w="W-271">統合設定の再適用を実行しています</div>
+
+      <div class="card confirm-body" data-if="prog:done">
+        <h3 style="margin-top: 0;" data-w="W-272">統合設定の再適用が完了しました</h3>
+        <p data-w="W-272">移動・リネーム 47 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 1 回</p>
+        <p data-w="W-273">Jellyfin ライブラリ更新: 起動しました</p>
+        <p data-w="W-274">タグ(album / title / track)が反映されないアルバムがあれば、Jellyfin でメタデータを更新してください。</p>
+        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\RadirecData\gui.log)に書きました。</p>
+        <div class="mocknote">失敗があれば見出しが <span data-w="W-272">統合設定の再適用が完了しました(失敗 2 回)</span> になり、
+          <span data-w="W-274">失敗した回は、もう一度再適用すると揃います。</span> が足される。Jellyfin の段はほかに
+          <span data-w="W-273">Jellyfin ライブラリ更新: 未設定のため行いません</span> /
+          <span data-w="W-273">Jellyfin ライブラリ更新に失敗しました: {理由}</span>。</div>
+      </div>
+
+      <div class="msg ok an" data-if="prog:saveonly" data-w="W-279">保存しました。揃っていない回は要対応の「再適用が要る番組」に出ます</div>
+
+      <div data-if="prog:conflict">
+        <div class="msg err an" data-w="W-275">programs.json は読み込んだ後に変更されています(エディタで直した等)。保存していません。</div>
+        <div class="row"><button class="btn an" data-go="prog:list" data-w="W-276">読み込み直す</button>
+          <span class="sub an" data-w="W-276">読み込み直すと、この画面での変更は消えます</span></div>
+      </div>
+
+      <div class="msg err" data-if="prog:writefail"><span data-w="W-277">書き込みに失敗しました: {理由}</span>
+        <br><span class="an" data-w="W-277">programs.json は元のままです。</span></div>
+
+      <div class="msg err an" data-if="prog:stale" data-w="W-278">確認した後に設定が変わったため、実行していません。もう一度「確認」を押してください</div>
+
+      <div class="card confirm-body" data-if="prog:abort">
+        <h3 style="margin-top: 0;" data-w="W-251">統合設定の再適用を中止しました</h3>
+        <p>設定の読み込みに失敗しました: 設定ファイルが見つかりません: C:\Users\me\AppData\Local\RadirecData\radirec.json</p>
+      </div>
+
+      <div class="row" style="justify-content: flex-end;"><button class="btn" data-go="prog:list">(モック:一覧に戻る)</button></div>
+    </div>
+
+    <!-- コメントが消える確認 -->
+    <div class="overlay" data-if="prog:comments">
+      <div class="dialog">
+        <div class="dh">Radirec</div>
+        <div class="db">
+          <h3 data-w="W-260">コメントが 6 件消えます(.bak に残ります)</h3>
+          <p class="an" data-w="W-261">管理画面から保存すると、programs.json 全体を書き直すため、// のコメントは残りません。保存の前に、同じフォルダに programs.json.bak-日時 を作ります。これからのメモは各行の「メモ」欄に書けます。</p>
+          <div class="mocknote">初めて管理画面から保存するときに一度だけ。コメントが無ければ出さずに保存へ進む。</div>
+        </div>
+        <div class="df">
+          <button class="btn primary an" data-go="prog:applying" data-w="W-262">保存する</button>
+          <button class="btn an" data-go="prog:confirm" data-w="W-262" style="outline: 2px solid var(--accent);">戻る</button>
+        </div>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <!-- ========== 設定 ========== -->
+  <section data-if="page:settings">
+    <h2>設定</h2>
+
+    <!-- 縮退パネル -->
+    <div data-if="run:noconfig" class="panel-degraded">
+      <h3 style="margin-top: 0;" data-w="W-401">設定を読めません</h3>
+      <p class="msg err" data-w="W-402">設定の読み込みに失敗しました: '}' is invalid after a property name. Expected a ':'. Path: $.RadioRoot | LineNumber: 2 | BytePositionInLine: 14.</p>
+      <p class="an" data-w="W-403">取り込みは止まっています。ファイルを直して保存してから「再読み込みして再起動」を押してください。</p>
+      <p class="sub">C:\Users\me\AppData\Local\RadirecData\radirec.json</p>
+      <div class="row">
+        <button class="btn" data-w="W-404">ファイルを開く</button>
+        <button class="btn primary" data-w="W-404">再読み込みして再起動</button>
+      </div>
+      <h4>ほかの設定ファイル</h4>
+      <div class="row">
+        <button class="btn small" disabled>programs.json を開く</button>
+        <button class="btn small" disabled>stations.json を開く</button>
+        <span class="sub" data-w="W-405">設定を読み込めていないため、場所が分かりません</span>
+      </div>
+      <div class="mocknote">読めない理由は読み込みの戻り値をそのまま出す(上の「:」より後ろの JSON のエラーは例)。ファイルが無いときは
+        <span data-w="W-402">設定ファイルが見つかりません: {パス}</span>。JSON のエディタは内蔵しない(§10.3)。</div>
+    </div>
+
+    <div data-if="run:watching,polling,noscan,crashed,startfail">
+      <div data-if="set:normal,opened,reloadconfirm,reloaded,nostations">
+        <div class="card">
+          <h3 style="margin-top: 0;" class="an" data-w="W-301">取り込みの知らせ</h3>
+          <label><input type="checkbox" checked> <span data-w="W-302">新規取込のトーストを出す</span></label>
+          <div class="sub" style="margin-left: 22px;" data-w="W-303">取込失敗のトーストは、この設定に関係なく出ます。</div>
+        </div>
+
+        <h3 class="an" data-w="W-304">設定ファイル</h3>
+        <p class="sub an" data-w="W-304">読み取り専用です。直すときは「ファイルを開く」でエディタで開き、保存してから「再読み込み」を押してください。ファイルを保存しただけでは反映しません。</p>
+
+        <div class="card readonly">
+          <div class="row" style="justify-content: space-between;">
+            <div><b>radirec.json</b> <span class="sub">C:\Users\me\AppData\Local\RadirecData\radirec.json</span></div>
+            <div class="row">
+              <button class="btn small" data-go="set:opened" data-w="W-305">ファイルを開く</button>
+              <button class="btn small" data-go="set:reloadconfirm" data-w="W-305">再読み込み</button>
+            </div>
+          </div>
+<pre>{
+  "RadioRoot": "I:\\radio\\tmp\\RADIO",
+  "OutputRoot": "\\\\NAS\\share\\media\\radio",
+  "LedgerPath": "ledger.db",
+  "StationsFile": "stations.json",
+  "ProgramsFile": "programs.json",
+  "JellyfinUrl": "http://nas:8096",
+  "JellyfinApiKey": <span class="an" data-w="W-306">(設定済み・表示しません)</span>,
+  "ScanIntervalSeconds": 120,
+  "UpdatePrerelease": false,
+  "UpdateToken": <span class="an" data-w="W-306">(設定済み・表示しません)</span>
+  …
+}</pre>
+          <div class="msg info" data-if="set:reloaded" data-w="W-310">設定リロードを受理しました(反映は取込完了後)</div>
+          <div class="msg warn" data-if="set:reloaded" data-w="W-310">設定リロードは拒否されました: 設定の読み込みに失敗しました: …</div>
+          <div class="msg info" data-if="set:opened" data-w="W-308">radirec.json が無かったので見本から作りました</div>
+        </div>
+
+        <div class="card readonly">
+          <div class="row" style="justify-content: space-between;">
+            <div><b>stations.json</b> <span class="sub" data-if="set:normal,opened,reloadconfirm,reloaded">C:\Users\me\AppData\Local\RadirecData\stations.json</span></div>
+            <div class="row">
+              <button class="btn small" data-if="set:normal,opened,reloadconfirm,reloaded" data-go="set:opened" data-w="W-305">ファイルを開く</button>
+              <button class="btn small" data-if="set:normal,opened,reloadconfirm,reloaded" data-go="set:stations" data-w="W-305">再読み込み</button>
+              <button class="btn small" disabled data-if="set:nostations" data-w="W-305">ファイルを開く</button>
+              <button class="btn small" disabled data-if="set:nostations" data-w="W-305">再読み込み</button>
+            </div>
+          </div>
+          <pre data-if="set:normal,opened,reloadconfirm,reloaded">{
+  "Stations": [
+    { "Canonical": "ニッポン放送", "Aliases": [ "LFR" ] },
+    { "Canonical": "文化放送", "Aliases": [ "QRR" ] },
+    { "Canonical": "TBSラジオ", "Aliases": [ "TBS" ] },
+    …
+  ]
+}</pre>
+          <p class="sub" data-if="set:nostations" data-w="W-307">radirec.json でこのファイルを使わない設定になっています</p>
+          <div class="msg warn" data-if="set:opened" data-w="W-308">stations.json を開けませんでした(gui.log 参照)</div>
+          <div class="mocknote" data-if="set:opened">ほかに <span data-w="W-308">stations.json が無く、見本から作れませんでした(gui.log 参照)</span>。
+            開けたときは何も出さない(エディタが開くので分かる)。</div>
+        </div>
+        <p class="sub an" data-if="pf:used" data-w="W-313">programs.json は「番組」ページで編集します</p>
+        <p class="sub an" data-if="pf:unused" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
+      </div>
+
+      <!-- stations.json の再読み込み → 確認 -->
+      <div data-if="set:stations">
+        <p class="msg info an" data-w="W-311">stations.json を読み込み直し、取り込み済みの回を今の設定と比べます</p>
+        <div class="card confirm-body">
+          <h3 style="margin-top: 0;" data-w="W-252">3 回を今の設定に揃えます</h3>
+          <p data-w="W-253">今の programs.json の設定で、取り込み済みの回を次のように揃えます。</p>
+          <p data-w="W-244">合計: 移動・リネーム 0 回 / 台帳とタグを直す 3 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 0 回</p>
+          <div class="albums" data-w="W-245">
+            <div>・InterFM897「Daisy Holiday!」→「Daisy Holiday!」</div>
+            <div class="cnt">台帳とタグを直す 3</div>
+          </div>
+          <p data-w="W-246">台帳とタグを直す回は、ファイル名はそのままで、ファイルのタグ(album / title / track)を書き換えます。</p>
+        </div>
+        <div class="row" style="justify-content: flex-end;">
+          <button class="btn primary" data-w="W-312">適用</button>
+          <button class="btn" data-go="set:normal" data-w="W-312" style="outline: 2px solid var(--accent);">戻る</button>
+        </div>
+        <div class="mocknote">W-253 の「今の programs.json の設定で」は、stations.json を直したときには少しずれる。いまのトレイの文言のまま残すか、
+          ここだけ言い換えるかは #154 で決める。</div>
+      </div>
+    </div>
+
+    <!-- radirec.json の再読み込みの確認 -->
+    <div class="overlay" data-if="set:reloadconfirm run:watching,polling,noscan,crashed,startfail">
+      <div class="dialog">
+        <div class="dh">設定リロード</div>
+        <div class="db"><p data-w="W-309">設定を再読み込みします。取り込みは一時停止し、再構築されます。よろしいですか?</p></div>
+        <div class="df">
+          <button class="btn primary" data-go="set:reloaded">OK</button>
+          <button class="btn" data-go="set:normal" style="outline: 2px solid var(--accent);">キャンセル</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== バージョン情報 ========== -->
+  <section data-if="page:version">
+    <h2>バージョン情報</h2>
+    <div class="card">
+      <p style="font-size: 16px; margin-top: 0;" data-if="upd:none,pending" data-w="W-501">Radirec 0.12.0</p>
+      <p style="font-size: 16px; margin-top: 0;" data-if="upd:dev" data-w="W-501">Radirec 0.0.0-dev</p>
+
+      <div data-if="upd:none,pending" class="row">
+        <button class="btn" data-go="ver:latest" data-w="W-502">今すぐ更新を確認</button>
+        <button class="btn primary" data-if="upd:pending" data-go="ver:applyconfirm" data-w="W-507">更新 v0.13.0 を適用して再起動</button>
+      </div>
+      <p class="sub an" data-if="upd:dev" data-w="W-510">この版は自己更新の対象外です(開発版・portable)</p>
+
+      <div data-if="upd:none,pending">
+        <div class="msg info" data-if="ver:latest" data-w="W-503">最新版です。</div>
+        <div class="msg info" data-if="ver:found" data-w="W-504">更新があります(v0.13.0)。</div>
+        <div class="msg info" data-if="ver:busy" data-w="W-505">更新を確認中です。少し待って再度お試しください。</div>
+        <div class="msg warn" data-if="ver:fail" data-w="W-506">更新チェックに失敗しました(gui.log 参照)。</div>
+        <div class="msg info" data-if="ver:applyfail" data-w="W-509">適用できる更新はありません(最新か、取り下げられました)。</div>
+        <div class="msg warn" data-if="ver:applyfail" data-w="W-509">更新の適用に失敗しました(gui.log 参照)。</div>
+      </div>
+      <div class="mocknote">「更新を適用して再起動」は保留中だけ出す(トレイにも同じ項目が出る)。開発版・portable では更新の項目を出さない。</div>
+    </div>
+
+    <div class="overlay" data-if="page:version ver:applyconfirm upd:pending">
+      <div class="dialog">
+        <div class="dh">更新の適用</div>
+        <div class="db"><p data-w="W-508">更新 v0.13.0 を適用してアプリを再起動します。取り込み中の走査は完了を待ってから安全に再起動します。よろしいですか?</p></div>
+        <div class="df">
+          <button class="btn primary" style="outline: 2px solid var(--accent);">OK</button>
+          <button class="btn" data-go="ver:idle">キャンセル</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </div>
+  <div class="statusbar an" data-w="W-003">閉じてもトレイに常駐し、取り込みは続きます</div>
+</div>
+
+<!-- ================= トレイと通知 ================= -->
+<div class="tray-scene" data-if="scene:tray">
+  <div class="tray-col">
+    <h3>トレイのメニュー(通常)</h3>
+    <div class="traymenu">
+      <div class="dis" data-w="W-601">Radirec 0.12.0</div><hr>
+      <div class="def" data-w="W-602">Radirec を開く</div>
+      <div data-w="W-603">今すぐ再スキャン</div><hr>
+      <div class="dis" data-w="W-604">状態: 稼働中(監視中)</div>
+      <div class="dis" data-w="W-604">最終スキャン: 9/25 10:42 検知(取込 3)</div><hr>
+      <div data-w="W-607">終了</div>
+    </div>
+    <div class="mocknote" style="width: 300px;">太字は既定の項目(アイコンのダブルクリックでも開く)。</div>
+  </div>
+
+  <div class="tray-col">
+    <h3>更新の保留中</h3>
+    <div class="traymenu">
+      <div class="dis" data-w="W-601">Radirec 0.12.0</div><hr>
+      <div class="def" data-w="W-602">Radirec を開く</div>
+      <div data-w="W-603">今すぐ再スキャン</div><hr>
+      <div class="dis" data-w="W-604">状態: 稼働中(監視中)</div>
+      <div class="dis" data-w="W-604">最終スキャン: 9/25 10:42 検知(取込 3)</div><hr>
+      <div data-w="W-605">更新 v0.13.0 を適用して再起動</div><hr>
+      <div data-w="W-607">終了</div>
+    </div>
+  </div>
+
+  <div class="tray-col">
+    <h3>縮退(取り込みが止まっている)</h3>
+    <div class="traymenu">
+      <div class="dis" data-w="W-601">Radirec 0.12.0</div><hr>
+      <div class="def" data-w="W-602">Radirec を開く</div>
+      <div class="dis" data-w="W-603">今すぐ再スキャン</div><hr>
+      <div class="dis" data-w="W-604">状態: 取り込み停止中(設定を読み込めませんでした)</div>
+      <div class="dis" data-w="W-604">最終スキャン: —</div><hr>
+      <div data-w="W-606">再読み込みして再起動</div>
+      <div data-w="W-607">終了</div>
+    </div>
+  </div>
+
+  <div class="tray-col" style="width: 380px;">
+    <h3>トレイから消える項目</h3>
+    <div class="mocknote">管理画面へ移る(移し終えた段で消す。§10.3):
+      <span class="gone">設定リロード…</span> /
+      <span class="gone">統合設定の再適用…</span> /
+      <span class="gone">設定ファイルを開く ▸</span> /
+      <span class="gone">取込履歴…</span> /
+      <span class="gone">今すぐ更新を確認</span></div>
+
+    <h3>バルーン(トレイに残した操作)</h3>
+    <div class="toast"><div class="app">Radirec</div><div data-w="W-608">手動再スキャンを要求しました</div></div>
+    <div class="toast"><div class="app">Radirec</div><div class="an" data-w="W-609">更新があります(v0.13.0)。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。</div></div>
+
+    <h3>取込通知(トースト)</h3>
+    <div class="toast" data-w="W-701"><div class="app">Radirec</div>
+      <div class="t">新規取込 3件</div>
+      <div>安住紳一郎の日曜天国（TBSラジオ）2件</div>
+      <div>オードリーのオールナイトニッポン（ニッポン放送）2026-09-20 01:00</div></div>
+    <div class="toast" data-w="W-702"><div class="app">Radirec</div>
+      <div class="t">取込失敗 1件</div>
+      <div>[ニッポン放送]オードリーのオールナイトニッポン(TimeFree)_20270229010000.m4a（放送日時が不正です …）</div></div>
+    <div class="mocknote">新規取込のトーストは、設定ページでオフにすると出ない。失敗のトーストは常に出る。
+      新規取込のトーストの最後の行に出ていた兄弟フォルダの知らせ(<span class="gone">分割番組らしいフォルダ…に統合設定がありません</span>)は出さなくなる(要対応へ)。</div>
+  </div>
+</div>
+
+</div>
+
+<script>
+(function () {
+  var body = document.body;
+
+  // data-if="key:v1,v2 key2:v3" … body の data-* がすべて合うときだけ見せる。
+  function matches(expr) {
+    return expr.trim().split(/\s+/).every(function (cond) {
+      var i = cond.indexOf(':');
+      var key = cond.slice(0, i);
+      var values = cond.slice(i + 1).split(',');
+      return values.indexOf(body.dataset[key]) >= 0;
+    });
+  }
+
+  function render() {
+    document.querySelectorAll('[data-if]').forEach(function (el) {
+      el.hidden = !matches(el.getAttribute('data-if'));
+    });
+    document.querySelectorAll('nav button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-go') === 'page:' + body.dataset.page);
+    });
+    document.querySelectorAll('.controls .scene button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-go') === 'scene:' + body.dataset.scene);
+    });
+    document.querySelectorAll('.controls select').forEach(function (s) {
+      s.value = body.dataset[s.getAttribute('data-key')];
+    });
+  }
+
+  // data-go="key:value key2:value2" … 押すと状態を切り替える(画面の中の遷移とモックの操作の両方)。
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-go]');
+    if (!el || el.disabled) return;
+    el.getAttribute('data-go').trim().split(/\s+/).forEach(function (pair) {
+      var i = pair.indexOf(':');
+      body.dataset[pair.slice(0, i)] = pair.slice(i + 1);
+    });
+    if (el.closest('nav')) body.dataset.rescan = 'idle';
+    render();
+  });
+
+  document.querySelectorAll('.controls select').forEach(function (s) {
+    s.addEventListener('change', function () {
+      body.dataset[s.getAttribute('data-key')] = s.value;
+      render();
+    });
+  });
+
+  document.getElementById('toggle-an').addEventListener('change', function (e) {
+    body.classList.toggle('show-an', e.target.checked);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
