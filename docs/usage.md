@@ -95,6 +95,7 @@ dotnet run --project src/Radirec.Cli -- ingest
 | `ingest` | `dryRun`、`counts`(`imported` / `planned` / `alreadyImported` / `unstable` / `junk` / `unsupported` / `failed`)、`items[]`(`outcome`・`source`・`output`・`message`・`usedFallback`)、`libraryRefresh`(`status`・`error`) |
 | `reapply` | `dryRun`、`aligned`(揃っているか)、`counts`(`move` / `ledgerAndTags` / `ledgerOnly` / `duplicateLeft` / `excluded` / `failed`)、`duplicatesRewritingTags`、`albums[]`(アルバム単位のまとめ)、`items[]`(明細。`action`・`broadcastDate`・`fromPath`・`toPath`・`reason` など)、`unintegratedSiblings[]`(統合設定の無い兄弟フォルダの組)、`libraryRefresh` |
 | `refresh` | `status`(`started` / `notConfigured` / `misconfigured` / `failed`)、`error` |
+| `history` | `entries[]`(新しい順。`program`・`station`・`broadcastDate`・`broadcastTime`(時刻の無い録音は null)・`part`・`importedAt`(ISO 8601、時差つき)・`outputPath`・`sourcePath`) |
 
 列挙の値(`outcome`・`action`・`status`)は camelCase の文字列です(`skippedAlreadyImported` など)。日本語は
 エスケープせずにそのまま出し、出力は UTF-8 です。
@@ -139,6 +140,21 @@ Jellyfin の全ライブラリスキャンを起動**します(`POST /Library/Re
 ```powershell
 radirec refresh
 ```
+
+### 取込履歴を見る(`history`)
+
+台帳から、取り込んだ回を**新しい順**に出します(管理画面の取込履歴と同じ行・同じ表記)。台帳を読み取り専用で
+開くだけなので、常駐(トレイ)が動いていなくても使え、取り込みの邪魔もしません(#182)。
+
+```powershell
+radirec history                               # 新しい方から 5 件(管理画面のホームと同じ)
+radirec history --limit 20                    # 20 件。--limit 0 は全件
+radirec history --since 2026-09-01 --json     # 取込日時が 9/1 以降のものを JSON で
+```
+
+- `--since` は取込日時で絞ります。`2026-09-01` や `2026-09-01T12:00` のように時差の無い値はローカル時刻として
+  読みます。読めない値や、`--limit` が負のときは使い方の誤り(終了コード 1)です
+- まだ何も取り込んでいない(台帳が無い)ときは、空のまま成功(0)で終わります
 
 ### 統合設定を取り込み済みの回へ再適用する(`reapply`)
 

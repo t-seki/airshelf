@@ -47,13 +47,6 @@ public sealed record IngestHistoryRow
     /// 放送日 + (時刻があれば <c>HH:mm</c>)+ (part&gt;0 なら <c>(N)</c>)。時刻なし(radikool 等)は日付のみ。
     /// 同日別放送の区別(時刻 or part)を1列で読めるようにする。
     /// </summary>
-    public static string FormatBroadcast(DateOnly date, TimeOnly? time, int partIndex)
-    {
-        var text = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        if (time is { } t)
-            text += " " + t.ToString("HH:mm", CultureInfo.InvariantCulture);
-        if (partIndex > 0)
-            text += $" ({partIndex})";
-        return text;
-    }
+    public static string FormatBroadcast(DateOnly date, TimeOnly? time, int partIndex) =>
+        BroadcastLabel.Format(date, time, partIndex); // CLI の radirec history と共有(#182)
 }

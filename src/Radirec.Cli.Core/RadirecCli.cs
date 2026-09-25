@@ -31,7 +31,10 @@ public static class RadirecCli
     public static string? CommandOf(string[] args)
     {
         var first = args.FirstOrDefault(a => !a.StartsWith('-'));
-        return first is IngestCommand.Name or ReapplyCommand.Name or RefreshCommand.Name ? first : null;
+        return first is IngestCommand.Name or ReapplyCommand.Name or RefreshCommand.Name
+            or HistoryCommand.Name
+            ? first
+            : null;
     }
 
     private static void Configure(
@@ -59,6 +62,10 @@ public static class RadirecCli
         config.AddCommand<RefreshCommand>(RefreshCommand.Name)
             .WithDescription("Jellyfin のライブラリ更新を手動で起動する")
             .WithExample(RefreshCommand.Name);
+        config.AddCommand<HistoryCommand>(HistoryCommand.Name)
+            .WithDescription("取込履歴を新しい順に出す(台帳を読むだけ。常駐が動いていなくても使える)")
+            .WithExample(HistoryCommand.Name, "--limit", "20")
+            .WithExample(HistoryCommand.Name, "--since", "2026-09-01", "--json");
         // 常駐(service)と制御 verb(rescan/status/reload)は撤去した。常駐はトレイ(Radirec.Gui)が
         // 担い、制御はトレイメニューから in-process で行う(ADR-0012)。radirec.exe は dev/batch 用の
         // 単発 CLI(ingest / reapply / refresh)に縮小。一回きりの移行のための ingest --root と organize-source、
