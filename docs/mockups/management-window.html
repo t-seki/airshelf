@@ -109,7 +109,7 @@
 </style>
 </head>
 <body class="show-an" data-scene="window" data-page="home" data-run="watching" data-upd="none" data-attn="items" data-pf="used"
-      data-hist="recent" data-rescan="idle" data-prog="list" data-set="normal" data-ver="idle">
+      data-hist="ok" data-rescan="idle" data-prog="list" data-set="normal" data-ver="idle">
 
 <div class="banner">
   <strong>これはスクリーンショットではなくモックです。</strong>
@@ -142,8 +142,7 @@
     </select></label>
   <label>取込履歴
     <select data-key="hist">
-      <option value="recent">新しい方の数件</option>
-      <option value="all">すべて表示</option>
+      <option value="ok">読める</option>
       <option value="error">読み込み失敗</option>
     </select></label>
   <label>番組ページの段
@@ -207,6 +206,7 @@
   <div class="titlebar"><span data-w="W-001" class="an">Radirec</span><span class="caps"><span>—</span><span>☐</span><span>✕</span></span></div>
   <nav>
     <button data-go="page:home" class="on" data-w="W-002">ホーム</button>
+    <button data-go="page:history" data-w="W-002">取込履歴</button>
     <button data-go="page:programs" data-w="W-002">番組</button>
     <button data-go="page:settings" data-w="W-002">設定</button>
     <button data-go="page:version" data-w="W-002">バージョン情報</button>
@@ -306,15 +306,10 @@
     </div>
 
     <h3><span data-w="W-140">取込履歴</span>
-      <span class="sub an" data-if="hist:recent run:watching,polling,noscan,crashed,startfail" data-w="W-140">新しい方の 5 件</span>
-      <span class="sub" data-if="hist:all run:watching,polling,noscan,crashed,startfail" data-w="W-142">248 件</span></h3>
+      <span class="sub an" data-if="hist:ok run:watching,polling,noscan,crashed,startfail" data-w="W-140">新しい方の 5 件</span></h3>
     <div data-if="run:noconfig" class="msg warn an" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
     <div data-if="hist:error run:watching,polling,noscan,crashed,startfail" class="msg err" data-w="W-149">読み込みに失敗しました</div>
-    <div data-if="hist:recent,all run:watching,polling,noscan,crashed,startfail">
-      <div class="row" style="margin-bottom: 6px;" data-if="hist:all">
-        <button class="btn small" data-w="W-143">更新</button>
-        <span class="sub" data-w="W-146">エクスプローラーで開きました: 安住紳一郎の日曜天国_20260921.m4a</span>
-      </div>
+    <div data-if="hist:ok run:watching,polling,noscan,crashed,startfail">
       <table class="grid">
         <colgroup><col style="width:240px"><col style="width:120px"><col style="width:150px"><col style="width:140px"><col></colgroup>
         <tr data-w="W-141"><th>番組</th><th>放送局</th><th>放送</th><th>取込日時</th><th>ファイル</th></tr>
@@ -323,13 +318,43 @@
         <tr><td>LOGISTEED RADIONOMICS</td><td>J-WAVE</td><td>2026-09-19 22:00</td><td>2026-09-25 10:42</td><td>LOGISTEED RADIONOMICS_20260919.m4a</td></tr>
         <tr><td>パンサー向井のふらっと</td><td>TBSラジオ</td><td>2026-09-19 08:30 (2)</td><td>2026-09-24 09:12</td><td>パンサー向井のふらっと_20260919.m4a</td></tr>
         <tr><td>大竹まこと ゴールデンラジオ!(1)</td><td>文化放送</td><td>2026-09-18</td><td>2026-09-24 09:12</td><td>大竹まこと ゴールデンラジオ!(1)_20260918.m4a</td></tr>
-        <tr data-if="hist:all"><td>レコメン!</td><td>文化放送</td><td>2026-09-17 22:00</td><td>2026-09-23 23:05</td><td>レコメン!_20260917.m4a</td></tr>
-        <tr data-if="hist:all"><td colspan="5" class="sub">…(全件。列の見出しで並べ替えられる)</td></tr>
       </table>
-      <div class="row" style="justify-content: flex-end; margin-top: 6px;" data-if="hist:recent">
-        <button class="btn small an" data-go="hist:all" data-w="W-142">すべて表示</button>
+      <div class="row" style="justify-content: flex-end; margin-top: 6px;">
+        <button class="btn small an" data-go="page:history" data-w="W-142">すべて表示</button>
       </div>
-      <div data-if="hist:all" style="margin-top: 8px;">
+      <div class="mocknote">「すべて表示」は取込履歴ページへ移る(ホームの中では広げない。広げると要対応が押し出される)。</div>
+    </div>
+  </section>
+
+  <!-- ========== 取込履歴 ========== -->
+  <section data-if="page:history">
+    <h2>取込履歴</h2>
+    <div data-if="run:noconfig" class="msg warn an" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
+    <div data-if="hist:error run:watching,polling,noscan,crashed,startfail">
+      <div class="row" style="margin-bottom: 6px;">
+        <button class="btn small" data-w="W-143">更新</button>
+        <span class="sub" data-w="W-149">読み込みに失敗しました</span>
+      </div>
+    </div>
+    <div data-if="hist:ok run:watching,polling,noscan,crashed,startfail">
+      <div class="row" style="margin-bottom: 6px;">
+        <button class="btn small" data-w="W-143">更新</button>
+        <span class="sub" data-w="W-151">248 件</span>
+        <span class="sub" style="margin-left: 16px;" data-w="W-146">エクスプローラーで開きました: 安住紳一郎の日曜天国_20260921.m4a</span>
+      </div>
+      <table class="grid">
+        <colgroup><col style="width:240px"><col style="width:120px"><col style="width:150px"><col style="width:140px"><col></colgroup>
+        <tr data-w="W-141"><th>番組</th><th>放送局</th><th>放送</th><th>取込日時 ▼</th><th>ファイル</th></tr>
+        <tr class="sel"><td>安住紳一郎の日曜天国</td><td>TBSラジオ</td><td>2026-09-21 10:00 (1)</td><td>2026-09-25 10:42</td><td>安住紳一郎の日曜天国_20260921.m4a</td></tr>
+        <tr><td>オードリーのオールナイトニッポン</td><td>ニッポン放送</td><td>2026-09-20 01:00</td><td>2026-09-25 10:42</td><td>オードリーのオールナイトニッポン_20260920.m4a</td></tr>
+        <tr><td>LOGISTEED RADIONOMICS</td><td>J-WAVE</td><td>2026-09-19 22:00</td><td>2026-09-25 10:42</td><td>LOGISTEED RADIONOMICS_20260919.m4a</td></tr>
+        <tr><td>パンサー向井のふらっと</td><td>TBSラジオ</td><td>2026-09-19 08:30 (2)</td><td>2026-09-24 09:12</td><td>パンサー向井のふらっと_20260919.m4a</td></tr>
+        <tr><td>大竹まこと ゴールデンラジオ!(1)</td><td>文化放送</td><td>2026-09-18</td><td>2026-09-24 09:12</td><td>大竹まこと ゴールデンラジオ!(1)_20260918.m4a</td></tr>
+        <tr><td>レコメン!</td><td>文化放送</td><td>2026-09-17 22:00</td><td>2026-09-23 23:05</td><td>レコメン!_20260917.m4a</td></tr>
+        <tr><td>安住紳一郎の日曜天国</td><td>TBSラジオ</td><td>2026-09-14 10:00 (2)</td><td>2026-09-22 08:01</td><td>安住紳一郎の日曜天国_20260914.m4a</td></tr>
+        <tr><td colspan="5" class="sub">…(全件。新しい順。列の見出しで並べ替えられる)</td></tr>
+      </table>
+      <div style="margin-top: 8px;">
         <div class="form" data-w="W-145" style="grid-template-columns: 60px 1fr; font-size: 13px;">
           <span>出力先</span><span>\\NAS\share\media\radio\TBSラジオ\安住紳一郎の日曜天国\安住紳一郎の日曜天国_20260921.m4a</span>
           <span>取込元</span><span>I:\radio\tmp\RADIO\TBSラジオ\安住紳一郎の日曜天国(1)\[TBSラジオ]安住紳一郎の日曜天国(TimeFree)_20260921100000.m4a</span>
@@ -347,7 +372,7 @@
             <span data-w="W-148">パスをコピーしました</span> /
             <span data-w="W-148">パスをコピーできませんでした</span></div>
         </div>
-        <div class="row" style="justify-content: flex-end;"><button class="btn small" data-go="hist:recent">(モック:数件に戻す)</button></div>
+        <div class="mocknote">いまの取込履歴ウィンドウ(IngestHistoryWindow)の中身を、このページに引き継ぐ。開いた時点のスナップショットで、「更新」で読み直す。</div>
       </div>
     </div>
   </section>
