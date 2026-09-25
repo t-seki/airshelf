@@ -56,6 +56,7 @@ public static class RadirecCli
     {
         var first = args.FirstOrDefault(a => !a.StartsWith('-'));
         return first is IngestCommand.Name or ReapplyCommand.Name or RefreshCommand.Name
+            or HistoryCommand.Name
             or StatusCommand.Name or ReloadCommand.Name
             ? first
             : null;
@@ -86,8 +87,13 @@ public static class RadirecCli
         config.AddCommand<RefreshCommand>(RefreshCommand.Name)
             .WithDescription("Jellyfin のライブラリ更新を手動で起動する")
             .WithExample(RefreshCommand.Name);
-        // 常駐はトレイ(Radirec.Gui)が担う(ADR-0012)。status / reload は、トレイの制御チャネル(named pipe)へ頼む形で
-        // 戻した(ADR-0020 / #179。ConfigureControl)。一回きりの移行のための ingest --root と organize-source、
+        config.AddCommand<HistoryCommand>(HistoryCommand.Name)
+            .WithDescription("取込履歴を新しい順に出す(台帳を読むだけ。常駐が動いていなくても使える)")
+            .WithExample(HistoryCommand.Name, "--limit", "20")
+            .WithExample(HistoryCommand.Name, "--since", "2026-09-01", "--json");
+        // 常駐はトレイ(Radirec.Gui)が担う(ADR-0012)。ingest / reapply / refresh / history は CLI が直接行い、status / reload は
+        // トレイの制御チャネル(named pipe)へ頼む形で戻した(ADR-0020 / #179。ConfigureControl)。一回きりの移行のための
+        // ingest --root と organize-source、
         // 設定ファイルを指す --config は削った(ADR-0020)。設定は常にトレイと同じ既定の radirec.json を使う。
     }
 
