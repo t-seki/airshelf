@@ -134,6 +134,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     private readonly IServiceControl? _control;
     private readonly Func<string?>? _locateProgramsFile;
     private readonly Func<DateTime> _now;
+    private readonly Func<string, Task<ProgramsFileSnapshot>> _readForLoad;
     private readonly Action<string> _logWarn;
     private readonly Action<string> _logInfo;
     private readonly ProgramsApplyGate _applyGate;
@@ -199,6 +200,10 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <param name="navigate">
     /// 管理画面のページを移る。保存済みの設定での確認(<see cref="ConfirmSavedAsync"/>)の「戻る」で、来たページへ戻るのに使う。
     /// </param>
+    /// <param name="readForLoad">
+    /// <see cref="LoadAsync"/> が programs.json を読む(テスト用。読み込みを止めておき、読み終わる順序をテストで決める)。
+    /// 既定は <see cref="ProgramsFileWriter.Read"/> をスレッドプールで読む。
+    /// </param>
     public ProgramsPageViewModel(
         IServiceControl? control,
         Func<string?>? locateProgramsFile,
@@ -206,7 +211,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
         Action<string> logWarn,
         Action<string>? logInfo = null,
         Func<DateTime>? now = null,
-        Action<ManagementPage>? navigate = null)
+        Action<ManagementPage>? navigate = null,
+        Func<string, Task<ProgramsFileSnapshot>>? readForLoad = null)
     {
         _control = control;
         _locateProgramsFile = locateProgramsFile;
@@ -214,6 +220,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
         _logWarn = logWarn;
         _logInfo = logInfo ?? (_ => { });
         _now = now ?? (() => DateTime.Now);
+        // ProgramsFile が NAS を指していても UI スレッドを塞がない。
+        _readForLoad = readForLoad ?? (path => Task.Run(() => ProgramsFileWriter.Read(path)));
         _navigate = navigate ?? (_ => { });
 
         AddProgramCommand = new RelayCommand(AddProgram, () => IsListMode && IsReady);
@@ -650,8 +658,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         IsUnused = false;
         try
         {
-            // ProgramsFile が NAS を指していても UI スレッドを塞がない。
-            var snapshot = await Task.Run(() => ProgramsFileWriter.Read(path));
+            var snapshot = await _readForLoad(path);
             LoadError = null;
             SetSnapshot(snapshot);
         }
