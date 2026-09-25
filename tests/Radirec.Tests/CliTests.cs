@@ -8,6 +8,7 @@ using Radirec.Core.Ledger;
 using Radirec.Core.Normalization;
 using Radirec.Core.Reapply;
 using Radirec.Hosting;
+using Radirec.Hosting.Control;
 using Spectre.Console;
 
 namespace Radirec.Tests;
@@ -50,6 +51,42 @@ public sealed class CliTests
     {
         var report = Ingest(IngestOutcome.Imported) with { LibraryRefresh = LibraryRefreshStatus.NotConfigured };
         Assert.Equal(ExitCodes.Success, ExitCodeRules.For(report));
+    }
+
+    [Fact]
+    public void 取り込みでJellyfinUrlの形式が不正なら1()
+    {
+        // 再試行では直らない設定の誤りなので、refresh と同じ 1(#191)。
+        var report = Ingest(IngestOutcome.Imported) with
+        {
+            LibraryRefresh = LibraryRefreshStatus.Misconfigured, RefreshError = "形式が不正",
+        };
+        Assert.Equal(ExitCodes.UsageOrConfig, ExitCodeRules.For(report));
+        Assert.Equal(ExitCodes.UsageOrConfig, ExitCodeRules.For(ScanRunReport.From(report)));
+    }
+
+    [Fact]
+    public void 回の失敗はJellyfinUrlの形式不正より優先して4()
+    {
+        var report = Ingest(IngestOutcome.Failed) with { LibraryRefresh = LibraryRefreshStatus.Misconfigured };
+        Assert.Equal(ExitCodes.PartialFailure, ExitCodeRules.For(report));
+    }
+
+    [Fact]
+    public void 常駐に頼んだ走査でJellyfinの更新だけ失敗したら5()
+    {
+        var report = Ingest(IngestOutcome.Imported) with { LibraryRefresh = LibraryRefreshStatus.Failed, RefreshError = "503" };
+        Assert.Equal(ExitCodes.ExternalFailure, ExitCodeRules.For(ScanRunReport.From(report)));
+    }
+
+    [Theory]
+    [InlineData(LibraryRefreshStatus.Failed, ExitCodes.ExternalFailure)]
+    [InlineData(LibraryRefreshStatus.Misconfigured, ExitCodes.UsageOrConfig)]
+    [InlineData(LibraryRefreshStatus.NotConfigured, ExitCodes.Success)]
+    public void 再適用のJellyfinの更新の結果は取り込みと同じ規則(LibraryRefreshStatus refresh, int expected)
+    {
+        var report = Reapply(ReapplyAction.Move) with { LibraryRefresh = refresh };
+        Assert.Equal(expected, ExitCodeRules.For(report));
     }
 
     [Fact]
@@ -225,6 +262,21 @@ public sealed class CliTests
         Assert.Equal(@"I:\radio\局\番組\b.m4a", failed.GetProperty("source").GetString());
         Assert.Equal("タグを読めません", failed.GetProperty("message").GetString());
         Assert.Equal("started", result.GetProperty("libraryRefresh").GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void ingestのJSONはJellyfinUrlの形式不正をmisconfiguredで出す()
+    {
+        var report = Ingest(IngestOutcome.Imported) with
+        {
+            LibraryRefresh = LibraryRefreshStatus.Misconfigured, RefreshError = "形式が不正",
+        };
+        using var doc = Parse(CliJson.Result("ingest", ExitCodeRules.For(report), IngestJson.From(report)));
+
+        Assert.Equal(1, doc.RootElement.GetProperty("exitCode").GetInt32());
+        var refresh = doc.RootElement.GetProperty("result").GetProperty("libraryRefresh");
+        Assert.Equal("misconfigured", refresh.GetProperty("status").GetString());
+        Assert.Equal("形式が不正", refresh.GetProperty("error").GetString());
     }
 
     [Fact]

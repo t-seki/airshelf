@@ -219,7 +219,8 @@ public static class ReapplyDialogFormatter
     {
         LibraryRefreshStatus.Started => "Jellyfin ライブラリ更新: 起動しました",
         LibraryRefreshStatus.NotConfigured => "Jellyfin ライブラリ更新: 未設定のため行いません",
-        LibraryRefreshStatus.Failed => $"Jellyfin ライブラリ更新に失敗しました: {report.RefreshError ?? "理由不明"}",
+        LibraryRefreshStatus.Failed or LibraryRefreshStatus.Misconfigured =>
+            $"Jellyfin ライブラリ更新に失敗しました: {report.RefreshError ?? "理由不明"}",
         _ => null,
     };
 

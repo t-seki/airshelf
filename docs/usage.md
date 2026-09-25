@@ -108,7 +108,7 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
 
 | コマンド | 主なフィールド |
 |------|------|
-| `ingest` | `dryRun`、`counts`(`imported` / `planned` / `alreadyImported` / `unstable` / `junk` / `unsupported` / `failed`)、`items[]`(`outcome`・`source`・`output`・`message`・`usedFallback`)、`libraryRefresh`(`status`・`error`) |
+| `ingest` | `dryRun`、`counts`(`imported` / `planned` / `alreadyImported` / `unstable` / `junk` / `unsupported` / `failed`)、`items[]`(`outcome`・`source`・`output`・`message`・`usedFallback`)、`libraryRefresh`(`status`:`notNeeded` / `notConfigured` / `started` / `failed` / `misconfigured`、`error`) |
 | `reapply` | `dryRun`、`aligned`(揃っているか)、`counts`(`move` / `ledgerAndTags` / `ledgerOnly` / `duplicateLeft` / `excluded` / `failed`)、`duplicatesRewritingTags`、`albums[]`(アルバム単位のまとめ)、`items[]`(明細。`action`・`broadcastDate`・`fromPath`・`toPath`・`reason` など)、`unintegratedSiblings[]`(統合設定の無い兄弟フォルダの組)、`libraryRefresh` |
 | `refresh` | `status`(`started` / `notConfigured` / `misconfigured` / `failed`)、`error` |
 | `history` | `entries[]`(新しい順。`program`・`station`・`broadcastDate`・`broadcastTime`(時刻の無い録音は null)・`part`・`importedAt`(ISO 8601、時差つき)・`outputPath`・`sourcePath`) |
@@ -124,14 +124,15 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
 | コード | 意味 | 次にすること |
 |------|------|------|
 | 0 | 成功(失敗した回は 0 件) | 次へ進む |
-| 1 | 使い方の誤り(知らないオプション・コマンド)・設定を読めない・Jellyfin が未設定か URL の形式が不正(`refresh`)。想定外の例外(内部エラー)も 1 | 引数か設定を直す。想定外の例外なら、理由は `gui.log` ではなく出力(`--json` なら `error`)にある |
+| 1 | 使い方の誤り(知らないオプション・コマンド)・設定を読めない・Jellyfin が未設定か URL の形式が不正(`refresh`。`ingest` / `reapply` は URL の形式不正だけ)。想定外の例外(内部エラー)も 1 | 引数か設定を直す。想定外の例外なら、理由は `gui.log` ではなく出力(`--json` なら `error`)にある |
 | 2 | 常駐が動いていない・取り込みが止まっている・常駐から応答を得られない(`ingest`・`reload` など常駐に頼むコマンド。`status` は答えとして 0。§6「CLI から状態を見る」) | トレイを起動する(縮退なら設定を直してトレイを再起動する)。`ingest` の時間切れ・途中で切れたときは、走査がトレイで続いていることがあるので、先に `radirec status` で確かめる |
 | 3 | 確かめた予定が変わった(#181 以降の `reapply` で使う) | dry-run からやり直す |
 | 4 | 完了したが、一部の回が失敗した | 明細(`items[]` の `failed`)を調べる |
 | 5 | 外部との接続に失敗した(Jellyfin に繋がらない・エラー・時間切れ、NAS に届かない) | 時間をおいて再試行する |
 
 - `ingest` と `reapply` は、失敗した回があれば 4、無くて Jellyfin の更新に失敗していれば 5 を返します(回の失敗を優先)。
-  Jellyfin が未設定なのは失敗にしません(0)。
+  Jellyfin が未設定なのは失敗にしません(0)。`JellyfinUrl` の形式が不正で更新できなかったときは、再試行では直らないので
+  `refresh` と同じ 1 です(`libraryRefresh.status` は `misconfigured`。#191。以前は 5 でした)。
 - `ingest` は、トレイでの走査そのものが途中で失敗したとき(取込元・出力先に届かない)も 5 です。走査が時間内に
   終わらなかった・トレイとの接続が切れたときは 2 です(走査はトレイで続いていることがあります。`radirec status` で確かめる)。
 - 以前は、取り込みの一部が失敗しても 0 を返していました(#178 で 4 に変わった)。

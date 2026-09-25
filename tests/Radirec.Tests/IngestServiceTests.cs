@@ -623,14 +623,15 @@ public sealed class IngestServiceTests
     }
 
     [Fact]
-    public async Task Run_WithImport_MisconfiguredJellyfin_ReportsFailedWithReason()
+    public async Task Run_WithImport_MisconfiguredJellyfin_ReportsMisconfiguredWithReason()
     {
         // JellyfinUrl の形式不正は未設定ではなく失敗として理由を報告する(#133)。
+        // 繋がらない・エラー(Failed)とは分ける。再試行では直らないため(#191)。
         var report = await Build([Rec(StandardName)], refresher: new MisconfiguredLibraryRefresher("形式が不正"))
             .RunOnceAsync(dryRun: false);
 
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
-        Assert.Equal(LibraryRefreshStatus.Failed, report.LibraryRefresh);
+        Assert.Equal(LibraryRefreshStatus.Misconfigured, report.LibraryRefresh);
         Assert.Equal("形式が不正", report.RefreshError);
     }
 

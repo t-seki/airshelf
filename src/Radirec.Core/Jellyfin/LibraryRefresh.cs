@@ -21,6 +21,11 @@ public static class LibraryRefresh
             await refresher.RefreshAsync(cancellationToken);
             return (LibraryRefreshStatus.Started, null);
         }
+        // 設定の誤り(JellyfinUrl の形式不正)は、繋がらない・エラーと分ける。再試行では直らない(#191)。
+        catch (JellyfinException ex) when (refresher is MisconfiguredLibraryRefresher)
+        {
+            return (LibraryRefreshStatus.Misconfigured, ex.Message);
+        }
         // 真のキャンセル(呼び出し元のトークン発火)は伝播させる。
         // HttpClient のタイムアウト(トークン未発火の TaskCanceledException)含むそれ以外の
         // 失敗は握って報告する。

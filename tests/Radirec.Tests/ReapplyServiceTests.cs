@@ -897,6 +897,19 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(LibraryRefreshStatus.Started, report.LibraryRefresh);
     }
 
+    [Fact]
+    public async Task Apply_WithMoves_MisconfiguredJellyfin_ReportsMisconfigured()
+    {
+        // JellyfinUrl の形式不正は Failed と分けて報告する(CLI の終了コードを 1 にするため。#191)。
+        var ledger = await IngestSplitAsync();
+
+        var report = await Reapply(ledger, Merged(), refresher: new MisconfiguredLibraryRefresher("形式が不正"))
+            .RunAsync(dryRun: false);
+
+        Assert.Equal(LibraryRefreshStatus.Misconfigured, report.LibraryRefresh);
+        Assert.Equal("形式が不正", report.RefreshError);
+    }
+
     private sealed class CountingRefresher : ILibraryRefresher
     {
         public int Calls { get; private set; }

@@ -60,8 +60,17 @@ public enum LibraryRefreshStatus
     /// <summary>更新を起動した(サーバ側で非同期実行。完了は待たない)。</summary>
     Started,
 
-    /// <summary>更新の起動に失敗した(理由は <see cref="IngestReport.RefreshError"/>)。JellyfinUrl の形式不正も含む。</summary>
+    /// <summary>
+    /// 更新の起動に失敗した(繋がらない・エラー・時間切れ。理由は <see cref="IngestReport.RefreshError"/>)。
+    /// 時間をおけば直りうる。設定の誤りは <see cref="Misconfigured"/>。
+    /// </summary>
     Failed,
+
+    /// <summary>
+    /// 設定が不正で更新できない(JellyfinUrl の形式不正。理由は <see cref="IngestReport.RefreshError"/>)。
+    /// 設定を直さない限り直らないので <see cref="Failed"/> と分ける(#191)。
+    /// </summary>
+    Misconfigured,
 }
 
 /// <summary>取り込み実行全体の結果。</summary>
@@ -73,7 +82,10 @@ public sealed record IngestReport
     /// <summary>取込後の Jellyfin ライブラリ更新の状態(取込0件・dry-run 時は <see cref="LibraryRefreshStatus.NotNeeded"/>)。</summary>
     public LibraryRefreshStatus LibraryRefresh { get; init; }
 
-    /// <summary>ライブラリ更新に失敗したときのメッセージ(<see cref="LibraryRefreshStatus.Failed"/> 以外は null)。</summary>
+    /// <summary>
+    /// ライブラリ更新に失敗したときのメッセージ(<see cref="LibraryRefreshStatus.Failed"/>・
+    /// <see cref="LibraryRefreshStatus.Misconfigured"/> 以外は null)。
+    /// </summary>
     public string? RefreshError { get; init; }
 
     /// <summary>

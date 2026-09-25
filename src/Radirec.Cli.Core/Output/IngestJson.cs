@@ -39,6 +39,9 @@ public sealed record IngestCountsJson(
 /// <param name="UsedFallback">放送局・番組を解決できず、フォルダ名などから仮に決めたか。</param>
 public sealed record IngestItemJson(IngestOutcome Outcome, string Source, string? Output, string? Message, bool UsedFallback);
 
-/// <param name="Status">Jellyfin のライブラリ更新(<c>notNeeded</c>・<c>notConfigured</c>・<c>started</c>・<c>failed</c>)。</param>
-/// <param name="Error">失敗の理由(<c>failed</c> 以外は null)。</param>
+/// <param name="Status">
+/// Jellyfin のライブラリ更新(<c>notNeeded</c>・<c>notConfigured</c>・<c>started</c>・<c>failed</c>・<c>misconfigured</c>)。
+/// <c>misconfigured</c> は JellyfinUrl の形式不正(設定を直す。終了コード 1)。
+/// </param>
+/// <param name="Error">失敗の理由(<c>failed</c>・<c>misconfigured</c> 以外は null)。</param>
 public sealed record LibraryRefreshJson(LibraryRefreshStatus Status, string? Error);
