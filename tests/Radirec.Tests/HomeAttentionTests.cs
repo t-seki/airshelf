@@ -116,15 +116,25 @@ public sealed class HomeAttentionTests : IDisposable
         return AttentionCalculator.Compute(_ledger, resolver, new AttentionPrograms(programs));
     }
 
-    private ManagementViewModel CreateNow(string? content = Sample, Func<AttentionItems>? compute = null, bool degraded = false)
+    private ManagementViewModel CreateNow(
+        string? content = Sample, Func<AttentionItems>? compute = null, bool degraded = false,
+        Func<string, Task<byte[]?>>? readForCheck = null)
     {
         if (content is not null)
             File.WriteAllText(ProgramsPath, content, new UTF8Encoding(false));
         return new ManagementViewModel(
             _control, null, () => [], new NoPathActions(), _log.Add,
             locateProgramsFile: () => { _locates++; return ProgramsPath; }, now: () => new DateTime(2026, 9, 25, 12, 0, 0),
-            computeAttention: degraded ? null : compute ?? Compute);
+            computeAttention: degraded ? null : compute ?? Compute,
+            readProgramsForCheck: readForCheck);
     }
+
+    // 番組ページが programs.json の変更を確かめる読み込みを、gate が開くまで止めておく(確かめている間の順序をテストで決める)。
+    private static Func<string, Task<byte[]?>> CheckAfter(Task gate) => async path =>
+    {
+        await gate;
+        return File.Exists(path) ? File.ReadAllBytes(path) : null;
+    };
 
     // 要対応は UI スレッドの外で計算するので、開いたときの計算が終わるのを待つ。
     private async Task<ManagementViewModel> Create(string? content = Sample, Func<AttentionItems>? compute = null, bool degraded = false)
@@ -385,13 +395,22 @@ public sealed class HomeAttentionTests : IDisposable
     [Fact]
     public async Task Programs_page_left_on_result_keeps_result_when_file_is_unchanged()
     {
-        var vm = await Create();
+        // 確かめる読み込みはその場で終える(待ち時間に依らず、確かめた後の状態を見る。#210)。
+        var checks = 0;
+        var vm = CreateNow(readForCheck: path =>
+        {
+            checks++;
+            return Task.FromResult<byte[]?>(File.ReadAllBytes(path));
+        });
+        await vm.Home.AttentionRefreshed;
         await SaveOnlyToResult(vm);
+        var locates = _locates;
 
         vm.CurrentPage = ManagementPage.Home;
         vm.CurrentPage = ManagementPage.Programs;
-        await Task.Delay(50);
 
+        Assert.Equal(1, checks); // 結果の画面のまま戻ったので、ファイルが変わったかを確かめた
+        Assert.Equal(locates, _locates); // 変わっていないので読み直さない
         Assert.True(vm.Programs.IsResultMode); // 変わっていなければ結果を出したまま
     }
 
@@ -413,19 +432,25 @@ public sealed class HomeAttentionTests : IDisposable
     public void Back_from_result_does_not_reread_when_editing_started_while_checking() => UiThreadContext.Run(async () =>
     {
         // UI スレッドと同じく、「戻る」がファイルの変更を確かめて待っている間に、利用者が一覧の編集を始められる。
-        var vm = CreateNow();
+        // 確かめる読み込みは、編集を終えるまで止めておく(速さに依らず「確かめている間」を作る。#210)。
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var vm = CreateNow(readForCheck: CheckAfter(gate.Task));
         await SaveOnlyToResult(vm);
         File.WriteAllText(ProgramsPath, Sample); // 結果を出している間に、ほかの経路で書かれた
+        var locates = _locates;
 
         var back = vm.Programs.BackCommand.ExecuteAsync(null);
         Assert.True(vm.Programs.IsListMode); // 一覧に戻り、ファイルを確かめている途中
+        Assert.False(back.IsCompleted);
         vm.Programs.AddProgramCommand.Execute(null);
         vm.Programs.FormStation = Tbs;
         vm.Programs.FormFolders = "安住紳一郎の日曜天国";
         vm.Programs.FormAlbum = "安住紳一郎の日曜天国";
         vm.Programs.CommitFormCommand.Execute(null);
+        gate.SetResult(); // 確かめ終わる(ファイルは変わっていた)
         await back;
 
+        Assert.Equal(locates, _locates); // 読み直していない
         Assert.True(vm.Programs.HasChanges); // 読み直して、始めた編集を黙って消さない
         Assert.Equal("安住紳一郎の日曜天国", Assert.Single(vm.Programs.Programs).Album);
     });
@@ -433,14 +458,19 @@ public sealed class HomeAttentionTests : IDisposable
     [Fact]
     public void Back_from_result_does_not_reread_when_confirm_started_while_checking() => UiThreadContext.Run(async () =>
     {
-        var vm = CreateNow();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var vm = CreateNow(readForCheck: CheckAfter(gate.Task));
         await SaveOnlyToResult(vm);
         File.WriteAllText(ProgramsPath, Sample);
+        var locates = _locates;
 
         var back = vm.Programs.BackCommand.ExecuteAsync(null);
+        Assert.False(back.IsCompleted); // ファイルを確かめている途中
         vm.Programs.AddProgramCommand.Execute(null); // フォームを開いたまま(一覧の画面ではない)
+        gate.SetResult();
         await back;
 
+        Assert.Equal(locates, _locates); // 読み直していない
         Assert.True(vm.Programs.IsProgramFormMode); // 読み直して一覧へ戻さない
         Assert.Empty(vm.Programs.Programs);
     });

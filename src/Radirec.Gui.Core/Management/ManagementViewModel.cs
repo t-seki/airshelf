@@ -53,6 +53,10 @@ public sealed class ManagementViewModel : ObservableObject
     /// <param name="computeAttention">
     /// ホームの要対応(#155・ADR-0018)を、台帳とディスクの設定ファイルから計算する。設定を読めない(縮退)なら null(W-137)。
     /// </param>
+    /// <param name="readProgramsForCheck">
+    /// 番組ページが、programs.json が変わったかを確かめるときに中身を読む(テスト用。<see cref="ProgramsPageViewModel"/> の
+    /// <c>readForCheck</c> へ渡す)。
+    /// </param>
     public ManagementViewModel(
         IServiceControl? control,
         string? degradedReason,
@@ -65,13 +69,14 @@ public sealed class ManagementViewModel : ObservableObject
         Func<DateTime>? now = null,
         AboutPageViewModel? about = null,
         SettingsPageViewModel? settings = null,
-        Func<AttentionItems>? computeAttention = null)
+        Func<AttentionItems>? computeAttention = null,
+        Func<string, Task<byte[]?>>? readProgramsForCheck = null)
     {
         _logWarn = logWarn;
         var applyGate = new ProgramsApplyGate();
         // 番組ページを先に作る(ホームの要対応の「統合する」「分けておく」が使う)。
         Programs = new ProgramsPageViewModel(control, locateProgramsFile, applyGate, logWarn, logInfo, now,
-            navigate: page => CurrentPage = page);
+            navigate: page => CurrentPage = page, readForCheck: readProgramsForCheck);
         Home = new HomeViewModel(control, degradedReason, loadHistory, logWarn,
             showAll: () => CurrentPage = ManagementPage.History, zone, applyGate,
             computeAttention is null ? null : new AttentionActions(this, computeAttention),

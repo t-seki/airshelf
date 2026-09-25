@@ -135,6 +135,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     private readonly Func<string?>? _locateProgramsFile;
     private readonly Func<DateTime> _now;
     private readonly Func<string, Task<ProgramsFileSnapshot>> _readForLoad;
+    private readonly Func<string, Task<byte[]?>> _readForCheck;
     private readonly Action<string> _logWarn;
     private readonly Action<string> _logInfo;
     private readonly ProgramsApplyGate _applyGate;
@@ -204,6 +205,11 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <see cref="LoadAsync"/> が programs.json を読む(テスト用。読み込みを止めておき、読み終わる順序をテストで決める)。
     /// 既定は <see cref="ProgramsFileWriter.Read"/> をスレッドプールで読む。
     /// </param>
+    /// <param name="readForCheck">
+    /// 読み込んだときから programs.json が変わったかを確かめるとき(「戻る」・ページを出したとき等)に、いまの中身を読む
+    /// (テスト用。確かめる処理を止めておき、確かめ終わる順序をテストで決める)。ファイルが無ければ null。
+    /// 既定はスレッドプールで読む。
+    /// </param>
     public ProgramsPageViewModel(
         IServiceControl? control,
         Func<string?>? locateProgramsFile,
@@ -212,7 +218,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
         Action<string>? logInfo = null,
         Func<DateTime>? now = null,
         Action<ManagementPage>? navigate = null,
-        Func<string, Task<ProgramsFileSnapshot>>? readForLoad = null)
+        Func<string, Task<ProgramsFileSnapshot>>? readForLoad = null,
+        Func<string, Task<byte[]?>>? readForCheck = null)
     {
         _control = control;
         _locateProgramsFile = locateProgramsFile;
@@ -222,6 +229,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         _now = now ?? (() => DateTime.Now);
         // ProgramsFile が NAS を指していても UI スレッドを塞がない。
         _readForLoad = readForLoad ?? (path => Task.Run(() => ProgramsFileWriter.Read(path)));
+        _readForCheck = readForCheck ?? (path => Task.Run(() => File.Exists(path) ? File.ReadAllBytes(path) : null));
         _navigate = navigate ?? (_ => { });
 
         AddProgramCommand = new RelayCommand(AddProgram, () => IsListMode && IsReady);
@@ -595,7 +603,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
             return true;
         try
         {
-            var current = await Task.Run(() => File.Exists(snapshot.Path) ? File.ReadAllBytes(snapshot.Path) : null);
+            var current = await _readForCheck(snapshot.Path);
             return (current, snapshot.Original) switch
             {
                 (null, null) => false,
