@@ -6,7 +6,7 @@ namespace Radirec.Gui.Core.Management;
 
 /// <summary>
 /// 管理画面のホーム(#151)。「状態と再スキャン」「要対応」「取込履歴(新しい方の <see cref="RecentCount"/> 件)」を持つ。
-/// 要対応は、いまは「統合設定の無い兄弟フォルダ」だけ(#155。解決していない取込失敗と、設定と食い違った回は #156 が足す)。
+/// 要対応は 3 種:統合設定の無い兄弟フォルダ(#155)、解決していない取込失敗と、番組の設定と食い違ったままの回(#156)。
 /// <para>
 /// 状態は、管理画面が開いている間だけシェルのタイマーが <see cref="Refresh"/> を呼んで読み直す(2 秒ごと)。
 /// 数件の取込履歴と要対応は、最終スキャンの完了時刻(<see cref="ServiceStatusSnapshot.LastScanCompletedUtc"/>)が
@@ -55,6 +55,14 @@ public sealed class HomeViewModel : ObservableObject
     private string? _attentionNote;
     private string? _keepApartBlocked;
     private IReadOnlyList<SiblingAttentionRow> _siblingRows = [];
+    private IReadOnlyList<FailureAttentionRow> _failureRows = [];
+    private IReadOnlyList<DriftAttentionRow> _driftRows = [];
+    private readonly IHistoryPathActions? _pathActions;
+    private string? _failureNote;
+    private readonly ISavedReapplyEntry? _savedReapply;
+    private bool _reapplyChecking;            // 「再適用の確認へ」で確かめている途中
+    private string? _reapplyResult;           // W-254 / W-255(最後に押した結果)
+    private bool _reapplyResultWarning;
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="degradedReason">control が null の理由(W-104 / W-105 の括弧の中)。</param>
@@ -64,6 +72,10 @@ public sealed class HomeViewModel : ObservableObject
     /// <param name="zone">時刻を表示する時間帯(既定はローカル。テスト用)。</param>
     /// <param name="applyGate">番組の保存と適用の途中か(#154)。途中は再スキャンを押せない(W-110)。</param>
     /// <param name="attention">要対応の計算と「統合する」「分けておく」。設定を読めない(縮退)なら null(W-137)。</param>
+    /// <param name="pathActions">取込失敗の取込元をエクスプローラーで開く(W-132)。null なら押しても何もしない。</param>
+    /// <param name="savedReapply">
+    /// 「再適用の確認へ」(W-136)の入口。保存済みの設定で再適用を確かめる(#164 と共有)。null なら押せない。
+    /// </param>
     public HomeViewModel(
         IServiceControl? control,
         string? degradedReason,
@@ -72,7 +84,9 @@ public sealed class HomeViewModel : ObservableObject
         Action showAll,
         TimeZoneInfo? zone = null,
         ProgramsApplyGate? applyGate = null,
-        IAttentionActions? attention = null)
+        IAttentionActions? attention = null,
+        IHistoryPathActions? pathActions = null,
+        ISavedReapplyEntry? savedReapply = null)
     {
         _control = control;
         _degradedReason = degradedReason;
@@ -81,7 +95,10 @@ public sealed class HomeViewModel : ObservableObject
         _zone = zone;
         _applyGate = applyGate;
         _attention = attention;
+        _pathActions = pathActions;
+        _savedReapply = savedReapply;
 
+        ReapplyCommand = new AsyncRelayCommand(ReapplyAsync, () => CanReapply);
         RescanCommand = new RelayCommand(Rescan, () => CanRescan);
         ShowAllCommand = new RelayCommand(showAll);
         if (_applyGate is not null)
@@ -168,6 +185,7 @@ public sealed class HomeViewModel : ObservableObject
         {
             UpdateKeepApartAvailability();
         }
+        RefreshSavedReapply();
     }
 
     // ---- 要対応(ADR-0018・#155)----
@@ -210,16 +228,48 @@ public sealed class HomeViewModel : ObservableObject
             if (!SetProperty(ref _siblingRows, value))
                 return;
             OnPropertyChanged(nameof(HasSiblings));
-            OnPropertyChanged(nameof(AttentionCount));
-            OnPropertyChanged(nameof(AttentionCountText));
-            OnPropertyChanged(nameof(IsAttentionEmpty));
+            NotifyAttentionCount();
         }
     }
 
     public bool HasSiblings => SiblingRows.Count > 0;
 
-    /// <summary>要対応の件数(種類をまたいだ合計)。</summary>
-    public int AttentionCount => SiblingRows.Count;
+    /// <summary>W-128 の各件(W-129〜W-132)。記録した時刻の新しい順(時刻の無い失敗は後ろ)。</summary>
+    public IReadOnlyList<FailureAttentionRow> FailureRows
+    {
+        get => _failureRows;
+        private set
+        {
+            if (!SetProperty(ref _failureRows, value))
+                return;
+            OnPropertyChanged(nameof(HasFailures));
+            NotifyAttentionCount();
+        }
+    }
+
+    public bool HasFailures => FailureRows.Count > 0;
+
+    /// <summary>W-134 の各まとまり(W-135)。</summary>
+    public IReadOnlyList<DriftAttentionRow> DriftRows
+    {
+        get => _driftRows;
+        private set
+        {
+            if (!SetProperty(ref _driftRows, value))
+                return;
+            OnPropertyChanged(nameof(HasDrift));
+            NotifyAttentionCount();
+            RefreshSavedReapply();
+        }
+    }
+
+    public bool HasDrift => DriftRows.Count > 0;
+
+    /// <summary>3 種のどれかがある(要対応の欄を出す)。</summary>
+    public bool HasAnyAttention => HasSiblings || HasFailures || HasDrift;
+
+    /// <summary>要対応の件数(種類をまたいだ合計。兄弟フォルダの組・失敗・食い違いのまとまりを 1 件ずつ数える)。</summary>
+    public int AttentionCount => SiblingRows.Count + FailureRows.Count + DriftRows.Count;
 
     /// <summary>W-120 の <c>要対応 {N} 件</c>。1 件以上のときだけ。</summary>
     public string? AttentionCountText => IsAttentionLoaded && AttentionCount > 0 ? AttentionText.Count(AttentionCount) : null;
@@ -253,6 +303,65 @@ public sealed class HomeViewModel : ObservableObject
 
     public bool IsKeepApartBlockedVisible => KeepApartBlocked is not null;
 
+    /// <summary>W-132 を押した結果(W-146 / W-147)。押していなければ null。</summary>
+    public string? FailureNote
+    {
+        get => _failureNote;
+        private set
+        {
+            if (SetProperty(ref _failureNote, value))
+                OnPropertyChanged(nameof(IsFailureNoteVisible));
+        }
+    }
+
+    public bool IsFailureNoteVisible => FailureNote is not null;
+
+    /// <summary>
+    /// 「再適用の確認へ」(W-136)を押せるか。食い違った回があり、取り込みが動いていて(W-119)、番組ページに保存していない
+    /// 作業が無く(W-256)、確かめている途中でないとき。
+    /// </summary>
+    public bool CanReapply =>
+        HasDrift && _canControl && _savedReapply is not null && ReadBlockedReason() is null && !_reapplyChecking;
+
+    /// <summary>
+    /// W-136 の横の 1 行。確かめている途中(W-240)、押せない理由(W-119 / W-256)、押した結果(W-254 / W-255)の順に、
+    /// 出すものがあれば 1 つ。食い違った回が無ければ null。
+    /// </summary>
+    public string? ReapplyNote
+    {
+        get
+        {
+            if (!HasDrift || _savedReapply is null)
+                return null;
+            if (_reapplyChecking)
+                return ProgramsPageViewModel.Checking; // W-240
+            if (!_canControl)
+                return AttentionText.ReapplyUnavailable; // W-119
+            return ReadBlockedReason() ?? _reapplyResult; // W-256 / W-254 / W-255
+        }
+    }
+
+    public bool IsReapplyNoteVisible => ReapplyNote is not null;
+
+    /// <summary><see cref="ReapplyNote"/> が失敗・中止(W-255)か(警告の見た目で出す)。</summary>
+    public bool IsReapplyNoteWarning => _reapplyResultWarning && ReapplyNote is { } note && note == _reapplyResult;
+
+    /// <summary>「再適用の確認へ」(W-136)。</summary>
+    public IAsyncRelayCommand ReapplyCommand { get; }
+
+    /// <summary>
+    /// 「再適用の確認へ」を押せるかを計算し直す(番組ページで編集を始めた・やめた、取り込みが止まった等に追従する)。
+    /// 管理画面のタイマーが 2 秒ごとに(<see cref="Refresh"/> から)呼ぶ。
+    /// </summary>
+    public void RefreshSavedReapply()
+    {
+        OnPropertyChanged(nameof(CanReapply));
+        OnPropertyChanged(nameof(ReapplyNote));
+        OnPropertyChanged(nameof(IsReapplyNoteVisible));
+        OnPropertyChanged(nameof(IsReapplyNoteWarning));
+        ReapplyCommand?.NotifyCanExecuteChanged();
+    }
+
     /// <summary>いま走っている(最後に始めた)要対応の計算。終わっていれば完了済みのタスク(テストで待つ)。</summary>
     public Task AttentionRefreshed { get; private set; } = Task.CompletedTask;
 
@@ -273,6 +382,8 @@ public sealed class HomeViewModel : ObservableObject
         if (_attention is null)
         {
             SiblingRows = [];
+            FailureRows = [];
+            DriftRows = [];
             AttentionState = HistoryLoadState.Unavailable;
             AttentionError = AttentionText.Unavailable; // W-137
             OnPropertyChanged(nameof(AttentionCountText));
@@ -305,17 +416,23 @@ public sealed class HomeViewModel : ObservableObject
                     SiblingRows = items.UnintegratedSiblings
                         .Select(s => new SiblingAttentionRow(s, Integrate, KeepApartAsync))
                         .ToList();
+                    FailureRows = items.UnresolvedFailures
+                        .Select(f => new FailureAttentionRow(f, _zone, RevealFailureAsync))
+                        .ToList();
+                    DriftRows = items.SettingsDrift.Select(d => new DriftAttentionRow(d)).ToList();
                 }
                 catch (Exception ex)
                 {
                     _logWarn($"管理画面: 要対応を計算できませんでした: {ex}");
                     SiblingRows = [];
+                    FailureRows = [];
+                    DriftRows = [];
                     AttentionState = HistoryLoadState.Failed;
                     AttentionError = AttentionText.ComputeFailed(ex.Message);
                 }
-                OnPropertyChanged(nameof(AttentionCountText));
-                OnPropertyChanged(nameof(IsAttentionEmpty));
+                NotifyAttentionCount();
                 UpdateKeepApartAvailability();
+                RefreshSavedReapply();
             }
             while (_attentionAgain);
         }
@@ -340,6 +457,78 @@ public sealed class HomeViewModel : ObservableObject
         foreach (var row in SiblingRows)
             row.CanKeepApart = blocked is null;
         KeepApartBlocked = HasSiblings ? blocked : null;
+    }
+
+    private void NotifyAttentionCount()
+    {
+        OnPropertyChanged(nameof(HasAnyAttention));
+        OnPropertyChanged(nameof(AttentionCount));
+        OnPropertyChanged(nameof(AttentionCountText));
+        OnPropertyChanged(nameof(IsAttentionEmpty));
+    }
+
+    // 入口の「押せない理由」(番組ページの状態を読む)。例外は gui.log に書いて握る(タイマーから UI スレッドへ漏らさない)。
+    private string? ReadBlockedReason()
+    {
+        try
+        {
+            return _savedReapply?.BlockedReason;
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"管理画面: 番組ページの状態を読めませんでした(再適用の確認へ): {ex}");
+            return null;
+        }
+    }
+
+    // 「再適用の確認へ」(W-136)。揃える回があれば番組ページの確認の画面へ移る(入口が移す)。無ければ結果の 1 行を出す
+    // (W-254 / W-255)。確認の画面から「戻る」でホームへ戻ると、要対応を計算し直す。
+    private async Task ReapplyAsync()
+    {
+        if (!CanReapply || _savedReapply is not { } entry)
+            return;
+
+        _reapplyChecking = true;
+        _reapplyResult = null;
+        RefreshSavedReapply();
+        SavedReapplyStart start;
+        try
+        {
+            start = await entry.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            // 入口は投げない約束だが、ボタンのハンドラから漏らさない。
+            _logWarn($"管理画面: 再適用の確認へ進めませんでした: {ex}");
+            start = SavedReapplyStart.Stay(ProgramsPageViewModel.SavedAborted($"{ex.Message}(gui.log 参照)"), isWarning: true);
+        }
+        finally
+        {
+            _reapplyChecking = false;
+        }
+
+        _reapplyResult = start.Message;
+        _reapplyResultWarning = start.IsWarning;
+        RefreshSavedReapply();
+    }
+
+    // W-132。取込元をエクスプローラーで開く(W-146 / W-147)。
+    private async Task RevealFailureAsync(FailureAttentionRow row)
+    {
+        if (_pathActions is null)
+            return;
+        try
+        {
+            // 届かない NAS の存在確認は数秒かかりうる。待つ間も画面は操作できるので、途中であることを示す。
+            FailureNote = IngestHistoryViewModel.Revealing;
+            FailureNote = await _pathActions.RevealAsync(row.Failure.SourcePath);
+        }
+        catch (Exception ex)
+        {
+            // コマンドの例外を UI スレッドの未捕捉例外にしない(そちらは管理画面ごと閉じる最後の網)。
+            _logWarn($"エクスプローラー起動でエラーが発生しました: {ex}");
+            FailureNote = IngestHistoryViewModel.RevealFailed;
+        }
     }
 
     private void Integrate(SiblingAttentionRow row)
@@ -397,6 +586,7 @@ public sealed class HomeViewModel : ObservableObject
         LastScanText = view.LastScan;
         _canControl = view.CanControl;
         UpdateCanRescan();
+        RefreshSavedReapply();
 
         // W-111 は、押したときから最終スキャンの完了時刻が変わる(= 次のスキャンが終わる)まで出す。
         if (_rescanPending && (!view.CanControl || status?.LastScanCompletedUtc != _rescanBaseline))
