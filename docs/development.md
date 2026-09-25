@@ -135,7 +135,9 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core / Radire
   WSL の CI でテストし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
   XAML(`ManagementWindow.xaml`)も `EnableWindowsTargeting` により Linux でコンパイルされる(起動はしない)。
 - `Radirec.Hosting` は **CLI と常駐トレイの 2 フロントエンドが共有する合成層**。だから Cli に畳まず
-  独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。
+  独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。CLI の
+  `status` / `reload` は、同じ `Hosting/Control/` の制御チャネル(named pipe。`ControlPipeServer` / `ControlPipeClient`)で
+  トレイへ頼む(#179・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
 - `Radirec.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux CI でビルド/テスト可能)、
   `Cli` は `net10.0-windows`、`Gui` は `net10.0-windows10.0.x`。ワーカーが Windows 専用 API
   (`SystemEvents.PowerModeChanged`)に依存するため、ワーカーは Hosting ではなく Gui に置いてある。

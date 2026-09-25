@@ -5,10 +5,10 @@ namespace Radirec.Cli.Core.Output;
 /// <summary>
 /// <c>status --json</c> の <c>result</c>(#179)。常駐に繋がらなくても答えとして返す(ADR-0020)。
 /// </summary>
-/// <param name="Reachable">トレイの制御チャネルに繋がったか。</param>
-/// <param name="Running">取り込みが動いているか(繋がらない・縮退なら false)。</param>
-/// <param name="Reason">動いていない理由(繋がらない、または縮退の理由)。動いていれば null。</param>
-/// <param name="Tray">トレイが返した状態。繋がらなければ null。</param>
+/// <param name="Reachable">トレイの制御チャネルに繋がったか(繋がったが応答を読めなかったときも true)。</param>
+/// <param name="Running">取り込みが動いているか(繋がらない・応答を読めない・縮退・ワーカーが止まったなら false)。</param>
+/// <param name="Reason">動いていない理由。動いていれば null。</param>
+/// <param name="Tray">トレイが返した状態。繋がらない・応答を読めなければ null。</param>
 public sealed record StatusJson(bool Reachable, bool Running, string? Reason, ControlStatus? Tray);
 
 /// <summary><c>reload --json</c> の <c>result</c>(#179)。</summary>

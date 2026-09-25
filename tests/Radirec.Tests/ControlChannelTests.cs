@@ -90,6 +90,74 @@ public sealed class ControlChannelTests
     }
 
     [Fact]
+    public async Task ワーカーが起動後に止まったらstatusは理由を返し_reloadは縮退にして頼まない()
+    {
+        var control = new FakeControl { Running = false };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var status = (await Client(server).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None)).Response!.Status!;
+        Assert.False(status.Running);
+        Assert.Equal(ControlPipeServer.WorkerStoppedReason, status.DegradedReason);
+        Assert.Equal(@"I:\radio", status.RadioRoot); // 止まる前の状態は見せる
+
+        var reload = (await Client(server).SendAsync(ControlProtocol.ReloadCommand, CancellationToken.None)).Response!;
+        Assert.Equal(ControlResponseKind.Degraded, reload.Kind);
+        Assert.Equal(ControlPipeServer.WorkerStoppedReason, reload.Error);
+        Assert.Equal(0, control.ReloadCalls);
+    }
+
+    [Fact]
+    public async Task CLIはワーカーが止まっていればstatusは0で理由_reloadは2()
+    {
+        await using var server = StartServer(new FakeControl { Running = false }, degradedReason: null);
+
+        var (statusCode, statusOut) = await RunCli(["status", "--json"], Client(server));
+        Assert.Equal(ExitCodes.Success, statusCode);
+        using (var doc = JsonDocument.Parse(statusOut))
+        {
+            Assert.False(doc.RootElement.GetProperty("result").GetProperty("running").GetBoolean());
+            Assert.Equal(ControlPipeServer.WorkerStoppedReason, doc.RootElement.GetProperty("result").GetProperty("reason").GetString());
+        }
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, (await RunCli(["reload"], Client(server))).ExitCode);
+    }
+
+    [Fact]
+    public async Task CLIのstatusは応答を読めなくても0で_running_falseと理由を返す_reloadは2()
+    {
+        var failed = new FixedClient(new ControlCallResult(ControlCallOutcome.Failed, null, "常駐から応答がありません(時間切れ)"));
+
+        var (exitCode, output) = await RunCli(["status", "--json"], failed);
+        Assert.Equal(ExitCodes.Success, exitCode);
+        using (var doc = JsonDocument.Parse(output))
+        {
+            var result = doc.RootElement.GetProperty("result");
+            Assert.True(result.GetProperty("reachable").GetBoolean());
+            Assert.False(result.GetProperty("running").GetBoolean());
+            Assert.Equal("常駐から応答がありません(時間切れ)", result.GetProperty("reason").GetString());
+        }
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, (await RunCli(["reload"], failed)).ExitCode);
+    }
+
+    [Fact]
+    public async Task 応答を読まずに切る相手がいても次の接続に応える()
+    {
+        await using var server = StartServer(new FakeControl(), degradedReason: null);
+
+        // 要求だけ送って応答を読まずに切る。
+        await using (var rude = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly))
+        {
+            await rude.ConnectAsync(5000);
+            var bytes = ControlProtocol.LineEncoding.GetBytes("""{"protocolVersion":1,"command":"status"}""" + "\n");
+            await rude.WriteAsync(bytes);
+        }
+
+        var result = await Client(server).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(ControlCallOutcome.Answered, result.Outcome);
+    }
+
+    [Fact]
     public async Task 版の違う要求には版の不一致を返して何もしない()
     {
         var control = new FakeControl();
@@ -305,6 +373,7 @@ public sealed class ControlChannelTests
     private sealed class FakeControl : IServiceControl
     {
         public ReloadResult Reload { get; set; } = ReloadResult.Ok();
+        public bool Running { get; init; } = true;
         public int ReloadCalls { get; private set; }
         public ManualResetEventSlim? BlockReload { get; init; }
         public TaskCompletionSource ReloadEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -315,6 +384,7 @@ public sealed class ControlChannelTests
             StartedUtc = new DateTimeOffset(2026, 9, 26, 0, 0, 0, TimeSpan.Zero),
             RadioRoot = @"I:\radio",
             Watching = true,
+            Running = Running,
             LastScanCompletedUtc = new DateTimeOffset(2026, 9, 26, 1, 0, 0, TimeSpan.Zero),
             LastScanTrigger = "手動",
             LastImported = 3,

@@ -29,6 +29,11 @@ public sealed class StatusCommand(IAnsiConsole console, IControlClient controlCl
             // 常駐が動いていないのも答え(ADR-0020)。
             result = new StatusJson(Reachable: false, Running: false, Reason: call.Error ?? ControlPipeClient.NotRunningMessage, Tray: null);
         }
+        else if (call.Outcome == ControlCallOutcome.Failed)
+        {
+            // 繋がったが応答を読めない(時間切れ・形が違う)。状態を尋ねるコマンドなので、これも答えとして 0 で返す(ADR-0020)。
+            result = new StatusJson(Reachable: true, Running: false, Reason: call.Error ?? "常駐の応答を読めませんでした", Tray: null);
+        }
         else if (ControlCommandSupport.Unanswered(call, cliVersion) is { } failure)
         {
             return CommandSupport.Fail(console, Name, settings.Json, failure.ExitCode, failure.Message);
@@ -52,13 +57,12 @@ public sealed class StatusCommand(IAnsiConsole console, IControlClient controlCl
 
     private void Render(StatusJson result)
     {
-        if (!result.Reachable)
+        if (result.Tray is not { } tray)
         {
             console.MarkupLineInterpolated($"[yellow]{result.Reason}[/]");
             return;
         }
 
-        var tray = result.Tray!;
         if (result.Running)
             console.MarkupLine("[green]取り込み: 稼働中[/]");
         else

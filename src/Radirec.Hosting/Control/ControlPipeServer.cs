@@ -29,6 +29,9 @@ public sealed class ControlPipeServer(
     /// <summary>要求の 1 行を読むまで待つ時間。繋いだまま何も送らない相手で接続を持ち続けないように。</summary>
     private static readonly TimeSpan RequestReadTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>応答を書いた後、相手が読んで切るまで待つ時間。過ぎたら切る。</summary>
+    private static readonly TimeSpan ResponseReadTimeout = TimeSpan.FromSeconds(5);
+
     private readonly CancellationTokenSource _stopping = new();
     private readonly object _gate = new();
     private readonly HashSet<Task> _handlers = [];
@@ -44,8 +47,14 @@ public sealed class ControlPipeServer(
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_stopping.Token));
     }
 
+    /// <summary>受け口の失敗が続くときの、最初の待ち時間と最大の待ち時間(倍々に延ばす)。</summary>
+    private static readonly TimeSpan FirstRetryDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromMinutes(1);
+
     private async Task AcceptLoopAsync(CancellationToken stoppingToken)
     {
+        var retryDelay = FirstRetryDelay;
+        string? lastError = null;
         while (!stoppingToken.IsCancellationRequested)
         {
             NamedPipeServerStream? pipe = null;
@@ -67,12 +76,19 @@ public sealed class ControlPipeServer(
             catch (Exception ex)
             {
                 // パイプを作れない・待てない(同じ名前を別のプロセスが持っている等)。受け口だけの失敗で、トレイと取り込みは生かす。
+                // 失敗が続くときは待ち時間を倍々に延ばし(最大 1 分)、同じ理由が続く間は gui.log に書かない。
                 pipe?.Dispose();
-                logWarning?.Invoke($"制御チャネルの受け口で例外(1 秒後にやり直します): {ex.Message}");
-                try { await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken).ConfigureAwait(false); }
+                if (ex.Message != lastError)
+                    logWarning?.Invoke($"制御チャネルの受け口で例外(やり直します。同じ理由が続く間は書きません): {ex.Message}");
+                lastError = ex.Message;
+                try { await Task.Delay(retryDelay, stoppingToken).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }
+                retryDelay = TimeSpan.FromTicks(Math.Min(retryDelay.Ticks * 2, MaxRetryDelay.Ticks));
                 continue;
             }
+
+            retryDelay = FirstRetryDelay;
+            lastError = null;
 
             // 別のタスクへ渡す。直接呼ぶと、要求がすでに届いていたときに同期で処理が進み(設定リロードは同期で重いことがある)、
             // 次の接続を待つのが遅れる。
@@ -108,8 +124,13 @@ public sealed class ControlPipeServer(
                 var response = Respond(line);
                 await writer.WriteLineAsync(JsonSerializer.Serialize(response, ControlProtocol.JsonOptions).AsMemory(), stoppingToken)
                     .ConfigureAwait(false);
-                if (OperatingSystem.IsWindows())
-                    pipe.WaitForPipeDrain();
+
+                // 相手が応答を読んで切るのを待ってから閉じる(時間切れつき)。WaitForPipeDrain は時間切れが無く、応答を読まない相手で
+                // 処理が止まったままになりうるので使わない。書いてすぐ閉じると、Windows で相手が読む前に応答が消えないかを
+                // 確かめられていないので、相手が切る(読み終えて閉じる)まで待つ形にした。
+                using var closeTimeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                closeTimeout.CancelAfter(ResponseReadTimeout);
+                await reader.ReadLineAsync(closeTimeout.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -152,16 +173,38 @@ public sealed class ControlPipeServer(
         return request.Command switch
         {
             ControlProtocol.StatusCommand => Reply(ControlResponseKind.Ok, status: CurrentStatus()),
-            ControlProtocol.ReloadCommand => control is null
-                ? Reply(ControlResponseKind.Degraded, error: degradedReason ?? "取り込みが止まっています")
-                : Reply(ControlResponseKind.Ok, reload: control.RequestReload()),
+            ControlProtocol.ReloadCommand => StoppedReason() is { } reason
+                ? Reply(ControlResponseKind.Degraded, error: reason)
+                : Reply(ControlResponseKind.Ok, reload: control!.RequestReload()),
             _ => Reply(ControlResponseKind.BadRequest, error: $"知らないコマンドです: {request.Command}"),
         };
     }
 
-    private ControlStatus CurrentStatus() => control is null
-        ? ControlStatus.Degraded(trayVersion, degradedReason, configPath)
-        : ControlStatus.From(control.GetStatus(), configPath);
+    /// <summary>
+    /// ワーカーは起動したが、その後に止まったときの理由(トレイの W-103 と同じ趣旨)。自己更新の適用前にワーカーを止めたとき・
+    /// 取り込みのループが異常終了したとき。
+    /// </summary>
+    public const string WorkerStoppedReason = "取り込みが止まりました(異常終了か更新の適用中。gui.log 参照 → 再起動)";
+
+    /// <summary>
+    /// 取り込みが動いていなければその理由、動いていれば null。ワーカーが無い(縮退)ときに加え、ワーカーはあるが止まった
+    /// (<see cref="ServiceStatusSnapshot.Running"/> が false)ときも止まっているとみなす。
+    /// </summary>
+    private string? StoppedReason()
+    {
+        if (control is null)
+            return degradedReason ?? "取り込みが止まっています";
+        return control.GetStatus().Running ? null : WorkerStoppedReason;
+    }
+
+    private ControlStatus CurrentStatus()
+    {
+        if (control is null)
+            return ControlStatus.Degraded(trayVersion, degradedReason, configPath);
+        var snapshot = control.GetStatus();
+        var status = ControlStatus.From(snapshot, configPath);
+        return snapshot.Running ? status : status with { DegradedReason = WorkerStoppedReason };
+    }
 
     private ControlResponse Reply(
         ControlResponseKind kind, string? error = null, ControlStatus? status = null, ReloadResult? reload = null) => new()

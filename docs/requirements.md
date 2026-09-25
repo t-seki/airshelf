@@ -318,6 +318,9 @@ alias 設計が必要(§9)。
 > なった(CLI 制御 verb は廃止。移設先は**トレイメニュー**で、下の「現在地」を参照)。以下の named pipe 記述は
 > 移行前の設計。「利用者→常駐へ指示を出す」概念(3 コマンド)は不変。
 > → #126 で 4 種目の「再適用の実行」を足した(下の一覧)。
+> → **#179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で named pipe は形を変えて戻った**:CLI の
+> `radirec status` / `radirec reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前(`radirec-control-<SID>`)で、
+> 同じユーザーだけに `PipeOptions.CurrentUserOnly` で絞る(以下の ADR-0010 の固定名・`PipeSecurity` の記述とは違う)。
 
 取込通知が**サービス発・一方向**なのに対し、常駐サービスへ**利用者側から指示を出す**逆方向の
 経路を制御チャネルとして持つ。到達範囲は**ローカル同一ユーザー**に限定し、リモート制御は含めない。
@@ -344,9 +347,11 @@ alias 設計が必要(§9)。
 Windows 実機での検証手順は [control-channel-verification.md](control-channel-verification.md) に委ねる。
 利用者向けのコマンド一覧は [usage.md](usage.md) を参照。
 
-**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニュー**で、4 コマンドとも in-process 呼び出し
-([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。CLI の制御 verb
-(`status`/`rescan`/`reload`)は廃止された。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
+**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニューと管理画面**で、4 コマンドとも in-process 呼び出し
+([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。加えて、**CLI の `radirec status` / `radirec reload`** が
+named pipe の制御チャネルでトレイへ頼む([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) / #179。受け口は
+`Radirec.Hosting/Control/ControlPipeServer`。パイプはユーザーごとの名前で、同じユーザーからしか繋げない)。CLI の `rescan` verb は
+戻していない。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
 (`ControlTrayMenu` → `IServiceControl.RequestRescan`)、常駐プロセス内の走査要求になる。
 `radirec ingest` は移行前から在る **dev/batch 用の単発 CLI** で、常駐とは別プロセス — 制御コマンドの
 移設先ではない(単発で走査したいときの手段としては使える)。状態はメニューを開いた時点のスナップショットとして
@@ -468,6 +473,8 @@ radirec-tool/
 > **常駐は gui 側**([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。当初は
 > cli に `service` verb を持たせて Windows サービスとして常駐させたが、トレイ常駐 per-user へ移行し、
 > ワーカーは gui に畳まれた。制御チャネルの窓口も cli からトレイメニューへ移っている。
+> → #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、cli の `status` / `reload` がトレイの制御チャネル
+> (named pipe)へ頼む形で戻った(常駐は gui のまま。cli は頼むだけ)。
 
 - **原則**: ドメインロジックは全て `core/` に置き、CLI/GUI は薄いアダプタ。
 - **CLI で提供する編集操作**(GUI 前でも運用可能。**いずれも M4 / #4 のスコープで未実装** —
@@ -557,10 +564,11 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   - `Radirec.Hosting` — 合成ルート + 環境設定・パス解決 + 制御(`Control/`)。**`Radirec.Cli` と
     `Radirec.Gui` の 2 フロントエンドが共有する合成層**なので Cli に畳まず独立を保つ([ADR-0012])。
   - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。**dev/batch の単発 CLI**
-    (`ingest`/`reapply`/`refresh`)。TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
-    `Radirec.Cli.Core` にある(#178)。
+    (`ingest`/`reapply`/`refresh`/`status`/`reload`)。TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
+    `Radirec.Cli.Core` にある(#178)。`status` / `reload` はトレイの制御チャネル(named pipe)へ頼む(#179)。
     ※ かつては常駐サービス(`service` verb)と制御チャネル窓口(`status`/`rescan`/`reload`)も
     1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
+    → `status` / `reload` は #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、トレイへ頼む形で戻った(`service` と `rescan` は戻していない)。
   - `Radirec.Cli.Core` — `Radirec.Cli` のテスト可能な核(コマンド・`--json` の形・終了コード・`CommandApp` の設定。
     `Spectre.Console.Cli`)。TFM は `net10.0` で、Linux の CI でテストできる(#178・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
   - `Radirec.Gui` — **本番の常駐本体**(独立 exe、WPF + WinForms、`net10.0-windows10.0.x`)。
@@ -624,6 +632,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
       トレイメニューからの in-process 呼び出しへ。3 コマンドという概念は不変。跨プロセスでなくなったため
       [control-channel-verification.md](control-channel-verification.md)(OBSOLETE)の実機検証項目は失効。
       → #126 で 4 種目の「再適用の実行」(結果が返るまで待つ)を足した(§7.2)。
+      → #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で named pipe は形を変えて戻った:CLI の
+      `status` / `reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前で、同じユーザーへは `PipeOptions.CurrentUserOnly` で絞る。
 - [x] radikool のフォーマット・命名・タグ: **MP3/ID3、`{局コード}/{番組名}_{YYYYMMDD}.mp3`、
       genre=局表示名** で確定(§5.2)。ルート=`I:\d\radikool\records`。
 - [x] radikool 局フォルダ: `FMT / JOAK-FM / LFR / QRR / fm_tokyo`。放送局マスタは genre から
