@@ -90,10 +90,11 @@ public sealed class ReapplyCommand(
         // 表示を短くするため、出力先からの相対パスにする。設定を読めなければ(常駐とは別に CLI が読むだけ)そのまま出す。
         var outputRoot = configSource.TryLoad(out var config, out _) && config is not null ? config.OutputRoot : null;
         Render(report, outputRoot);
+        // 予定 ID は写して使う値なので、装飾しない(色・太字の制御文字が値の途中に入らないように)。
         if (report.DryRun && planId is not null)
         {
-            console.MarkupLineInterpolated($"予定 ID: [bold]{planId}[/]");
-            console.MarkupLineInterpolated($"実行するには: [bold]radirec reapply --apply {planId}[/]");
+            console.MarkupLineInterpolated($"予定 ID: {planId}");
+            console.MarkupLineInterpolated($"実行するには: radirec reapply --apply {planId}");
         }
     }
     private void Render(ReapplyReport report, string? outputRoot)
