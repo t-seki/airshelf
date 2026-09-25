@@ -829,7 +829,10 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// </list>
     /// 「統合設定が無い」は、この画面の下書き(保存していない変更を含む)で決め直す。
     /// </summary>
-    /// <returns>下書きを出したか。一覧を出せない(読めない・使わない設定)・一覧以外の画面の途中・下書きではもう統合済みなら false。</returns>
+    /// <returns>
+    /// 下書きを出したか。一覧を出せない(読めない・使わない設定)・一覧以外の画面の途中・下書きではもう統合済みなら false
+    /// (結果の画面からは、先に <see cref="LeaveResultForDraftAsync"/> で一覧に戻しておく)。
+    /// </returns>
     public bool DraftIntegration(SiblingFolderGroup group)
     {
         if (!IsListMode || !IsReady)
@@ -868,7 +871,10 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// 要対応の「分けておく」(W-127)を、編集フォームの下書きとして出す(programs.json にコメントがあり、その場では書かないとき。
     /// 保存の前にコメントが消えることを確かめる W-260 を通すため)。
     /// </summary>
-    /// <returns>下書きを出したか。一覧を出せない・一覧以外の画面の途中なら false。</returns>
+    /// <returns>
+    /// 下書きを出したか。一覧を出せない・一覧以外の画面の途中なら false(結果の画面からは、先に
+    /// <see cref="LeaveResultForDraftAsync"/> で一覧に戻しておく)。
+    /// </returns>
     public bool DraftKeepApart(SiblingFolderGroup group)
     {
         if (!IsListMode || !IsReady)
@@ -1284,13 +1290,38 @@ public sealed class ProgramsPageViewModel : ObservableObject
             return;
         }
 
+        await ReturnToListAsync();
+    }
+
+    /// <summary>
+    /// 要対応から下書きを入れる前に呼ぶ(#199)。結果の画面(保存していない変更は無い)なら一覧に戻し、結果を出している間に
+    /// ファイルが変わっていれば読み直す(「戻る」と同じ)。保存済みの設定での結果なら、確認を終えて一覧に戻す(来たページへは
+    /// 移らない)。ほかの画面(編集フォーム・確認・適用中)と、保存していない変更のある結果の画面(W-275 の後)はそのままにする
+    /// (下書きは作らず、番組ページの今の画面を見せる。ホームの「分けておく」は W-138 で押せない)。
+    /// </summary>
+    public async Task LeaveResultForDraftAsync()
+    {
+        if (!IsResultMode || HasChanges)
+            return;
+        if (IsSavedBasis)
+        {
+            EndSavedConfirm();
+            if (await FileChangedAsync() && CanReloadWithoutLosingWork)
+                await LoadAsync();
+            return;
+        }
+        await ReturnToListAsync();
+    }
+
+    // 下書きの確認・結果の画面から一覧へ戻す。結果の画面を出している間に、ファイルが変わっていれば読み直す(OnShownAsync と
+    // 同じ。保存していない変更があれば捨てないので読み直さない。W-275 の後の「戻る」がこれ)。
+    private async Task ReturnToListAsync()
+    {
         var fromResult = IsResultMode;
         IsCommentsPromptVisible = false;
         IsConflict = false;
         Mode = ProgramsPageMode.List;
 
-        // 結果の画面を出している間に、ファイルが変わっていれば読み直す(OnShownAsync と同じ。保存していない変更があれば
-        // 捨てないので読み直さない。W-275 の後の「戻る」がこれ)。
         if (fromResult && !HasChanges && await FileChangedAsync() && CanReloadWithoutLosingWork)
             await LoadAsync();
     }
