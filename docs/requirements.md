@@ -88,6 +88,8 @@
 > dev/batch 単発 CLI 専用に縮小した。UNC 資格情報・EventLog・named pipe・`%ProgramData%` 配置の前提は
 > すべて退役(データは `%LOCALAPPDATA%\RadirecData`。[ADR-0013](adr/0013-velopack-per-user-updates.md))。
 > **以下は移行前の設計**で、当時の記録として残す。現行の構成は §10 / §11 を参照。
+> → CLI の役割は [ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) で改めた:普段の運用と AI エージェントの窓口で、
+> 台帳を書き換える操作(`ingest` など)はトレイの制御チャネルへ頼む(#179 / #180)。
 
 本番形態は **単一 exe `radirec.exe`**。同一の取り込みエンジン(`Radirec.Core`)を、常駐サービスと
 単発 CLI の 2 通りで動かす。両者は 1 つの実行体に **verb** で統合し、配布物を 1 本化して Core
@@ -254,7 +256,8 @@ alias 設計が必要(§9)。
 ## 7. 自動パイプライン(取り込み)
 
 走査は①録音検知(FileSystemWatcher)②スリープ復帰 ③常駐トレイの起動時 ④定期(安全網)⑤**手動**
-(制御チャネルの rescan、§7.2)のいずれかで起動する。以下は 1 走査分の処理:
+(制御チャネルの rescan、§7.2)⑥**走査の実行**(CLI の `radirec ingest` が制御チャネルで頼む。結果が返るまで待つ。§7.2・#180)
+のいずれかで起動する。以下は 1 走査分の処理:
 
 1. **検知**: ソースルート配下の音声を FileSystemWatcher で検知、または起動時に全走査。ポーリング代替可。
 2. **安定判定**: 書き込み中の掴み防止。サイズ(と mtime)が一定時間変化しないものだけ対象。
@@ -321,14 +324,20 @@ alias 設計が必要(§9)。
 > → **#179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で named pipe は形を変えて戻った**:CLI の
 > `radirec status` / `radirec reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前(`radirec-control-<SID>`)で、
 > 同じユーザーだけに `PipeOptions.CurrentUserOnly` で絞る(以下の ADR-0010 の固定名・`PipeSecurity` の記述とは違う)。
+> → #180 で 5 種目の「走査の実行」を足した(CLI の `radirec ingest` が頼む。下の一覧)。
 
 取込通知が**サービス発・一方向**なのに対し、常駐サービスへ**利用者側から指示を出す**逆方向の
 経路を制御チャネルとして持つ。到達範囲は**ローカル同一ユーザー**に限定し、リモート制御は含めない。
 
-現時点の制御コマンドは 4 種([CONTEXT.md](../CONTEXT.md) が語彙の権威):
+現時点の制御コマンドは 5 種([CONTEXT.md](../CONTEXT.md) が語彙の権威):
 
 - **rescan(手動再スキャン)**: 自動トリガを待たず取り込み走査を今すぐ 1 回要求する(受理まで。
   完了は待たない)。§7 の走査トリガ⑤に相当。
+- **走査の実行**(#180 で追加。CLI の `radirec ingest` から): 取り込み走査を 1 回行わせ、**終わるまで待って結果を返す**
+  ([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。取り込みの走査・再適用と同じ直列ループの上で走る
+  (取り込み中に頼めば、終わるのを待ってから走る)。結果は頼んだ側に返るので新規取込のトーストは出さず、取込失敗の
+  トーストは出して失敗のストアにも記録する(止めるのは成功要約だけ。#152 / [ADR-0019](adr/0019-gui-settings-file-for-ingest-toast.md))。
+  最終スキャンのきっかけは `CLI`。
 - **reload(設定リロード)**: `radirec.json` の変更をサービスに反映させる。**反映はサービス実質
   再起動相当**で部分反映はしない(config 由来ランタイムを丸ごと再構築)。不正 config は受理時に
   弾かれ、再構築に失敗しても**旧構成のまま稼働継続**する。
@@ -347,14 +356,15 @@ alias 設計が必要(§9)。
 Windows 実機での検証手順は [control-channel-verification.md](control-channel-verification.md) に委ねる。
 利用者向けのコマンド一覧は [usage.md](usage.md) を参照。
 
-**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニューと管理画面**で、4 コマンドとも in-process 呼び出し
-([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。加えて、**CLI の `radirec status` / `radirec reload`** が
-named pipe の制御チャネルでトレイへ頼む([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) / #179。受け口は
-`Radirec.Hosting/Control/ControlPipeServer`。パイプはユーザーごとの名前で、同じユーザーからしか繋げない)。CLI の `rescan` verb は
-戻していない。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
+**現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニューと管理画面**(in-process 呼び出し。
+[ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))と、**CLI**(named pipe の制御チャネル。
+[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))の 2 つ。どちらも最後は `IServiceControl` を呼ぶ。
+CLI からは `radirec status`(状態取得)・`radirec reload`(設定リロード。#179)・`radirec ingest`(走査の実行。#180)が
+トレイへ頼む(受け口は `Radirec.Hosting/Control/ControlPipeServer`。パイプはユーザーごとの名前で、同じユーザーからしか繋げない)。
+CLI の `rescan` verb は戻していない。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
 (`ControlTrayMenu` → `IServiceControl.RequestRescan`)、常駐プロセス内の走査要求になる。
-`radirec ingest` は移行前から在る **dev/batch 用の単発 CLI** で、常駐とは別プロセス — 制御コマンドの
-移設先ではない(単発で走査したいときの手段としては使える)。状態はメニューを開いた時点のスナップショットとして
+`radirec ingest` は、かつては常駐とは別プロセスで自分で走査する単発 CLI だったが、#180 で**走査の実行**をトレイに頼む形に
+変わった(`--dry-run` だけは CLI が台帳を読み取り専用で開いて計算する)。状態はメニューを開いた時点のスナップショットとして
 表示する。設定リロードと再適用の窓口は、トレイのメニューから管理画面(§10.3)へ移った(番組ページ。#154)。
 トレイと管理画面からの操作は [usage.md](usage.md) §6 を参照。
 
@@ -464,7 +474,7 @@ stations:
 radirec-tool/
   core/   # ドメインロジック: パース(importer) / 正規化ルール / 放送局・番組解決 /
           #   タグ書込(TagLib#) / import-once 台帳 / Jellyfin リフレッシュ。GUI 非依存・テスト可能
-  cli/    # 薄い入口(dev/batch の単発)。radirec ingest / reapply / refresh / history / status / reload
+  cli/    # 薄い入口(普段の運用とエージェントの窓口。ADR-0020)。radirec ingest / reapply / refresh / history / status / reload
   gui/    # 本番の常駐本体。取り込みワーカー + トレイ + 取込通知 + 管理画面(取込履歴を含む。§10.3)+ 制御 + 自己更新。
           #   取込後編集グリッド(§10.1)は同プロジェクトに後載せ・保留
   docs/  tests/
@@ -563,9 +573,10 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
     import-once 台帳 / 出力ターゲット抽象 / Jellyfin 連携)。**クロスプラットフォームでテスト可能**。
   - `Radirec.Hosting` — 合成ルート + 環境設定・パス解決 + 制御(`Control/`)。**`Radirec.Cli` と
     `Radirec.Gui` の 2 フロントエンドが共有する合成層**なので Cli に畳まず独立を保つ([ADR-0012])。
-  - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。**dev/batch の単発 CLI**
-    (`ingest`/`reapply`/`refresh`/`history`/`status`/`reload`)。TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
-    `Radirec.Cli.Core` にある(#178)。`status` / `reload` はトレイの制御チャネル(named pipe)へ頼む(#179)。
+  - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。**普段の運用と AI エージェントの窓口**
+    ([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md)。`ingest`/`reapply`/`refresh`/`history`/`status`/`reload`)。
+    TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
+    `Radirec.Cli.Core` にある(#178)。`status` / `reload`(#179)と `ingest`(走査の実行。#180)はトレイの制御チャネル(named pipe)へ頼む。
     ※ かつては常駐サービス(`service` verb)と制御チャネル窓口(`status`/`rescan`/`reload`)も
     1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
     → `status` / `reload` は #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、トレイへ頼む形で戻った(`service` と `rescan` は戻していない)。
@@ -634,6 +645,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
       → #126 で 4 種目の「再適用の実行」(結果が返るまで待つ)を足した(§7.2)。
       → #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で named pipe は形を変えて戻った:CLI の
       `status` / `reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前で、同じユーザーへは `PipeOptions.CurrentUserOnly` で絞る。
+      → #180 で 5 種目の「走査の実行」(CLI の `ingest`。結果が返るまで待つ)を足した(§7.2)。
 - [x] radikool のフォーマット・命名・タグ: **MP3/ID3、`{局コード}/{番組名}_{YYYYMMDD}.mp3`、
       genre=局表示名** で確定(§5.2)。ルート=`I:\d\radikool\records`。
 - [x] radikool 局フォルダ: `FMT / JOAK-FM / LFR / QRR / fm_tokyo`。放送局マスタは genre から
