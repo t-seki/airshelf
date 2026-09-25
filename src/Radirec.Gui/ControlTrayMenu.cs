@@ -9,7 +9,8 @@ namespace Radirec.Gui;
 
 /// <summary>
 /// トレイの制御メニュー(ADR-0012)。rescan / status を、同一プロセスでホストする取り込みワーカーの
-/// <see cref="IServiceControl"/> を**直接 in-process 呼び出し**で叩く(named pipe は退役)。
+/// <see cref="IServiceControl"/> を**直接 in-process 呼び出し**で叩く(トレイのメニューは pipe を通らない。CLI の
+/// status / reload は #179 の制御チャネル〈named pipe。<c>ControlPipeServer</c>〉で同じ IServiceControl に届く)。
 /// status はメニューを開いた瞬間(<see cref="ToolStripDropDown.Opening"/>)にスナップショットを読んで表示を
 /// 更新する。取り込みワーカー未起動(設定未読込 = <see cref="IServiceControl"/> が null)のときは
 /// 「今すぐ再スキャン」をグレーアウトし「取り込み停止中」を表示する縮退にする。

@@ -1,6 +1,14 @@
 # CLI を普段の運用とエージェントの窓口にし、書き込む操作は制御チャネルで常駐に頼む
 
-Status: accepted(2026-09-25 の grill。[ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の「CLI は dev/batch 専用・named pipe は退役」を改める。[ADR-0010](0010-gui-service-control-via-named-pipe.md) の named pipe を形を変えて戻す。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、[ADR-0017](0017-management-window-owns-programs-json.md) の programs.json の書き手と関連)。**#178(2026-09-25)で、取込結果に兄弟フォルダの知らせを含める決定は実装しないことに — 下の注記を参照**
+Status: accepted(2026-09-25 の grill。[ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の「CLI は dev/batch 専用・named pipe は退役」を改める。[ADR-0010](0010-gui-service-control-via-named-pipe.md) の named pipe を形を変えて戻す。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、[ADR-0017](0017-management-window-owns-programs-json.md) の programs.json の書き手と関連)。**#178(2026-09-25)で、取込結果に兄弟フォルダの知らせを含める決定は実装しないことに — 下の注記を参照**。**#179(2026-09-26)で、パイプの名前と同じユーザーへの絞り方を変更 — 下の注記を参照**
+
+> **#179 で改めた(2026-09-26)**:決定の「制御チャネルは named pipe を戻す(ADR-0010 の形。同じユーザーだけに `PipeSecurity` で絞る)」のうち、
+> 次の 2 点を変えた。
+> - **パイプの名前はユーザーごと**(`radirec-control-<ユーザーの SID>`。SID が取れない環境ではユーザー名)。ADR-0010 の固定名
+>   `radirec-control` のままだと、同じ PC で 2 人がそれぞれトレイを起動したときにぶつかる。
+> - **同じユーザーへの制限は `PipeOptions.CurrentUserOnly` で行う**(`PipeSecurity` より簡単で、Linux でも効くので往復のテストを CI で回せる)。
+>
+> 受け口・メッセージの型・CLI 側の接続は `Radirec.Hosting/Control/`(`ControlPipeServer` / `ControlPipeClient` / `ControlProtocol`)に置いた。
 
 > **#178 で改めた(2026-09-25)**:決定の「取込結果には統合設定の無い兄弟フォルダの知らせも含める」は実装しない。
 > #174(#155・[ADR-0018](0018-attention-items-derived-from-state.md))で取り込みの走査から兄弟フォルダの検出そのものが外れ、

@@ -1,4 +1,6 @@
 using Radirec.Cli.Core.Commands;
+using Radirec.Cli.Core.Output;
+using Radirec.Hosting.Control;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -14,14 +16,36 @@ public static class RadirecCli
     /// <param name="version">表示する版(exe のアセンブリから <see cref="VersionInfo.Of"/> で得る)。</param>
     /// <param name="console">出力先。null なら標準出力(<see cref="AnsiConsole.Console"/>)。</param>
     /// <param name="configSource">設定を読む口。null なら既定の radirec.json(<see cref="DefaultCliConfigSource"/>)。</param>
+    /// <param name="controlClient">
+    /// 常駐の制御チャネルへ頼む口(#179)。null なら今のユーザーの既定のパイプ(<see cref="ControlPipeClient"/>)。
+    /// </param>
     public static Task<int> RunAsync(
-        string[] args, string version, IAnsiConsole? console = null, ICliConfigSource? configSource = null)
+        string[] args, string version, IAnsiConsole? console = null, ICliConfigSource? configSource = null,
+        IControlClient? controlClient = null)
     {
         var app = new CommandApp();
-        app.Configure(config => Configure(
-            config, version, console ?? AnsiConsole.Console, configSource ?? new DefaultCliConfigSource(),
-            json: args.Contains("--json", StringComparer.Ordinal), command: CommandOf(args)));
+        app.Configure(config =>
+        {
+            Configure(
+                config, version, console ?? AnsiConsole.Console, configSource ?? new DefaultCliConfigSource(),
+                json: args.Contains("--json", StringComparer.Ordinal), command: CommandOf(args));
+            ConfigureControl(config, version, controlClient ?? new ControlPipeClient());
+        });
         return app.RunAsync(args);
+    }
+
+    /// <summary>常駐に頼むコマンド(<c>status</c> / <c>reload</c>。#179)を足す。</summary>
+    private static void ConfigureControl(IConfigurator config, string version, IControlClient controlClient)
+    {
+        config.Settings.Registrar.RegisterInstance(controlClient);
+        config.Settings.Registrar.RegisterInstance(new CliVersion(version));
+
+        config.AddCommand<StatusCommand>(StatusCommand.Name)
+            .WithDescription("常駐(トレイ)の状態を見る。常駐が動いていなくても答える")
+            .WithExample(StatusCommand.Name, "--json");
+        config.AddCommand<ReloadCommand>(ReloadCommand.Name)
+            .WithDescription("常駐に設定リロードを頼む(radirec.json などを直した後)")
+            .WithExample(ReloadCommand.Name);
     }
 
     /// <summary>
@@ -33,6 +57,7 @@ public static class RadirecCli
         var first = args.FirstOrDefault(a => !a.StartsWith('-'));
         return first is IngestCommand.Name or ReapplyCommand.Name or RefreshCommand.Name
             or HistoryCommand.Name
+            or StatusCommand.Name or ReloadCommand.Name
             ? first
             : null;
     }
@@ -66,9 +91,9 @@ public static class RadirecCli
             .WithDescription("取込履歴を新しい順に出す(台帳を読むだけ。常駐が動いていなくても使える)")
             .WithExample(HistoryCommand.Name, "--limit", "20")
             .WithExample(HistoryCommand.Name, "--since", "2026-09-01", "--json");
-        // 常駐(service)と制御 verb(rescan/status/reload)は撤去した。常駐はトレイ(Radirec.Gui)が
-        // 担い、制御はトレイメニューから in-process で行う(ADR-0012)。radirec.exe は dev/batch 用の
-        // 単発 CLI(ingest / reapply / refresh)に縮小。一回きりの移行のための ingest --root と organize-source、
+        // 常駐はトレイ(Radirec.Gui)が担う(ADR-0012)。ingest / reapply / refresh / history は CLI が直接行い、status / reload は
+        // トレイの制御チャネル(named pipe)へ頼む形で戻した(ADR-0020 / #179。ConfigureControl)。一回きりの移行のための
+        // ingest --root と organize-source、
         // 設定ファイルを指す --config は削った(ADR-0020)。設定は常にトレイと同じ既定の radirec.json を使う。
     }
 
