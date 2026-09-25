@@ -3,7 +3,7 @@
 らじれこで録音した M4A を、Jellyfin 音楽ライブラリ向けに整理・取り込みする CLI の使い方。
 
 > 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M4-A**(radikool MP3 の
-> 一括移行)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
+> 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
 > ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装です。
 >
 > この §1–§5 は主に **dev/batch の CLI(`radirec.exe`)** の使い方。常駐運用は §6 を参照。
@@ -17,12 +17,15 @@
 
 ## 2. セットアップ
 
-サンプル設定をコピーして、自分の環境に合わせて編集します。
+設定は常に **`%LOCALAPPDATA%\RadirecData\`**(データルート)に置きます。CLI も常駐トレイもここを読み、
+別の場所を指すオプションはありません([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
+常駐トレイを一度起動すると、無いファイルは見本から作られます。手で置くなら、見本をそこへコピーして
+自分の環境に合わせて編集します。
 
 ```
-config/radirec.sample.json   → radirec.json       (環境設定)
-config/stations.sample.json  → config/stations.json (放送局マスタ)
-config/programs.sample.json  → config/programs.json (番組 alias)
+config/radirec.sample.json   → %LOCALAPPDATA%\RadirecData\radirec.json   (環境設定)
+config/stations.sample.json  → %LOCALAPPDATA%\RadirecData\stations.json  (放送局マスタ)
+config/programs.sample.json  → %LOCALAPPDATA%\RadirecData\programs.json  (番組 alias)
 ```
 
 `radirec.json` の主な項目:
@@ -57,18 +60,18 @@ config/programs.sample.json  → config/programs.json (番組 alias)
 
 ```powershell
 # 開発時(SDK から)
-dotnet run --project src/Radirec.Cli -- ingest --config radirec.json --dry-run
+dotnet run --project src/Radirec.Cli -- ingest --dry-run
 
 # 問題なければ実行(コピー + タグ付与)
-dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
+dotnet run --project src/Radirec.Cli -- ingest
 ```
 
-`--config` を省略すると **`%LOCALAPPDATA%\RadirecData\radirec.json`**(常駐トレイのデータルート)を使います
-(ADR-0006)。開発時に別の場所の設定を使うなら `--config <path>` で明示します。
+設定は常に **`%LOCALAPPDATA%\RadirecData\radirec.json`**(常駐トレイと同じデータルート。ADR-0006)を使います。
+別の場所の設定を指すオプションはありません([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
 
-> ⚠️ 以前はカレントディレクトリの `radirec.json` が既定でした。**`radirec ingest` を `--config` 無しで
-> 呼ぶ既存のスケジュールタスク / バッチがあれば、`--config <path>` を明示**してください(さもないと
-> 別のデータルート・別台帳を参照し、取りこぼしや再スキャンを招きます)。
+> ⚠️ `--config` と `ingest --root` は ADR-0020 で削りました。付けて呼ぶと `Error: Unknown option 'config'.` の
+> ように知らないオプションとして止まり、何もしません(既定の設定で黙って動くことはない)。付けて呼んでいた
+> 既存のスクリプトがあれば外してください。
 
 ### 結果テーブルの見方
 
@@ -93,21 +96,21 @@ Jellyfin の全ライブラリスキャンを起動**します(`POST /Library/Re
 手動で更新だけ起動したいときは `refresh` コマンド(疎通確認にも便利):
 
 ```powershell
-radirec refresh --config radirec.json
+radirec refresh
 ```
 
 ### 統合設定を取り込み済みの回へ再適用する(`reapply`)
 
-`config/programs.json` の正規名・統合は、新しく取り込む回にだけ効きます。あとから統合設定を足した(外した・
+`programs.json`(`radirec.json` と同じフォルダ。既定は `%LOCALAPPDATA%\RadirecData\`)の正規名・統合は、新しく取り込む回にだけ効きます。あとから統合設定を足した(外した・
 正規名を変えた)ときは、`reapply` で**取り込み済みの回を今の設定に揃えます**
 ([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))。ソースから取り込み直すのではなく、
 出力済みのファイルを動かし、台帳の記録を書き換えます。
 
 ```powershell
 # まず dry-run(どのアルバムの何回が動くかを副作用なしに確認)
-radirec reapply --config radirec.json --dry-run
+radirec reapply --dry-run
 # 問題なければ実行
-radirec reapply --config radirec.json
+radirec reapply
 ```
 
 常駐からは、管理画面の **番組** ページ(§6)で番組の設定を編集すると、保存する前に同じ処理の dry-run で
@@ -144,24 +147,12 @@ radirec reapply --config radirec.json
   `album` / `title` / `track` が反映されないアルバムは、Jellyfin でそのアルバムのメタデータを更新してください
   (§5 の手作業手順の手順 5 と同じ)。
 
-### radikool(旧 MP3 録音)の一括移行(M4-A)
+### radikool(旧 MP3 録音)の扱い
 
-旧録音アプリ **radikool** の MP3 アーカイブ(`{局コード}/{番組名}_{YYYYMMDD}.mp3`)を、`--root` で
-一度きり取り込みます。同じ台帳・出力先・Jellyfin ライブラリへ束ねられ(**一度きりの移行なので常駐
-サービスの監視対象にはしない**)、`.m4a`/`.mp3` はファイルごとに自動で振り分けられます。
-
-```powershell
-# まず dry-run(radikool の records フォルダを指す)
-radirec ingest --config radirec.json --root "I:\d\radikool\records" --dry-run
-# 問題なければ実行
-radirec ingest --config radirec.json --root "I:\d\radikool\records"
-```
-
-radikool のバージョンごとに `records` フォルダが分かれている場合(例 `radikool4.9.3` /
-`radikool4.9.1` / `radikool`)は、**同じ台帳・出力先のまま `--root` を替えて順に実行**すれば、
-版をまたぐ同一回は同一性キーで**自動的に重複排除**される(先に取り込んだ版が残り、後は「済」でスキップ)。
-版フォルダの構造は `{局コード}/file.mp3` の 1 階層と `{局コード}/{番組}/file.mp3` の 2 階層が混在するが、
-番組名・放送日は**ファイル名から**採るためどちらも取り込める。
+旧録音アプリ **radikool** の MP3 アーカイブ(`{局コード}/{番組名}_{YYYYMMDD}.mp3`)を監視ルートの外から
+一度きり取り込む `ingest --root`(M4-A / #15)と、散在ソースを仕分ける `organize-source`(#81)は、
+一回きりの移行のための機能なので [ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) で削りました。
+radikool の MP3 を取り込む処理(下の固有の扱い)は残っていて、`.m4a`/`.mp3` はファイルごとに自動で振り分けられます。
 
 radikool 固有の扱い:
 
@@ -172,31 +163,6 @@ radikool 固有の扱い:
 - radikool 元タグ(`comment` の和文日付など)は案A で上書き/除去し、`artist`(出演者)は維持します。
 - **番組名の表記ゆれ統合・らじれことのアルバム統合は M4-C(未実装)**。現状は radikool の番組名ごとに
   別アルバムとして入ります(例 `欅坂46`/`櫻坂46` は別アルバム)。局の正規化(配置)は今スライスで行います。
-
-### 散在ソースを {放送局}/{番組}/ 構造へ仕分ける(`organize-source`。#81)
-
-取込(ingest)とは別に、**ローカルのソース音源そのものを整理**するコマンド。散在したソース
-(`I:\radio\old\…` の らじれこ M4A + radikool MP3)を、らじれこ録音ルート `RADIO\{放送局}\{番組}\`
-構造へ**物理的に移動**して 1 つの整理済みアーカイブに集約します。タグ書換や Jellyfin 出力はせず、
-**ファイル名も変えません**(末尾 `_{timestamp}` を温存 → 取込互換 + 出所保持)。
-
-```powershell
-# まず dry-run(何がどこへ移動するか副作用なしに確認)
-radirec organize-source --from "I:\radio\old" --to "I:\radio\radirec\RADIO" --dry-run
-# 問題なければ実行(既定は move。移動元を残すなら --copy)
-radirec organize-source --from "I:\radio\old" --to "I:\radio\radirec\RADIO"
-```
-
-- **移動先** = `{to}\{正規放送局}\{番組}\{元ファイル名}`。放送局は `stations.json` の正規名(radikool の
-  局コード `LFR` もここで正規化)。番組フォルダは**ソースの生の名前を維持**(らじれこの
-  `パンサー向井のふらっと(1)`/`(2)` を保ち、再取込時の統合・パート `-N` を壊さない)。radikool は
-  ファイル名 stem を番組フォルダにする(局コードフォルダには惑わされない)。
-- **移動先が既存なら決して上書きしない**:同一内容(サイズ+最終更新)はスキップ、別内容の同名は
-  **衝突**として報告し移動元に残す。ジャンク(`SkipPatterns` 一致)・parse 失敗も移動せず残す。
-  → **移動元に残ったもの = 要確認の山**(要約行に「要確認: N 件」を表示)。
-- **`--to` の既存フォルダを尊重**:移動先に「同じ正規名へ解決される別名フォルダ」(例 らじれこ が使う
-  `NHK-FM（東京）`)があれば、canonical `NHK-FM` を新設せず**その既存フォルダを再利用**して分裂を防ぐ。
-- `--from` の途中階層(`d_radio` 等)は無視される(各ファイルの親=番組・祖父=放送局で解決)。
 
 ## 4. 取り込みの挙動
 
@@ -226,15 +192,17 @@ radirec organize-source --from "I:\radio\old" --to "I:\radio\radirec\RADIO"
 設定が要るのは次の 2 つだけです:
 
 - **放送局の表記ゆれ**(`NHKラジオ第1(radiko)` → `NHKラジオ第1`、radikool の局コード等)を
-  `config/stations.json` の別名で正規名へ寄せる。
-- **表示名の整形 / 複数フォルダの統合**を `config/programs.json` で行う(任意)。
+  `stations.json` の別名で正規名へ寄せる。
+- **表示名の整形 / 複数フォルダの統合**を `programs.json` で行う(任意)。
+
+どちらも `radirec.json` と同じフォルダ(既定は `%LOCALAPPDATA%\RadirecData\`。§2)に置きます。
 
 ```jsonc
-// config/stations.json
+// stations.json
 { "Stations": [ { "Canonical": "ニッポン放送", "Aliases": ["LFR", "ニッポン放送"] } ] }
 ```
 ```jsonc
-// config/programs.json
+// programs.json
 {
   "Programs": [
     // ラテン名の空白除去フォルダを綺麗な表示名に
@@ -254,7 +222,7 @@ radirec organize-source --from "I:\radio\old" --to "I:\radio\radirec\RADIO"
 **メモと、分けておく兄弟フォルダ**(任意。どちらも取り込み・再適用で動かす回は変えません):
 
 ```jsonc
-// config/programs.json
+// programs.json
 {
   "Programs": [
     { "Match": { "Station": "TBSラジオ", "Folders": ["パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"] },
@@ -395,7 +363,7 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
   出力先パスは長いため列にはファイル名だけを出し、フルパスは ToolTip とページ下部の詳細欄
   (出力先 / 取込元。選択してコピーできる)で見せます。行を**ダブルクリック**(または Enter)で
   出力先をエクスプローラーで開き、**右クリック**から取込元を開く / それぞれのパスをコピーもできます。
-  結果は「更新」の横に 1 行で出ます。ファイルが既に無いとき(取込元を消した / `organize-source` で移動した等)は、
+  結果は「更新」の横に 1 行で出ます。ファイルが既に無いとき(取込元を消した・移動した等)は、
   たどれる一番近い親フォルダを開いてその旨を表示します。台帳を読めなければ「読み込みに失敗しました」と出ます(理由は `gui.log`)。
   設定を読み込めていないときは、台帳の場所が分からないので一覧を出しません。
 - **番組**(#154・[ADR-0017](adr/0017-management-window-owns-programs-json.md)): `programs.json` の中身を
@@ -525,8 +493,10 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 SDK から直接動かす場合(`radirec.exe` を publish せずに):
 
 ```powershell
-dotnet run --project src/Radirec.Cli -- ingest --config <path>\radirec.json --dry-run
+dotnet run --project src/Radirec.Cli -- ingest --dry-run
 ```
+
+設定は常に `%LOCALAPPDATA%\RadirecData\radirec.json` を使います(§3。別の場所を指すオプションは無い)。
 
 単一 exe を手元で作るには `dotnet publish src/Radirec.Cli -c Release`(win-x64 自己完結)。配布(常駐トレイの
 Setup.exe・更新フィード)は CI がタグ push で **`vpk`(Velopack)** により Release へ発行します(§6・ADR-0013)。
