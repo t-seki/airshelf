@@ -31,8 +31,7 @@ public sealed record ReapplyJson(
         report.Items.Select(i => new ReapplyItemJson(
             i.Action, i.Station, i.FromAlbum, i.ToAlbum, i.BroadcastDate, i.BroadcastTime,
             i.FromPath, i.ToPath, i.SourcePath, i.Reason, i.RewritesTags)).ToList(),
-        report.UnintegratedSiblings.Select(s => new UnintegratedSiblingJson(
-            s.Group.Station, s.Group.Folders, s.FoldersWithoutSetting, s.MergedAlbum)).ToList(),
+        report.UnintegratedSiblings.Select(UnintegratedSiblingJson.From).ToList(),
         new LibraryRefreshJson(report.LibraryRefresh, report.RefreshError));
 }
 
@@ -50,5 +49,14 @@ public sealed record ReapplyItemJson(
 /// <param name="Folders">組のフォルダ(パートの順)。</param>
 /// <param name="FoldersWithoutSetting">組のうち、programs.json に統合の設定が無いフォルダ。</param>
 /// <param name="MergedAlbum">組の一部がすでに入っている統合番組のアルバム名。無ければ null。</param>
+/// <param name="FoldersNewToKeptApart">
+/// 分けておく組(<c>KeepSeparate</c>)に記録した組に、あとから加わったフォルダ(組が変わったので判断し直す)。記録していなければ空。
+/// </param>
 public sealed record UnintegratedSiblingJson(
-    string Station, IReadOnlyList<string> Folders, IReadOnlyList<string> FoldersWithoutSetting, string? MergedAlbum);
+    string Station, IReadOnlyList<string> Folders, IReadOnlyList<string> FoldersWithoutSetting, string? MergedAlbum,
+    IReadOnlyList<string> FoldersNewToKeptApart)
+{
+    public static UnintegratedSiblingJson From(UnintegratedSiblingGroup sibling) => new(
+        sibling.Group.Station, sibling.Group.Folders, sibling.FoldersWithoutSetting, sibling.MergedAlbum,
+        sibling.FoldersNewToKeptApart);
+}
