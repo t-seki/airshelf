@@ -12,7 +12,7 @@
 
 **M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M4-A(radikool 移行)実装済み**。
 常駐は **トレイ常駐 per-user モデル**(`Radirec.Gui`)で、取り込みワーカーをトレイプロセスが内包し、
-取込通知は in-process トースト、制御はトレイメニュー、状態と取込履歴・番組の設定(編集と再適用)は管理画面(トレイの「Radirec を開く」)、更新は Velopack のアプリ内自己更新で行う
+取込通知は in-process トースト、制御はトレイメニュー、状態と取込履歴・番組の設定(編集と再適用)・設定ファイル・更新の確認は管理画面(トレイの「Radirec を開く」)、更新は Velopack のアプリ内自己更新で行う
 ([ADR-0012](docs/adr/0012-retire-service-for-tray-resident-per-user.md) /
 [ADR-0013](docs/adr/0013-velopack-per-user-updates.md)。旧 Windows サービス/EventLog/named pipe は退役)。
 配布は **Velopack の per-user インストーラ(非 admin)+ タグ駆動 Release**
@@ -73,6 +73,6 @@ dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
 | `Radirec.Core` | ドメインロジック(パース/正規化/import-once/タグ/出力ターゲット) | 実装済み |
 | `Radirec.Hosting` | 合成ルート + 環境設定・パス解決(Core と入口の橋渡し。CLI と常駐トレイが共有) | 実装済み |
 | `Radirec.Cli` | 単一 exe `radirec.exe`。dev/batch 用の単発 CLI(`ingest`/`refresh`) | 実装済み |
-| `Radirec.Gui` | **常駐トレイ**(独立 exe)。取り込みワーカーを内包し、通知/制御/管理画面(取込履歴・番組の設定を含む)/自己更新を担う(ADR-0012) | 実装済み(管理画面は #159 で作成中) |
+| `Radirec.Gui` | **常駐トレイ**(独立 exe)。取り込みワーカーを内包し、通知/制御/管理画面(取込履歴・番組の設定を含む)/自己更新を担う(ADR-0012) | 実装済み(管理画面は 5 ページとも実装済み。要対応の欄などの残りは #159) |
 | `Radirec.Gui.Core` | `Radirec.Gui` のテスト可能な提示ロジック(トースト整形・履歴行整形・版表示・状態の文言)と管理画面の ViewModel | 実装済み |
 | `Radirec.Tests` | 単体・統合テスト | 実装済み |
