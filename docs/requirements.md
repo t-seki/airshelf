@@ -557,9 +557,12 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   - `Radirec.Hosting` — 合成ルート + 環境設定・パス解決 + 制御(`Control/`)。**`Radirec.Cli` と
     `Radirec.Gui` の 2 フロントエンドが共有する合成層**なので Cli に畳まず独立を保つ([ADR-0012])。
   - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。**dev/batch の単発 CLI**
-    (`ingest`/`reapply`/`refresh`)。TFM は `net10.0-windows`。
+    (`ingest`/`reapply`/`refresh`)。TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
+    `Radirec.Cli.Core` にある(#178)。
     ※ かつては常駐サービス(`service` verb)と制御チャネル窓口(`status`/`rescan`/`reload`)も
     1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
+  - `Radirec.Cli.Core` — `Radirec.Cli` のテスト可能な核(コマンド・`--json` の形・終了コード・`CommandApp` の設定。
+    `Spectre.Console.Cli`)。TFM は `net10.0` で、Linux の CI でテストできる(#178・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
   - `Radirec.Gui` — **本番の常駐本体**(独立 exe、WPF + WinForms、`net10.0-windows10.0.x`)。
     取り込みワーカー・取込通知・管理画面(取込履歴を含む。§10.3)・制御メニュー・自己更新を 1 プロセスで持つ([ADR-0012])。
     将来の配布フロントエンド兼編集 UI(M5)は同プロジェクトへ後載せ。`radirec.exe` とは実行モデルが

@@ -70,8 +70,49 @@ dotnet run --project src/Radirec.Cli -- ingest
 別の場所の設定を指すオプションはありません([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
 
 > ⚠️ `--config` と `ingest --root` は ADR-0020 で削りました。付けて呼ぶと `Error: Unknown option 'config'.` の
-> ように知らないオプションとして止まり、何もしません(既定の設定で黙って動くことはない)。付けて呼んでいた
-> 既存のスクリプトがあれば外してください。
+> ように知らないオプションとして止まり、何もしません(既定の設定で黙って動くことはない。終了コードは 1)。
+> 付けて呼んでいた既存のスクリプトがあれば外してください。
+
+### JSON と終了コード(エージェント・スクリプト向け)
+
+どのコマンドにも **`--json`** を付けられます。付けると、表や色付きの行の代わりに、標準出力へ **JSON を 1 つだけ**
+出します([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。最上位の形はどのコマンドでも同じです:
+
+```jsonc
+{
+  "schemaVersion": 1,      // JSON の形の版。フィールドを消す・意味を変えるときに上げる(足すだけなら上げない)
+  "command": "ingest",     // コマンド名。使い方の誤りでコマンドが決まらなかったときは null
+  "exitCode": 4,           // プロセスの終了コードと同じ値(下の表)
+  "error": null,           // 結果が出る前に止まった理由(設定を読めない・使い方の誤りなど)。結果が出たら null
+  "result": { ... }        // コマンドごとの結果。止まったときは null
+}
+```
+
+`result` の中身:
+
+| コマンド | 主なフィールド |
+|------|------|
+| `ingest` | `dryRun`、`counts`(`imported` / `planned` / `alreadyImported` / `unstable` / `junk` / `unsupported` / `failed`)、`items[]`(`outcome`・`source`・`output`・`message`・`usedFallback`)、`libraryRefresh`(`status`・`error`) |
+| `reapply` | `dryRun`、`aligned`(揃っているか)、`counts`(`move` / `ledgerAndTags` / `ledgerOnly` / `duplicateLeft` / `excluded` / `failed`)、`duplicatesRewritingTags`、`albums[]`(アルバム単位のまとめ)、`items[]`(明細。`action`・`broadcastDate`・`fromPath`・`toPath`・`reason` など)、`unintegratedSiblings[]`(統合設定の無い兄弟フォルダの組)、`libraryRefresh` |
+| `refresh` | `status`(`started` / `notConfigured` / `misconfigured` / `failed`)、`error` |
+
+列挙の値(`outcome`・`action`・`status`)は camelCase の文字列です(`skippedAlreadyImported` など)。日本語は
+エスケープせずにそのまま出し、出力は UTF-8 です。
+
+**終了コード**は、`--json` の有無に関係なく次の意味です(値は変えません):
+
+| コード | 意味 | 次にすること |
+|------|------|------|
+| 0 | 成功(失敗した回は 0 件) | 次へ進む |
+| 1 | 使い方の誤り(知らないオプション・コマンド)・設定を読めない・Jellyfin が未設定か URL の形式が不正(`refresh`) | 引数か設定を直す |
+| 2 | 常駐が動いていない(#179 以降の、常駐に頼むコマンドで使う) | トレイを起動する |
+| 3 | 確かめた予定が変わった(#181 以降の `reapply` で使う) | dry-run からやり直す |
+| 4 | 完了したが、一部の回が失敗した | 明細(`items[]` の `failed`)を調べる |
+| 5 | 外部との接続に失敗した(Jellyfin に繋がらない・エラー・時間切れ、NAS に届かない) | 時間をおいて再試行する |
+
+- `ingest` と `reapply` は、失敗した回があれば 4、無くて Jellyfin の更新に失敗していれば 5 を返します(回の失敗を優先)。
+  Jellyfin が未設定なのは失敗にしません(0)。
+- 以前は、取り込みの一部が失敗しても 0 を返していました(#178 で 4 に変わった)。
 
 ### 結果テーブルの見方
 
