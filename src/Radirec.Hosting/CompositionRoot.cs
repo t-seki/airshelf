@@ -4,7 +4,6 @@ using Radirec.Core.Ingestion;
 using Radirec.Core.Jellyfin;
 using Radirec.Core.Ledger;
 using Radirec.Core.Normalization;
-using Radirec.Core.Organization;
 using Radirec.Core.Output;
 using Radirec.Core.Reapply;
 using Radirec.Core.Sources;
@@ -17,10 +16,6 @@ public static class CompositionRoot
     /// <param name="dryRun">
     /// true なら台帳を副作用なく扱う(既存 DB は読み取り専用で開き、無ければ NullLedger)。
     /// </param>
-    /// <param name="rootOverride">
-    /// 監視ルートの上書き(radikool 一括移行の一度きり実行で <c>--root</c> から渡す)。
-    /// null なら <see cref="RadirecConfig.RadioRoot"/> を使う。
-    /// </param>
     /// <param name="notify">
     /// 取込通知を発行するか。**常駐経路のみ true**。手動 <c>ingest</c> は対話コマンドで、
     /// 結果は標準出力に出るためトーストを重ねる意味が無い(ADR-0012)。
@@ -32,7 +27,7 @@ public static class CompositionRoot
     /// <param name="failurePublisher">取込失敗**シグナル**の publisher。<paramref name="summaryPublisher"/> と同様。</param>
     /// <returns>サービスと、破棄すべきリソース(台帳。NullLedger 時は null)。</returns>
     public static (IngestService Service, IDisposable? Disposable) Build(
-        RadirecConfig config, bool dryRun, string? rootOverride = null, bool notify = false,
+        RadirecConfig config, bool dryRun, bool notify = false,
         IIngestSummaryPublisher? summaryPublisher = null, IIngestFailurePublisher? failurePublisher = null)
     {
         var fileSystem = new FileSystem();
@@ -80,7 +75,7 @@ public static class CompositionRoot
         ]);
 
         var service = new IngestService(
-            new FileSystemRecordingSource(fileSystem, rootOverride ?? config.RadioRoot),
+            new FileSystemRecordingSource(fileSystem, config.RadioRoot),
             importer,
             new StabilityChecker(TimeProvider.System, TimeSpan.FromSeconds(config.StabilitySeconds)),
             new RecordingSkipPolicy(config.SkipPatterns),
@@ -170,33 +165,6 @@ public static class CompositionRoot
             programs.KeepSeparate);
 
         return (service, Combine(ledgerDisposable, refresherDisposable));
-    }
-
-    /// <summary>
-    /// config からソース仕分け器(<c>organize-source</c> コマンド。#81)を組み立てる。取込 importer
-    /// (らじれこ/radikool 振り分け)と放送局 resolver・スキップポリシーを ingest と同じ流儀で再利用する。
-    /// 台帳・出力先・Jellyfin は使わない(ソースの物理再配置だけを行うため)。
-    /// </summary>
-    public static SourceOrganizer BuildOrganizer(RadirecConfig config, string from, string to)
-    {
-        var fileSystem = new FileSystem();
-        var stations = ConfigLoader.LoadOptional<StationMasterConfig>(config.StationsFile);
-        var tagReader = new TagLibTagReader();
-
-        var importer = new SourceRouter(
-        [
-            new RajirekoImporter(config.KnownRecordingKinds),
-            new RadikoolImporter(tagReader),
-        ]);
-
-        return new SourceOrganizer(
-            fileSystem,
-            new FileSystemRecordingSource(fileSystem, from),
-            importer,
-            new StationResolver(stations),
-            new StabilityChecker(TimeProvider.System, TimeSpan.FromSeconds(config.StabilitySeconds)),
-            new RecordingSkipPolicy(config.SkipPatterns),
-            to);
     }
 
     /// <summary>

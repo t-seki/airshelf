@@ -11,23 +11,15 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
-        [CommandOption("-c|--config <PATH>")]
-        [Description("設定ファイル(radirec.json)のパス。省略時は " + ConfigPaths.DefaultConfigDisplay)]
-        public string? Config { get; init; }
-
         [CommandOption("--dry-run")]
         [Description("副作用なしで取り込み予定を表示する")]
         public bool DryRun { get; init; }
-
-        [CommandOption("--root <PATH>")]
-        [Description("監視ルートの上書き(radikool 一括移行など一度きりの走査に使う)")]
-        public string? Root { get; init; }
     }
 
     protected override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var config = ConfigLoading.Load(settings.Config);
+        var config = ConfigLoading.Load();
         if (config is null)
             return 1;
 
@@ -35,7 +27,7 @@ public sealed class IngestCommand : AsyncCommand<IngestCommand.Settings>
         IDisposable? disposable;
         try
         {
-            (service, disposable) = CompositionRoot.Build(config, settings.DryRun, settings.Root);
+            (service, disposable) = CompositionRoot.Build(config, settings.DryRun);
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
         {

@@ -10,7 +10,7 @@
 
 ## ステータス
 
-**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M4-A(radikool 移行)実装済み**。
+**M1(コア + CLI 取り込み)/ M2(Jellyfin リフレッシュ)/ M4-A(radikool 移行)実装済み**(M4-A の移行用の `ingest --root` は [ADR-0020](docs/adr/0020-cli-as-agent-front-via-control-channel.md) で CLI から削除済み)。
 常駐は **トレイ常駐 per-user モデル**(`Radirec.Gui`)で、取り込みワーカーをトレイプロセスが内包し、
 取込通知は in-process トースト、制御はトレイメニュー、状態と取込履歴・番組の設定(編集と再適用)・設定ファイル・更新の確認は管理画面(トレイの「Radirec を開く」)、更新は Velopack のアプリ内自己更新で行う
 ([ADR-0012](docs/adr/0012-retire-service-for-tray-resident-per-user.md) /
@@ -39,14 +39,14 @@
 ## 開発時の実行(SDK から)
 
 ```bash
-# サンプル設定をコピー(相対パスは radirec.json のあるディレクトリ基準で解決される)
-cp config/radirec.sample.json  radirec.json
-cp config/stations.sample.json stations.json
-cp config/programs.sample.json programs.json
+# 設定は常に %LOCALAPPDATA%\RadirecData\ に置く(CLI も常駐トレイもここを読む。別の場所を指すオプションは無い)。
+# トレイを一度起動すると見本から作られる。手で置くなら config/*.sample.json を
+# radirec.json / stations.json / programs.json としてそこへコピーする
+# (相対パスは radirec.json のあるディレクトリ基準で解決される)。
 
 # まず dry-run(副作用なしで取り込み予定を確認)→ 実行
-dotnet run --project src/Radirec.Cli -- ingest --config radirec.json --dry-run
-dotnet run --project src/Radirec.Cli -- ingest --config radirec.json
+dotnet run --project src/Radirec.Cli -- ingest --dry-run
+dotnet run --project src/Radirec.Cli -- ingest
 ```
 
 詳しくは [利用ガイド](docs/usage.md)。
