@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Text;
 using Radirec.Core.Configuration;
 using Radirec.Core.Reapply;
@@ -208,6 +209,201 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.False(vm.IsLoadFailed);
         Assert.Equal(2, vm.Programs.Count);
     }
+
+    // ---------- 読んでいるあいだに始めた作業(#185) ----------
+
+    // 読み込みを、gate が開くまで止めておける番組ページ(最初の読み込みは止めない)。止めた読み込みは、読み始めたときの
+    // 中身(読めなかったことも)を返す(遅い NAS と同じく、読んでいるあいだに書かれても、書かれる前の中身になる)。
+    private async Task<(ProgramsPageViewModel Vm, Func<TaskCompletionSource> HoldNextLoads)> CreateLoadedWithLoadGate(
+        FakeControl? control = null)
+    {
+        File.WriteAllText(ProgramsPath, Sample, new UTF8Encoding(false));
+        TaskCompletionSource? gate = null;
+        var vm = new ProgramsPageViewModel(control ?? new FakeControl(), () => ProgramsPath, _gate, _log.Add, _log.Add,
+            now: () => Now,
+            readForLoad: async path =>
+            {
+                ProgramsFileSnapshot? read = null;
+                Exception? failed = null;
+                try
+                {
+                    read = ProgramsFileWriter.Read(path);
+                }
+                catch (Exception ex)
+                {
+                    failed = ex;
+                }
+                if (gate is not null)
+                    await gate.Task;
+                if (failed is not null)
+                    ExceptionDispatchInfo.Throw(failed);
+                return read!;
+            });
+        await vm.LoadAsync();
+        return (vm, () => gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+    }
+
+    [Fact]
+    public void Editing_started_while_loading_is_kept() => UiThreadContext.Run(async () =>
+    {
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+        File.WriteAllText(ProgramsPath, Sample.Replace("パンサー向井のふらっと\" }", "パンサー向井のふらっと!\" }"));
+
+        var shown = vm.OnShownAsync(); // 一覧で変更が無いので読み直す
+        Assert.False(shown.IsCompleted); // 読んでいる途中
+        AddAnzu(vm); // 読んでいるあいだも一覧は出ているので、編集を始められる
+        gate.SetResult();
+        await shown;
+
+        Assert.Equal(3, vm.Programs.Count); // 読み終えても、始めた編集を消さない
+        Assert.True(vm.HasChanges);
+        Assert.Equal("パンサー向井のふらっと", vm.Programs[1].Album); // 読んだ結果は捨てた(前の一覧のまま)
+        Assert.Contains(_log, l => l.Contains("作り直しませんでした"));
+    });
+
+    [Fact]
+    public void Saving_while_loading_is_not_undone_by_the_older_read() => UiThreadContext.Run(async () =>
+    {
+        // 読んでいるあいだに「編集 → 確認 → 保存して適用」まで済むと、保存した後の読み直しが一覧を作り直し、結果の画面
+        // (変更なし)になる。後から終わった読み込み(保存の前の中身)で作り直すと、保存した番組が消えたように見える。
+        var control = new FakeControl();
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate(control);
+        var gate = holdNextLoads();
+
+        var shown = vm.OnShownAsync(); // 一覧で変更が無いので読み直す(保存の前の中身を読んで止まる)
+        Assert.False(shown.IsCompleted);
+        AddAnzu(vm);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveAndApplyCommand.ExecuteAsync(null);
+        Assert.True(vm.IsResultMode);
+        Assert.Equal(3, vm.Programs.Count);
+        Assert.False(vm.HasChanges);
+        gate.SetResult(); // 保存の前の中身を読み終わる
+        await shown;
+
+        Assert.True(vm.IsResultMode); // 結果を出したまま
+        Assert.Equal(3, vm.Programs.Count); // 保存した番組を消さない
+        Assert.Contains(_log, l => l.Contains("読んだ結果を捨てました"));
+
+        // 次の保存の基準も、保存した後の中身のまま(古い中身に戻ると、W-275 を誤って出す)。
+        await vm.BackCommand.ExecuteAsync(null);
+        vm.SelectedProgram = vm.Programs[2];
+        vm.DeleteProgramCommand.Execute(null);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveOnlyCommand.ExecuteAsync(null);
+        Assert.False(vm.IsConflict);
+        Assert.Equal(2, ProgramsFileWriter.Read(ProgramsPath).Config.Programs.Count);
+    });
+
+    [Fact]
+    public void Revert_while_loading_still_takes_the_newer_read() => UiThreadContext.Run(async () =>
+    {
+        // 「元に戻す」(W-209)は、ファイルを読まずに、読み込んだときの基準(古い中身)で一覧を作り直す。読んでいるあいだに
+        // 「編集 → 元に戻す」をしても、読み終えたら新しい中身で作り直す(捨てると、一覧が古いままで次の保存が W-275 になる)。
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+        File.WriteAllText(ProgramsPath, Sample.Replace("パンサー向井のふらっと\" }", "パンサー向井のふらっと!\" }"));
+
+        var shown = vm.OnShownAsync(); // 新しい中身を読んで止まる
+        Assert.False(shown.IsCompleted);
+        AddAnzu(vm);
+        vm.RevertCommand.Execute(null); // W-209
+        Assert.False(vm.HasChanges);
+        Assert.Equal("パンサー向井のふらっと", vm.Programs[1].Album); // 元に戻したのは、読み込んだときの古い中身
+        gate.SetResult();
+        await shown;
+
+        Assert.Equal("パンサー向井のふらっと!", vm.Programs[1].Album); // 新しい中身で作り直した
+        Assert.False(vm.HasChanges);
+
+        // 基準も新しい中身になっているので、次の保存は W-275 にならない。
+        AddAnzu(vm);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        await vm.SaveOnlyCommand.ExecuteAsync(null);
+        Assert.False(vm.IsConflict);
+        Assert.Equal(3, ProgramsFileWriter.Read(ProgramsPath).Config.Programs.Count);
+    });
+
+    [Fact]
+    public void Form_opened_while_loading_stays_open() => UiThreadContext.Run(async () =>
+    {
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+
+        var shown = vm.OnShownAsync();
+        vm.AddProgramCommand.Execute(null); // フォームを開いたまま(一覧の画面ではない)
+        vm.FormAlbum = "書きかけ";
+        gate.SetResult();
+        await shown;
+
+        Assert.True(vm.IsProgramFormMode); // 一覧へ戻さない
+        Assert.Equal("書きかけ", vm.FormAlbum);
+    });
+
+    [Fact]
+    public void Load_failing_while_editing_keeps_the_edit() => UiThreadContext.Run(async () =>
+    {
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+        File.WriteAllText(ProgramsPath, "{ \"Programs\": [ "); // 読んでいるあいだに壊れた
+
+        var shown = vm.OnShownAsync();
+        AddAnzu(vm);
+        gate.SetResult();
+        await shown;
+
+        Assert.False(vm.IsLoadFailed); // 読めなかったことで一覧を消さない(gui.log には残す)
+        Assert.Equal(3, vm.Programs.Count);
+        Assert.Contains(_log, l => l.Contains("を読めませんでした"));
+    });
+
+    [Fact]
+    public void Reload_W276_discards_changes_even_after_waiting_for_the_read() => UiThreadContext.Run(async () =>
+    {
+        // 「読み込み直す」(W-276)は、利用者が変更を捨てると決めて読み直す。読み終えたときに変更が残っていても作り直す。
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        AddAnzu(vm);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        File.WriteAllText(ProgramsPath, Sample + "\n"); // エディタで直した
+        await vm.SaveAndApplyCommand.ExecuteAsync(null);
+        Assert.True(vm.IsConflict); // W-275
+        var gate = holdNextLoads();
+
+        var reload = vm.ReloadCommand.ExecuteAsync(null);
+        Assert.False(reload.IsCompleted); // 読んでいる途中(変更はまだ残っている)
+        Assert.True(vm.HasChanges);
+        gate.SetResult();
+        await reload;
+
+        Assert.True(vm.IsListMode);
+        Assert.False(vm.IsConflict);
+        Assert.False(vm.HasChanges); // この画面での変更は消える
+        Assert.Equal(2, vm.Programs.Count);
+    });
+
+    [Fact]
+    public void Reload_W276_joining_a_running_load_discards_changes() => UiThreadContext.Run(async () =>
+    {
+        // 「読み込み直す」を押したとき、ほかの経路(ページを出し直した等)が始めた読み込みがすでに走っていれば、新しく始めずに
+        // それに合流する。そのときも、読み終えたら変更を捨てて作り直すことを、その読み込みに伝える。
+        var (vm, holdNextLoads) = await CreateLoadedWithLoadGate();
+        var gate = holdNextLoads();
+        var shown = vm.OnShownAsync(); // 一覧で変更が無いので、読み直しを始める(止めておく)
+        Assert.False(shown.IsCompleted);
+        AddAnzu(vm); // 読んでいるあいだに編集した(このままなら、読み終えても消さない)
+        Assert.True(vm.HasChanges);
+
+        var reload = vm.ReloadCommand.ExecuteAsync(null); // 走っている読み込みに合流する
+        Assert.False(reload.IsCompleted);
+        gate.SetResult();
+        await shown;
+        await reload;
+
+        Assert.True(vm.IsListMode);
+        Assert.False(vm.HasChanges); // 利用者が捨てると決めたので、作り直した
+        Assert.Equal(2, vm.Programs.Count);
+    });
 
     // ---------- 追加・編集・削除 ----------
 

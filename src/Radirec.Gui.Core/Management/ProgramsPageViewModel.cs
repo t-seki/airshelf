@@ -147,6 +147,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
     private ProgramsFileSnapshot? _snapshot;
     private bool _loaded;
     private Task? _loading; // 走っている読み込み(LoadAsync を 1 本にまとめる)
+    private bool _discardWorkOnLoad; // 走っている読み込みは、作業が残っていても一覧を作り直す(W-276 の「読み込み直す」)
+    private int _snapshotVersion; // SetSnapshot で一覧を作り直した回数(読んでいるあいだに、ほかの経路が作り直したかを見る)
     private bool _isUnavailable;
     private bool _isUnused;
     private string? _loadError;
@@ -583,16 +585,11 @@ public sealed class ProgramsPageViewModel : ObservableObject
             await LoadAsync();
             return;
         }
-        if (HasChanges || !(IsListMode || IsResultMode))
+        if (!CanReplaceWithLoaded)
             return;
-        if (_reapplyPending || IsResultMode)
-        {
-            if (!await FileChangedAsync())
-                return;
-            // 確かめている間に編集を始めていたら読み直さない(結果の画面のままなら、変わったので読み直す)。
-            if (!(IsResultMode || CanReloadWithoutLosingWork))
-                return;
-        }
+        // 確かめている間に編集を始めていたら、LoadAsync が読み直さない(結果の画面のままなら、変わったので読み直す)。
+        if ((_reapplyPending || IsResultMode) && !await FileChangedAsync())
+            return;
         await LoadAsync();
     }
 
@@ -619,11 +616,19 @@ public sealed class ProgramsPageViewModel : ObservableObject
     }
 
     /// <summary>
-    /// programs.json を読み、一覧を作り直す(この画面での変更は捨てる)。読み込みが走っていれば、新しく始めずにそれを待つ
+    /// programs.json を読み、一覧を作り直す。読み込みが走っていれば、新しく始めずにそれを待つ
     /// (2 本走ると、後から終わった方が、その間に始めた確認の画面を一覧に戻してしまうため。#164)。
+    /// 作り直すのは、読み直しても作業が消えないとき(<see cref="CanReplaceWithLoaded"/>)だけ。読む前と、読み終えた後に確かめる
+    /// (読んでいるあいだに編集・確認を始めていた、または保存してほかの経路が一覧を作り直していたら、読んだ結果を捨てる。#185)。
     /// </summary>
-    public Task LoadAsync()
+    public Task LoadAsync() => LoadAsync(discardWork: false);
+
+    // discardWork: 利用者が変更を捨てると決めて読み直す(「読み込み直す」W-276)。作業が残っていても作り直す。
+    // 読み込みが走っていれば、それに「作り直す」を伝えて待つ(読み終えた後の確かめで使う)。
+    private Task LoadAsync(bool discardWork)
     {
+        if (discardWork)
+            _discardWorkOnLoad = true;
         if (_loading is { IsCompleted: false } running)
             return running;
         return _loading = LoadCoreAsync();
@@ -631,6 +636,47 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     private async Task LoadCoreAsync()
     {
+        try
+        {
+            await LoadCoreAsyncInner();
+        }
+        finally
+        {
+            _discardWorkOnLoad = false;
+        }
+    }
+
+    // 読み直しても作業が消えないか:一覧か結果の画面で、保存していない変更が無い。編集フォーム・確認・適用中の作業と、
+    // 一覧の変更は消さない。結果の画面は保存を済ませた後なので読み直してよい(OnShownAsync の「結果の画面のまま」)。
+    // 読み始める前に確かめる。読み終えたときは MayReplaceAfterRead で確かめ直す。
+    private bool CanReplaceWithLoaded => !HasChanges && (IsListMode || IsResultMode);
+
+    // 読み始めてよいか。まだ一度も読んでいなければ、作り直すものが無いので読む。
+    private bool MayStartLoad => !_loaded || _discardWorkOnLoad || CanReplaceWithLoaded;
+
+    // 読み終えたときに、読んだ結果(読めなかったことも)で一覧を作り直してよいか(#185)。version は読み始めたときの値。
+    private bool MayReplaceAfterRead(int version)
+    {
+        // ほかの経路が、読んでいるあいだにファイルを読んで一覧を作り直した(番号を進めるのはそういう経路だけ。SetSnapshot)。
+        // 読んでいるあいだに「確認 → 保存して適用 / 保存だけ」まで進むと、
+        // 保存した後の読み直し(ReloadSnapshotAfterSaveAsync)が作り直してから結果の画面になる。その読み直しは書いた後の
+        // ファイルを読んでいて、こちらの読み込み(書く前に始めたかもしれない)より古くない。作り直すと、保存した番組が消えた
+        // ように見え、次の保存の基準(_snapshot.Original)も古くなって W-275 を誤って出す。
+        // 「読み込み直す」(W-276)でも捨てる:変更を捨ててファイルの今の中身に合わせる、という利用者の決めたことは、
+        // ほかの経路の作り直しで済んでいる。
+        if (_snapshotVersion != version)
+            return false;
+        if (_discardWorkOnLoad)
+            return true;
+        // 結果の画面は、ここでは読み始める前から出ていたものだけ。読んでいるあいだに結果の画面になる経路は、保存・適用
+        // (上の作り直しを通る)と、保存済みの設定での確認(ConfirmSavedAsync が走っている読み込みを待ってから始める)だけ。
+        return CanReplaceWithLoaded;
+    }
+
+    private async Task LoadCoreAsyncInner()
+    {
+        if (!MayStartLoad)
+            return;
         _loaded = true;
         if (_locateProgramsFile is null)
         {
@@ -664,25 +710,48 @@ public sealed class ProgramsPageViewModel : ObservableObject
         }
 
         IsUnused = false;
+        var version = _snapshotVersion;
         try
         {
             var snapshot = await _readForLoad(path);
-            LoadError = null;
-            SetSnapshot(snapshot);
+            if (!KeepWorkOnLoad(path, version))
+            {
+                LoadError = null;
+                SetSnapshot(snapshot);
+            }
         }
         catch (ProgramsFileException ex)
         {
             // W-216(ProgramsFileWriter.Read の文言:「{ファイル名} を読めませんでした: …」/「… を読めません(JSON が壊れています): …」)
             _logWarn($"管理画面: {path} を読めませんでした: {ex}");
-            SetSnapshot(null);
-            LoadError = ex.Message;
+            if (!KeepWorkOnLoad(path, version))
+            {
+                SetSnapshot(null);
+                LoadError = ex.Message;
+            }
         }
         catch (Exception ex)
         {
             _logWarn($"管理画面: {path} を読めませんでした: {ex}");
-            SetSnapshot(null);
-            LoadError = ReadFailed(Path.GetFileName(path), ex.Message); // W-216
+            if (!KeepWorkOnLoad(path, version))
+            {
+                SetSnapshot(null);
+                LoadError = ReadFailed(Path.GetFileName(path), ex.Message); // W-216
+            }
         }
+    }
+
+    // 読んでいるあいだに編集・確認・保存が進んでいたら、読んだ結果(または読めなかったこと)で一覧を作り直さない(#185)。
+    // 作業を残したときは、読み込んだときの基準(スナップショット)が前のままなので、次に保存するときに programs.json が
+    // 変わっていれば W-275 で分かる。
+    private bool KeepWorkOnLoad(string path, int version)
+    {
+        if (MayReplaceAfterRead(version))
+            return false;
+        _logInfo(_snapshotVersion != version
+            ? $"管理画面: {path} を読んでいるあいだに番組ページの一覧が作り直されたので、読んだ結果を捨てました"
+            : $"管理画面: {path} を読んでいるあいだに番組ページの作業が始まったので、読んだ結果で一覧を作り直しませんでした");
+        return true;
     }
 
     /// <summary>W-215。programs.json の場所を決められなかった(状態を読めない等)。</summary>
@@ -716,7 +785,21 @@ public sealed class ProgramsPageViewModel : ObservableObject
         ConfirmCommand.NotifyCanExecuteChanged();
     }
 
+    // programs.json を読んだ(読もうとした)結果で、基準のスナップショットと一覧を作り直す。世代の番号を進める
+    // (走っている読み込みが、読み終えたときに「ほかの経路がファイルを読んで作り直した」と分かるように。#185)。
+    // 呼ぶのは、ファイルの今の状態を見て作り直すところだけ:
+    // - LoadCoreAsyncInner:読み込み(設定を読めない・場所を決められない・使わない設定・読んだ・読めなかった)
+    // - ReloadSnapshotAfterSaveAsync:保存した後の読み直し(読めなかったときも)
+    // ファイルを読まずに手元のスナップショットで作り直す「元に戻す」(W-209)は RebuildList を呼び、番号を進めない
+    // (進めると、走っている読み込みが読んだ新しい中身が捨てられ、一覧が古いままになる)。
     private void SetSnapshot(ProgramsFileSnapshot? snapshot)
+    {
+        _snapshotVersion++;
+        RebuildList(snapshot);
+    }
+
+    // 基準のスナップショットを snapshot にし、一覧をその写しで作り直す(画面での変更は捨てる)。
+    private void RebuildList(ProgramsFileSnapshot? snapshot)
     {
         _snapshot = snapshot;
         _removedPrograms.Clear();
@@ -822,8 +905,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     private void Revert()
     {
+        // ファイルは読まない(読み込んだときの基準に戻すだけ)。走っている読み込みは、読み終えたら今までどおり作り直す。
         if (_snapshot is { } snapshot)
-            SetSnapshot(snapshot);
+            RebuildList(snapshot);
     }
 
     // ---- 要対応の「統合する」「分けておく」(#155・ADR-0018)----
@@ -1322,8 +1406,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
         if (IsSavedBasis)
         {
             EndSavedConfirm();
-            if (await FileChangedAsync() && CanReloadWithoutLosingWork)
-                await LoadAsync();
+            if (await FileChangedAsync())
+                await LoadAsync(); // 確かめている間に編集を始めていたら、LoadAsync が読み直さない
             return;
         }
         await ReturnToListAsync();
@@ -1338,13 +1422,11 @@ public sealed class ProgramsPageViewModel : ObservableObject
         IsConflict = false;
         Mode = ProgramsPageMode.List;
 
-        if (fromResult && !HasChanges && await FileChangedAsync() && CanReloadWithoutLosingWork)
+        // ファイルが変わったかを確かめている間・読んでいる間(await の間)に、利用者が一覧を編集した・フォームや「確認」を
+        // 始めていたら、読み直すとその作業が黙って消える。LoadAsync が読む前と読み終えた後に確かめ、そのときは作り直さない。
+        if (fromResult && !HasChanges && await FileChangedAsync())
             await LoadAsync();
     }
-
-    // ファイルが変わったかを確かめている間(await の間)に、利用者が一覧を編集した・フォームや「確認」を始めていたら、
-    // 読み直すとその作業が黙って消える。まだ一覧の画面で、変更が無いときだけ読み直す。
-    private bool CanReloadWithoutLosingWork => IsListMode && !HasChanges;
 
     // ---- 保存 ----
 
@@ -1488,7 +1570,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     private async Task ReloadAsync()
     {
         IsConflict = false;
-        await LoadAsync();
+        await LoadAsync(discardWork: true); // W-276:この画面での変更を捨てると決めて読み直す
     }
 
     private void ShowResult(string heading, string body, bool isError)

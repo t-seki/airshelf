@@ -118,7 +118,7 @@ public sealed class HomeAttentionTests : IDisposable
 
     private ManagementViewModel CreateNow(
         string? content = Sample, Func<AttentionItems>? compute = null, bool degraded = false,
-        Func<string, Task<byte[]?>>? readForCheck = null)
+        Func<string, Task<byte[]?>>? readForCheck = null, Func<string, Task<ProgramsFileSnapshot>>? readForLoad = null)
     {
         if (content is not null)
             File.WriteAllText(ProgramsPath, content, new UTF8Encoding(false));
@@ -126,7 +126,7 @@ public sealed class HomeAttentionTests : IDisposable
             _control, null, () => [], new NoPathActions(), _log.Add,
             locateProgramsFile: () => { _locates++; return ProgramsPath; }, now: () => new DateTime(2026, 9, 25, 12, 0, 0),
             computeAttention: degraded ? null : compute ?? Compute,
-            readProgramsForCheck: readForCheck);
+            readProgramsForCheck: readForCheck, readProgramsForLoad: readForLoad);
     }
 
     // 番組ページが programs.json の変更を確かめる読み込みを、gate が開くまで止めておく(確かめている間の順序をテストで決める)。
@@ -473,6 +473,41 @@ public sealed class HomeAttentionTests : IDisposable
         Assert.Equal(locates, _locates); // 読み直していない
         Assert.True(vm.Programs.IsProgramFormMode); // 読み直して一覧へ戻さない
         Assert.Empty(vm.Programs.Programs);
+    });
+
+    [Fact]
+    public void Back_from_result_keeps_editing_started_while_rereading() => UiThreadContext.Run(async () =>
+    {
+        // 確かめる読み込みが先に(その場で)終わる順序(#210)。「戻る」はそのまま読み直しに進み、編集は読み直しの最中に入る。
+        // 読み終えても、その編集を消さない(#185)。
+        var loadGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateLoads = false;
+        var vm = CreateNow(
+            readForCheck: path => Task.FromResult<byte[]?>(File.ReadAllBytes(path)),
+            readForLoad: async path =>
+            {
+                if (gateLoads)
+                    await loadGate.Task;
+                return ProgramsFileWriter.Read(path);
+            });
+        await SaveOnlyToResult(vm);
+        File.WriteAllText(ProgramsPath, Sample); // 結果を出している間に、ほかの経路で書かれた
+        var locates = _locates;
+        gateLoads = true;
+
+        var back = vm.Programs.BackCommand.ExecuteAsync(null);
+        Assert.Equal(locates + 1, _locates); // 確かめ終わり、読み直しを始めた
+        Assert.False(back.IsCompleted); // 読み直している途中
+        vm.Programs.AddProgramCommand.Execute(null);
+        vm.Programs.FormStation = Tbs;
+        vm.Programs.FormFolders = "安住紳一郎の日曜天国";
+        vm.Programs.FormAlbum = "安住紳一郎の日曜天国";
+        vm.Programs.CommitFormCommand.Execute(null);
+        loadGate.SetResult(); // 読み終わる
+        await back;
+
+        Assert.True(vm.Programs.HasChanges); // 読み終えても、始めた編集を黙って消さない
+        Assert.Equal("安住紳一郎の日曜天国", Assert.Single(vm.Programs.Programs).Album);
     });
 
     // ---------- 結果の画面のまま、要対応から下書きを入れる(#199) ----------

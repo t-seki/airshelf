@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Radirec.Core.Attention;
 using Radirec.Core.Normalization;
 using Radirec.Gui.Core.Updates;
+using Radirec.Hosting;
 using Radirec.Hosting.Control;
 
 namespace Radirec.Gui.Core.Management;
@@ -57,6 +58,9 @@ public sealed class ManagementViewModel : ObservableObject
     /// 番組ページが、programs.json が変わったかを確かめるときに中身を読む(テスト用。<see cref="ProgramsPageViewModel"/> の
     /// <c>readForCheck</c> へ渡す)。
     /// </param>
+    /// <param name="readProgramsForLoad">
+    /// 番組ページが programs.json を読み込む(テスト用。<see cref="ProgramsPageViewModel"/> の <c>readForLoad</c> へ渡す)。
+    /// </param>
     public ManagementViewModel(
         IServiceControl? control,
         string? degradedReason,
@@ -70,13 +74,14 @@ public sealed class ManagementViewModel : ObservableObject
         AboutPageViewModel? about = null,
         SettingsPageViewModel? settings = null,
         Func<AttentionItems>? computeAttention = null,
-        Func<string, Task<byte[]?>>? readProgramsForCheck = null)
+        Func<string, Task<byte[]?>>? readProgramsForCheck = null,
+        Func<string, Task<ProgramsFileSnapshot>>? readProgramsForLoad = null)
     {
         _logWarn = logWarn;
         var applyGate = new ProgramsApplyGate();
         // 番組ページを先に作る(ホームの要対応の「統合する」「分けておく」が使う)。
         Programs = new ProgramsPageViewModel(control, locateProgramsFile, applyGate, logWarn, logInfo, now,
-            navigate: page => CurrentPage = page, readForCheck: readProgramsForCheck);
+            navigate: page => CurrentPage = page, readForLoad: readProgramsForLoad, readForCheck: readProgramsForCheck);
         Home = new HomeViewModel(control, degradedReason, loadHistory, logWarn,
             showAll: () => CurrentPage = ManagementPage.History, zone, applyGate,
             computeAttention is null ? null : new AttentionActions(this, computeAttention),
