@@ -14,7 +14,7 @@ public sealed class SqliteLedgerTests : IDisposable
     {
         // 旧スキーマ seed 用の生 SqliteConnection も Pooling=False にしてあり(SqliteLedger 本体と同じ)、
         // プールに残って ledger.db のハンドルを握る接続は無い。そのため ClearAllPools は呼ばなくてよい。
-        // プールする接続を作ると、並列に走るほかのテストクラスの Dispose の ClearAllPools が、使用中の
+        // プールする接続を作ると、並列に走るほかのテストが呼ぶ ClearAllPools が、使用中の
         // 接続のハンドルを破棄しうる(ExecuteNonQuery で ObjectDisposedException。#175)。
         if (Directory.Exists(_dir))
             Directory.Delete(_dir, recursive: true);
