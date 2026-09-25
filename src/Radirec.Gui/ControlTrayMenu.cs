@@ -97,8 +97,8 @@ internal sealed class ControlTrayMenu
         open.Font = new Font(open.Font, FontStyle.Bold);
 
         Menu.Items.Add(versionLine);
-        Menu.Items.Add(open);
         Menu.Items.Add(new ToolStripSeparator());
+        Menu.Items.Add(open); // モックの並び(W-601 / 区切り / W-602 / W-603)
         Menu.Items.Add(_rescan);
         Menu.Items.Add(_reload);
         Menu.Items.Add(_reapply);

@@ -109,7 +109,21 @@ internal sealed class ManagementWindowHost
         }
         catch (Exception ex)
         {
-            TrayLog.Warn($"管理画面を閉じるときに例外: {ex}");
+            // レイアウトの途中など、ディスパッチャの処理が止まっている間の例外だと Close が投げる。
+            // そのときは後回しにして閉じる(開いたまま残さない)。
+            TrayLog.Warn($"管理画面を閉じるときに例外(後で閉じ直します): {ex}");
+            try
+            {
+                window.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { window.Close(); }
+                    catch (Exception retry) { TrayLog.Warn($"管理画面を閉じ直せませんでした: {retry}"); }
+                }));
+            }
+            catch (Exception post)
+            {
+                TrayLog.Warn($"管理画面を閉じ直す予約に失敗しました: {post}");
+            }
         }
     }
 }
