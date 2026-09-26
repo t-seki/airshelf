@@ -120,11 +120,11 @@ public sealed class IngestServiceTests
         public IngestSummary? Last { get; private set; }
         public Exception? Throws { get; set; }
 
-        public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
+        public Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
         {
             Calls++;
             Last = summary;
-            return Throws is null ? Task.CompletedTask : throw Throws;
+            return Throws is null ? Task.FromResult<string?>(null) : throw Throws;
         }
     }
 
@@ -805,6 +805,54 @@ public sealed class IngestServiceTests
         Assert.Equal(1, result.Report!.Count(IngestOutcome.Imported));
         Assert.Equal(1, result.Report.Count(IngestOutcome.Failed));
         Assert.Null(result.Error);
+
+    }
+
+    [Fact]
+    public async Task 走査の実行で止めた通知は_発行したと報告せず理由を返す()
+    {
+        var gate = new ScanRunSummaryGate(_publisher);
+        var queue = new ScanRunQueue(gate);
+        var service = Build([Rec(StandardName)], publisher: gate);
+        IngestReport? report = null;
+
+        var pending = queue.Enqueue();
+        await queue.RunAsync(
+            queue.TakePending()!, async ct => report = await service.RunOnceAsync(dryRun: false, ct), CancellationToken.None);
+        await pending;
+
+        // 出していない通知を「発行」と報告しない(gui.log の「通知」の欄。#215)。
+        Assert.Equal(0, _publisher.Calls);
+        Assert.False(report!.NotificationPublished);
+        Assert.Equal(ScanRunSummaryGate.SuppressedReason, report.NotificationSuppressedReason);
+        Assert.Null(report.NotificationError);
+    }
+
+    [Fact]
+    public async Task 設定で新規取込のトーストを止めているときは_発行したと報告せず理由を返す()
+    {
+        var gate = new Radirec.Gui.Core.Management.GatedIngestSummaryPublisher(_publisher, () => false);
+
+        var report = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(0, _publisher.Calls);
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.False(report.NotificationPublished);
+        Assert.Equal(
+            Radirec.Gui.Core.Management.GatedIngestSummaryPublisher.SuppressedReason,
+            report.NotificationSuppressedReason);
+    }
+
+    [Fact]
+    public async Task 走査の実行の外で門を通って出したときは_発行と報告し理由は無い()
+    {
+        var gate = new ScanRunSummaryGate(_publisher);
+
+        var report = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, _publisher.Calls);
+        Assert.True(report.NotificationPublished);
+        Assert.Null(report.NotificationSuppressedReason);
     }
 
     [Fact]

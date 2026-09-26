@@ -554,7 +554,11 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                     LibraryRefreshStatus.Failed or LibraryRefreshStatus.Misconfigured => report.RefreshError ?? "失敗",
                     _ => "-",
                 };
-                var notify = report.NotificationPublished ? "発行" : report.NotificationError ?? "-";
+                // 止めたとき(走査の実行・設定でオフ)は「発行」と書かず理由を残す。出していない通知を「発行」と
+                // 書くと、トーストが出ない理由を調べる手がかりを誤らせる(#215)。
+                var notify = report.NotificationPublished ? "発行"
+                    : report.NotificationSuppressedReason is { } suppressed ? $"止めた({suppressed})"
+                    : report.NotificationError ?? "-";
                 // 失敗通知の発行結果も残す。新規失敗が無ければ "-"、発行失敗なら理由を残して
                 // 「失敗トーストが出ない理由」を診断可能にする(さもないと無痕跡)。
                 var failNotify = report.FailureNotificationPublished ? "発行" : report.FailureNotificationError ?? "-";

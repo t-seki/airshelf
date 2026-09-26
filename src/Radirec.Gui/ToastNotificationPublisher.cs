@@ -16,10 +16,10 @@ namespace Radirec.Gui;
 public sealed class ToastNotificationPublisher(ToastPresenter presenter)
     : IIngestSummaryPublisher, IIngestFailurePublisher
 {
-    public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
+    public Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
     {
         presenter.Show(ToPayload(summary));
-        return Task.CompletedTask;
+        return Task.FromResult<string?>(null);
     }
 
     public Task PublishAsync(IngestFailureSignal signal, CancellationToken cancellationToken = default)

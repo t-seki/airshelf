@@ -14,8 +14,8 @@ public class CompositionRootPublisherSelectionTests
 {
     private sealed class FakeSummaryPublisher : IIngestSummaryPublisher
     {
-        public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
     }
 
     private sealed class FakeFailurePublisher : IIngestFailurePublisher

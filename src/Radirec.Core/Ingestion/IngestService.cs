@@ -41,7 +41,7 @@ public sealed class IngestService(
         }
 
         var (refreshStatus, refreshError) = await MaybeRefreshLibraryAsync(items, dryRun, cancellationToken);
-        var (notified, notifyError) = await MaybePublishSummaryAsync(items, dryRun, cancellationToken);
+        var (notified, notifyError, notifySuppressed) = await MaybePublishSummaryAsync(items, dryRun, cancellationToken);
         var (failNotified, failNotifyError) = await MaybePublishFailuresAsync(items, dryRun, cancellationToken);
         return new IngestReport
         {
@@ -51,6 +51,7 @@ public sealed class IngestService(
             RefreshError = refreshError,
             NotificationPublished = notified,
             NotificationError = notifyError,
+            NotificationSuppressedReason = notifySuppressed,
             FailureNotificationPublished = failNotified,
             FailureNotificationError = failNotifyError,
         };
@@ -147,29 +148,30 @@ public sealed class IngestService(
     }
 
     // 取込が1件以上あった実行のみ取込要約シグナルを発行(dry-run は発行しない)。
-    // refresh の直後に出す。発行失敗で取り込み成功は巻き戻さない(refresh と同方針)。
-    private async Task<(bool Published, string? Error)> MaybePublishSummaryAsync(
+    // refresh の直後に出す。発行失敗で取り込み成功は巻き戻さない(refresh と同方針)。publisher が止めたとき
+    // (走査の実行・設定でオフ)は、出したことにせず理由を返す(#215)。
+    private async Task<(bool Published, string? Error, string? SuppressedReason)> MaybePublishSummaryAsync(
         IReadOnlyList<IngestItemResult> items, bool dryRun, CancellationToken cancellationToken)
     {
         if (dryRun)
-            return (false, null);
+            return (false, null, null);
 
         var imported = items
             .Where(i => i.Outcome == IngestOutcome.Imported && i.Episode is not null)
             .Select(i => i.Episode!)
             .ToList();
         if (imported.Count == 0)
-            return (false, null);
+            return (false, null, null);
 
         try
         {
-            await summaryPublisher.PublishAsync(IngestSummary.From(imported), cancellationToken);
-            return (true, null);
+            var suppressed = await summaryPublisher.PublishAsync(IngestSummary.From(imported), cancellationToken);
+            return (suppressed is null, null, suppressed);
         }
         // 真のキャンセルは伝播、それ以外(publisher の発行失敗等)は握って報告する。
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            return (false, ex.Message);
+            return (false, ex.Message, null);
         }
     }
 

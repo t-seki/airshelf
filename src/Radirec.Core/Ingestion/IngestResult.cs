@@ -89,14 +89,20 @@ public sealed record IngestReport
     public string? RefreshError { get; init; }
 
     /// <summary>
-    /// 取込要約シグナルを発行できたか(取込0件・dry-run では false)。非発行走査(手動 CLI の ingest など)は何もしない
-    /// publisher に渡すので、取込があれば true になる。常駐で新規取込のトーストを止めていても、シグナルは発行する
-    /// (トーストを出さないのは提示側。#152)。
+    /// 取込要約シグナルを出したか(取込0件・dry-run では false)。publisher が止めたとき(走査の実行・設定でオフ。
+    /// <see cref="NotificationSuppressedReason"/>)も false(#215)。非発行走査(手動 CLI の ingest など)は何もしない
+    /// publisher に渡し、それは理由を返さないので、取込があれば true になる。
     /// </summary>
     public bool NotificationPublished { get; init; }
 
     /// <summary>シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>
     public string? NotificationError { get; init; }
+
+    /// <summary>
+    /// publisher が取込要約を出さなかった理由(例:<c>CLI の走査</c>・<c>設定でオフ</c>)。出したとき・発行しなかったとき
+    /// (取込0件・dry-run)・発行に失敗したときは null(#215)。
+    /// </summary>
+    public string? NotificationSuppressedReason { get; init; }
 
     /// <summary>
     /// 取込失敗シグナルを発行できたか(新規失敗0件・dry-run では false。ADR-0011)。非発行走査(手動 CLI の ingest など)は
