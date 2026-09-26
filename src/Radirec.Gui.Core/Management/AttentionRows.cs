@@ -58,7 +58,7 @@ public static class AttentionText
     /// <summary>W-136(ボタン)。</summary>
     public const string ReapplyConfirm = "再適用の確認へ";
 
-    /// <summary>W-119。取り込みが止まっている(W-103〜W-105)ので、W-136 を押せない。</summary>
+    /// <summary>W-119。取り込みが止まっている(W-103〜W-105・W-153)ので、W-136 を押せない。</summary>
     public const string ReapplyUnavailable = "取り込みが止まっているため、再適用を確かめられません";
 
     /// <summary>W-137。縮退(radirec.json を読めない)。</summary>

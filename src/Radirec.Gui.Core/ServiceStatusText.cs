@@ -6,13 +6,13 @@ namespace Radirec.Gui.Core;
 /// <summary>
 /// 取り込みの状態を 2 行の文言にしたもの(状態 / 最終スキャン)と、制御(再スキャン等)を受け付けられるか。
 /// </summary>
-/// <param name="Status">W-101〜W-105(<c>状態: …</c>)。</param>
+/// <param name="Status">W-101〜W-105・W-153(<c>状態: …</c>)。</param>
 /// <param name="LastScan">W-106〜W-108(<c>最終スキャン: …</c>)。</param>
 /// <param name="CanControl">取り込みが動いていて、再スキャン等を受け付けられるか。</param>
 public sealed record ServiceStatusView(string Status, string LastScan, bool CanControl);
 
 /// <summary>
-/// 取り込みの状態の文言(docs/mockups/management-window.md の W-101〜W-108)。トレイのメニュー(W-604)と
+/// 取り込みの状態の文言(docs/mockups/management-window.md の W-101〜W-108・W-153)。トレイのメニュー(W-604)と
 /// 管理画面のホームが同じ文言を出すので、ここに 1 つだけ置く(#151)。
 /// </summary>
 public static class ServiceStatusText
@@ -25,6 +25,12 @@ public static class ServiceStatusText
 
     /// <summary><c>radirec.json</c> を読めなかったときの理由(W-105 の括弧の中)。</summary>
     public const string DegradedConfigUnreadable = "設定を読み込めませんでした";
+
+    /// <summary>
+    /// W-153。ワーカーは作れたが、起動処理(孤児の掃除・監視の開始)が失敗して止まったとき(#217)。W-104(ワーカーを作れなかった)と
+    /// 違い、設定ページには原因が出ないので gui.log へ案内する。
+    /// </summary>
+    public const string StartLoopFailed = "状態: 停止(取り込みの起動処理に失敗。gui.log 参照 → 原因を直して再起動)";
 
     /// <summary>W-108。取り込みが止まっているときの最終スキャン。</summary>
     public const string LastScanUnknown = "最終スキャン: —";
@@ -43,8 +49,12 @@ public static class ServiceStatusText
     {
         // ワーカーが異常終了してもトレイ(メッセージループ)は生存しうる。その場合「稼働中」と偽らず、
         // 停止を明示して制御を受け付けない(誤って「動いている」と信じさせない。ADR-0012)。
+        // 起動処理(掃除・監視の開始)で止まったときは、異常終了と分けて出す(#217)。原因(読めないフォルダ等)を直さないと、
+        // 再起動しても同じところで止まるため。
         if (!status.Running)
-            return new("状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)", LastScanUnknown, CanControl: false); // W-103 + W-108
+            return status.StartFailure is null
+                ? new("状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)", LastScanUnknown, CanControl: false) // W-103 + W-108
+                : new(StartLoopFailed, LastScanUnknown, CanControl: false); // W-153 + W-108
 
         var line = status.Watching ? "状態: 稼働中(監視中)" : "状態: 稼働中(定期スキャンのみ)"; // W-101 / W-102
         return new(line, LastScan(status, zone), CanControl: true);

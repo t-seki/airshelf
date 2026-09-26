@@ -129,6 +129,26 @@ public sealed class ControlChannelTests
     }
 
     [Fact]
+    public async Task 起動処理で止まったら_statusとreloadの理由は起動処理の失敗と分かる文言にする()
+    {
+        // #217:起動処理(孤児の掃除・監視の開始)の失敗を、ループの異常終了(WorkerStoppedReason)と見分けられるようにする。
+        var control = new FakeControl { Running = false, StartFailure = @"Access to the path 'C:\out\locked' is denied." };
+        await using var server = StartServer(control, degradedReason: null);
+        var expected = @"取り込みの起動処理に失敗しました: Access to the path 'C:\out\locked' is denied.(gui.log 参照 → 原因を直して再起動)";
+        var (statusCode, statusOut) = await RunCli(["status", "--json"], Client(server));
+        Assert.Equal(ExitCodes.Success, statusCode);
+        using (var doc = JsonDocument.Parse(statusOut))
+        {
+            Assert.False(doc.RootElement.GetProperty("result").GetProperty("running").GetBoolean());
+            Assert.Equal(expected, doc.RootElement.GetProperty("result").GetProperty("reason").GetString());
+        }
+        var reload = (await Client(server).SendAsync(ControlProtocol.ReloadCommand, CancellationToken.None)).Response!;
+        Assert.Equal(ControlResponseKind.Degraded, reload.Kind);
+        Assert.Equal(expected, reload.Error);
+        Assert.Equal(0, control.ReloadCalls);
+    }
+
+    [Fact]
     public async Task CLIのstatusは応答を読めなくても0で_running_falseと理由を返す_reloadは2()
     {
         var failed = new FixedClient(new ControlCallResult(ControlCallOutcome.Failed, null, "常駐から応答がありません(時間切れ)"));
@@ -761,6 +781,7 @@ public sealed class ControlChannelTests
     {
         public ReloadResult Reload { get; set; } = ReloadResult.Ok();
         public bool Running { get; init; } = true;
+        public string? StartFailure { get; init; }
         public int ReloadCalls { get; private set; }
         public ManualResetEventSlim? BlockReload { get; init; }
         public TaskCompletionSource ReloadEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -772,6 +793,7 @@ public sealed class ControlChannelTests
             RadioRoot = @"I:\radio",
             Watching = true,
             Running = Running,
+            StartFailure = StartFailure,
             LastScanCompletedUtc = new DateTimeOffset(2026, 9, 26, 1, 0, 0, TimeSpan.Zero),
             LastScanTrigger = "手動",
             LastImported = 3,

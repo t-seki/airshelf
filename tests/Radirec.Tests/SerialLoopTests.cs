@@ -10,41 +10,90 @@ namespace Radirec.Tests;
 public sealed class SerialLoopTests
 {
     [Fact]
-    public async Task 起動処理で例外が出ると停止になり_例外は投げ直す()
+    public async Task 起動処理で例外が出ると停止になり_失敗を記録して渡してから_例外は投げ直す()
     {
         var loop = new SerialLoop();
         var stopped = 0;
         var loopRan = false;
+        var reported = new List<Exception>();
 
         var ex = await Assert.ThrowsAsync<IOException>(() => loop.RunAsync(
             start: () => throw new IOException("NAS 未接続"),
             loop: _ => { loopRan = true; return Task.CompletedTask; },
             onStopped: () => stopped++,
-            onUnexpectedExit: _ => Assert.Fail("起動処理の失敗は投げ直す(呼び手が gui.log に残す)"),
+            onUnexpectedExit: _ => Assert.Fail("起動処理の失敗はループの異常終了として扱わない"),
+            onStartFailed: reported.Add,
             CancellationToken.None));
 
         Assert.Equal("NAS 未接続", ex.Message);
         Assert.False(loop.Running); // 状態取得は「停止」を返し、設定リロードなどの要求は受理されない。
+        Assert.Same(ex, loop.StartFailure); // 状態取得で異常終了と見分ける(#217)。
+        Assert.Same(ex, Assert.Single(reported)); // ワーカーが gui.log に残す(#217)。
         Assert.False(loopRan);
         Assert.Equal(1, stopped);
     }
 
     [Fact]
-    public async Task 起動処理の例外は_同期的に失敗したタスクとして返る()
+    public async Task 起動処理の停止要求でない取り消しも_起動処理の失敗として記録し_異常終了とはしない()
     {
-        // BackgroundService.StartAsync は ExecuteAsync が同期で完了したときだけ失敗を返す(Program.cs が gui.log に残す経路)。
         var loop = new SerialLoop();
+        var reported = new List<Exception>();
 
-        var task = loop.RunAsync(
-            start: () => throw new IOException("NAS 未接続"),
+        await Assert.ThrowsAsync<TimeoutException>(() => loop.RunAsync(
+            start: () => throw new TimeoutException("NAS の応答なし"),
             loop: _ => Task.CompletedTask,
             onStopped: () => { },
-            onUnexpectedExit: _ => { },
-            CancellationToken.None);
+            onUnexpectedExit: _ => Assert.Fail("起動処理の失敗はループの異常終了として扱わない"),
+            onStartFailed: reported.Add,
+            CancellationToken.None));
+        Assert.Single(reported);
 
-        Assert.True(task.IsFaulted);
+        var cancelled = new SerialLoop();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => cancelled.RunAsync(
+            start: () => throw new OperationCanceledException("呼んだ先の時間切れ"),
+            loop: _ => Task.CompletedTask,
+            onStopped: () => { },
+            onUnexpectedExit: _ => Assert.Fail("起動処理の失敗はループの異常終了として扱わない"),
+            onStartFailed: _ => { },
+            CancellationToken.None));
+        Assert.IsType<OperationCanceledException>(cancelled.StartFailure);
+    }
+
+    [Fact]
+    public async Task 起動処理の途中の停止要求は_失敗として記録しない()
+    {
+        var loop = new SerialLoop();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await loop.RunAsync(
+            start: () => cts.Token.ThrowIfCancellationRequested(),
+            loop: _ => Task.CompletedTask,
+            onStopped: () => { },
+            onUnexpectedExit: _ => Assert.Fail("停止要求は異常終了ではない"),
+            onStartFailed: ex => Assert.Fail($"停止要求は起動処理の失敗ではない: {ex}"),
+            cts.Token);
+
+        Assert.Null(loop.StartFailure);
         Assert.False(loop.Running);
-        await Assert.ThrowsAsync<IOException>(() => task);
+    }
+
+    [Fact]
+    public async Task 起動が終わっても_StartFailureはnullのまま()
+    {
+        var loop = new SerialLoop();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await loop.RunAsync(
+            start: () => { },
+            loop: ct => Task.FromCanceled(ct),
+            onStopped: () => { },
+            onUnexpectedExit: _ => Assert.Fail("停止要求は異常終了ではない"),
+            onStartFailed: ex => Assert.Fail($"起動処理は失敗しない: {ex}"),
+            cts.Token);
+
+        Assert.Null(loop.StartFailure);
     }
 
     [Fact]
@@ -65,6 +114,7 @@ public sealed class SerialLoopTests
             },
             onStopped: () => stopped++,
             onUnexpectedExit: _ => unexpected++,
+            onStartFailed: ex => Assert.Fail($"起動処理は失敗しない: {ex}"),
             cts.Token);
 
         await entered.Task;
@@ -90,6 +140,7 @@ public sealed class SerialLoopTests
             loop: _ => throw new TaskCanceledException("呼んだ先の時間切れ"),
             onStopped: () => { },
             onUnexpectedExit: ex => { reported = ex; reportedCount++; },
+            onStartFailed: ex => Assert.Fail($"起動処理は失敗しない: {ex}"),
             CancellationToken.None);
 
         Assert.False(loop.Running);
@@ -108,6 +159,7 @@ public sealed class SerialLoopTests
             loop: _ => Task.CompletedTask,
             onStopped: () => { },
             onUnexpectedExit: ex => { Assert.Null(ex); reportedCount++; },
+            onStartFailed: ex => Assert.Fail($"起動処理は失敗しない: {ex}"),
             CancellationToken.None);
 
         Assert.Equal(1, reportedCount);
@@ -145,6 +197,7 @@ public sealed class SerialLoopTests
             },
             onStopped: () => { },
             onUnexpectedExit: ex => Assert.Fail($"ループは抜けない: {ex}"),
+            onStartFailed: ex => Assert.Fail($"起動処理は失敗しない: {ex}"),
             cts.Token);
 
         triggers.Writer.TryWrite("定期");
