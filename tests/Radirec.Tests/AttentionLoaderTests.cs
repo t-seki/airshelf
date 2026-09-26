@@ -91,4 +91,13 @@ public sealed class AttentionLoaderTests : IDisposable
 
         Assert.ThrowsAny<Exception>(() => AttentionLoader.Load(LedgerPath, null, ProgramsPath, ["TimeFree"]));
     }
+
+    [Fact]
+    public void Fails_instead_of_empty_when_the_ledger_folder_is_unreachable()
+    {
+        // 親フォルダが無い(NAS に届かない)なら空の台帳として計算しない(#216)。ファイルだけ無いときは空(上のテスト)。
+        var unreachable = Path.Combine(_dir, "nas-down", "ledger.db");
+        Assert.ThrowsAny<IOException>(
+            () => AttentionLoader.Load(unreachable, stationsFile: null, programsFile: null, ["TimeFree"]));
+    }
 }

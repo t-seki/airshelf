@@ -190,6 +190,34 @@ public sealed class CliTests
     }
 
     [Fact]
+    public async Task dryrunで台帳のあるフォルダに届かなければ5で_全件を予定とは答えない()
+    {
+        // 届かない NAS を「台帳が無い」(NullLedger)と扱うと、取り込み済みの回まで予定と誤答する(#216)。
+        var dir = Directory.CreateTempSubdirectory("radirec-dryrun-unreachable-").FullName;
+        try
+        {
+            var config = new RadirecConfig
+            {
+                RadioRoot = Path.Combine(dir, "radio"),
+                OutputRoot = Path.Combine(dir, "out"),
+                LedgerPath = Path.Combine(dir, "nas-down", "ledger.db"),
+                StationsFile = Path.Combine(dir, "stations.json"),
+                ProgramsFile = Path.Combine(dir, "programs.json"),
+            };
+            Directory.CreateDirectory(config.RadioRoot);
+            var (exitCode, output) = await Run(["ingest", "--dry-run", "--json"], new StubConfigSource(config));
+            Assert.Equal(ExitCodes.ExternalFailure, exitCode);
+            using var doc = JsonDocument.Parse(output);
+            Assert.Equal("ingest", doc.RootElement.GetProperty("command").GetString());
+            Assert.Contains(Path.Combine(dir, "nas-down"), doc.RootElement.GetProperty("error").GetString());
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("result").ValueKind);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+    [Fact]
     public async Task コマンドの実行中の想定外の例外は1でjsonにコマンド名と理由が出る()
     {
         var (exitCode, output) = await Run(
@@ -385,6 +413,15 @@ public sealed class CliTests
         }
     }
 
+    private sealed class StubConfigSource(RadirecConfig config) : ICliConfigSource
+    {
+        public bool TryLoad(out RadirecConfig? loaded, out string? error)
+        {
+            loaded = config;
+            error = null;
+            return true;
+        }
+    }
     private sealed class FailingConfigSource(string message) : ICliConfigSource
     {
         public bool TryLoad(out RadirecConfig? config, out string? error)

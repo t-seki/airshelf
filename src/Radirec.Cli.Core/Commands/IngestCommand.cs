@@ -65,10 +65,11 @@ public sealed class IngestCommand(
         {
             (service, disposable) = CompositionRoot.Build(config, dryRun: true);
         }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException)
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException and not LedgerUnreachableException)
         {
             // 台帳オープンや stations/programs の読み込みで失敗した場合(radirec.json 本体の
-            // 解析失敗は LoadConfig 側で処理済み)。
+            // 解析失敗は LoadConfig 側で処理済み)。台帳のフォルダに届かないときは外へ出して、ほかのコマンドと同じく
+            // 5 にする(RadirecCli.HandleException。#216)。
             CommandSupport.Fail(
                 console, Name, settings.Json, ExitCodes.UsageOrConfig, $"設定の読み込みに失敗しました: {ex.Message}");
             return null;

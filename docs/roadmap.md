@@ -74,7 +74,8 @@ Radirec.Cli ──> Radirec.Cli.Core ──> Radirec.Hosting / Radirec.Core
   だから Hosting は Cli に畳まず独立を保つ。
 - 両ツリーを繋いでいた EventLog の JSON 契約(EventID 1001/1002)と named pipe は**どちらも撤去済み**。
   ただし named pipe は #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、CLI → トレイの制御チャネルとして
-  形を変えて戻った(ユーザーごとの名前・`PipeOptions.CurrentUserOnly`。受け口・型・接続は `Hosting/Control/`)。
+  形を変えて戻った(ユーザーごとの名前・同じユーザーへの絞り込み。Windows ではユーザーの SID の `PipeSecurity`(#214)、
+  ほかは `PipeOptions.CurrentUserOnly`。受け口・型・接続は `Hosting/Control/`)。
   `IngestSummaryPayload` / `IngestFailurePayload` という**型は `Gui.Core` に残っているが、跨プロセスの
   バージョン付き JSON 契約としてではなく、ワーカーから文面整形へ渡す in-process の受け渡し型**として
   生き残っている(シリアライズは無い)。

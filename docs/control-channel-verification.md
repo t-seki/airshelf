@@ -8,6 +8,11 @@
 > トレイの受け口へ頼む。パイプはユーザーごとの名前(`radirec-control-<SID>`)で、同じユーザーへは `PipeOptions.CurrentUserOnly` で絞る
 > (本ランブックの固定名・`PipeSecurity` とは違う)。今の実機検証の手順は #163。
 > → #180 で `radirec ingest`(走査の実行)も同じ受け口へ頼むようになった。
+> → **#214 で、Windows では `CurrentUserOnly` をやめ、本ランブックと同じ `PipeSecurity`(ユーザーの SID)に戻した**
+> (上の「本ランブックの `PipeSecurity` とは違う」は #179〜#214 の間の話。名前は今もユーザーごと):.NET の `CurrentUserOnly` はユーザーの SID ではなくトークンの所有者で
+> ACL を作り・比べるので、UAC で昇格した端末(所有者が `BUILTIN\Administrators`)の CLI が非昇格のトレイに繋がらなかった。
+> 今は `ControlPipeSecurity`(`Hosting/Control/`)が、昇格の有無に関係なく許可(読み書きとインスタンスの作成)と所有者を**ユーザーの SID** で作り、CLI は
+> 繋いだ後にパイプの所有者がユーザーの SID かを確かめる(なりすまし対策)。Windows 以外は今も `CurrentUserOnly`。
 
 制御チャネル([ADR-0010](adr/0010-gui-service-control-via-named-pipe.md))は、WSL では named pipe の
 ACL(`PipeSecurity` は `PlatformNotSupported`)・実サービスの listener+worker 疎通・SQLite 再オープンが
@@ -72,6 +77,9 @@ ACL の代理検査(②自動)に加え、**別のローカルユーザーから
 - 既定構成では `install.ps1 -ServiceAccount` は `.\$USERNAME`(インストールした本人)= 操作者。サービス SID =
   操作者 SID なので自 SID ACL で繋がる。
 - **昇格(管理者権限)は無関係**: UAC 昇格でもユーザー SID(`WindowsIdentity.GetCurrent().User`)は不変。
+  → これはサービスの時代の ACL(ユーザーの SID で作っていた)についての記述。#179 の `PipeOptions.CurrentUserOnly` は
+  ユーザーの SID ではなくトークンの所有者(昇格すると `BUILTIN\Administrators`)で比べるため、**昇格が効いていた**
+  (管理者の端末の CLI が非昇格のトレイに繋がらない)。#214 でユーザーの SID で作り・比べるように直し、再び無関係になった。
 
 将来 split-privilege(専用サービスアカウント)を採る場合のみ #40 を再オープンし、操作者 SID の ACL 付与を
 実装したうえで「専用アカウント構成でも操作者本人の CLI が繋がる」を本節に追記して検証する。
