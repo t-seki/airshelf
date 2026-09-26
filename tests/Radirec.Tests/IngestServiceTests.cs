@@ -234,6 +234,7 @@ public sealed class IngestServiceTests
         };
 
     private const string StandardName = "[J-WAVE]LOGISTEED RADIONOMICS(TimeFree)_20260612223000.m4a";
+    private static string OtherWeek(int day) => $"[J-WAVE]LOGISTEED RADIONOMICS(TimeFree)_202606{day:D2}223000.m4a";
 
     [Fact]
     public async Task DryRun_NewFile_IsPlanned_NoWriteNoLedger()
@@ -841,6 +842,39 @@ public sealed class IngestServiceTests
         Assert.Equal(
             Radirec.Gui.Core.Management.GatedIngestSummaryPublisher.SuppressedReason,
             report.NotificationSuppressedReason);
+    }
+
+    [Fact]
+    public async Task トレイと同じ入れ子では_走査の実行が設定より先に理由になる()
+    {
+        // トレイの組み方:設定の門(GatedIngestSummaryPublisher。Program.BuildHost)を、走査の実行の門
+        // (ScanRunSummaryGate。RadioMonitorWorker のコンストラクタ)が外から包む。
+        var enabled = false;
+        var gate = new ScanRunSummaryGate(
+            new Radirec.Gui.Core.Management.GatedIngestSummaryPublisher(_publisher, () => enabled));
+        var queue = new ScanRunQueue(gate);
+
+        IngestReport? scanRun = null;
+        var pending = queue.Enqueue();
+        await queue.RunAsync(
+            queue.TakePending()!,
+            async ct => scanRun = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false, ct),
+            CancellationToken.None);
+        await pending;
+        // 走査ごとに別の放送回を置く(同じ回は台帳で取込済スキップになり、要約が作られない)。
+        var offOutside = await Build([Rec(OtherWeek(19), size: 2048)], publisher: gate).RunOnceAsync(dryRun: false);
+        enabled = true;
+        var shown = await Build([Rec(OtherWeek(26), size: 4096)], publisher: gate).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(ScanRunSummaryGate.SuppressedReason, scanRun!.NotificationSuppressedReason);   // CLI の走査中・設定でオフ
+        Assert.Equal(
+            Radirec.Gui.Core.Management.GatedIngestSummaryPublisher.SuppressedReason,
+            offOutside.NotificationSuppressedReason);                                               // 走査の外・設定でオフ
+        Assert.Null(shown.NotificationSuppressedReason);                                            // どちらでもない
+        Assert.Equal(1, scanRun.Count(IngestOutcome.Imported));
+        Assert.Equal(1, offOutside.Count(IngestOutcome.Imported));
+        Assert.True(shown.NotificationPublished);
+        Assert.Equal(1, _publisher.Calls);                                                          // 提示に届いたのは最後だけ
     }
 
     [Fact]

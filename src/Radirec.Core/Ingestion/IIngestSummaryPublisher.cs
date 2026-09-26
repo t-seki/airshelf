@@ -17,9 +17,10 @@ public interface IIngestSummaryPublisher
 }
 
 /// <summary>
-/// 何もしない実装(dry-run / 手動 CLI などの非発行走査 / publisher を注入しない経路)。常駐で新規取込のトーストを
-/// 止めているときはこれを使わず、<c>GatedIngestSummaryPublisher</c> が成功要約のトーストだけを出さない(#152・ADR-0019)。
-/// 出さなかった理由は返さない(非発行走査の結果は gui.log に書かれず、理由を読む人がいない)。
+/// 何もしない実装(dry-run / publisher を注入しない経路)。常駐で新規取込のトーストを止めているときはこれを使わず、
+/// <c>GatedIngestSummaryPublisher</c> が成功要約のトーストだけを出さない(#152・ADR-0019)。走査の実行(CLI から頼んだ
+/// 走査。#180)も常駐の publisher を通る(<c>ScanRunSummaryGate</c>)。これは理由を返さない(提示の相手が居ない経路で、
+/// 結果は gui.log に書かれない)。
 /// </summary>
 public sealed class NullIngestSummaryPublisher : IIngestSummaryPublisher
 {
