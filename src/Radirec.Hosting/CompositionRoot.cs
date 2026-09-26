@@ -14,7 +14,8 @@ namespace Radirec.Hosting;
 public static class CompositionRoot
 {
     /// <param name="dryRun">
-    /// true なら台帳を副作用なく扱う(既存 DB は読み取り専用で開き、無ければ NullLedger)。
+    /// true なら台帳を副作用なく扱う(既存 DB は読み取り専用で開き、無ければ NullLedger)。台帳のフォルダに届かなければ
+    /// 「無い」とは扱わず <see cref="LedgerUnreachableException"/> を投げる(#216)。
     /// </param>
     /// <param name="notify">
     /// 取込通知を発行するか。**常駐経路のみ true**。手動 <c>ingest</c> は対話コマンドで、
@@ -119,7 +120,8 @@ public static class CompositionRoot
     /// <summary>
     /// config から統合設定の再適用(ADR-0016)を組み立てる。取り込みと同じ放送局・番組の解決、出力先の規則
     /// (<see cref="LocalFolderTarget"/>)、台帳を使う。dry-run は取り込みと同じく台帳を読み取り専用で開き
-    /// (無ければ空)、Jellyfin 接続を作らない。
+    /// (無ければ空)、Jellyfin 接続を作らない。台帳のフォルダに届かなければ空とは扱わず
+    /// <see cref="LedgerUnreachableException"/> を投げる(#216)。
     /// </summary>
     /// <returns>再適用と、破棄すべきリソース(台帳・Jellyfin 接続)。</returns>
     public static (ReapplyService Service, IDisposable? Disposable) BuildReapply(RadirecConfig config, bool dryRun)
