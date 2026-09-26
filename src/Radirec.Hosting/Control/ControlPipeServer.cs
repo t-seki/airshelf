@@ -200,6 +200,17 @@ public sealed class ControlPipeServer(
     public const string WorkerStoppedReason = "取り込みが止まりました(異常終了か更新の適用中。gui.log 参照 → 再起動)";
 
     /// <summary>
+    /// ワーカーは作れたが、起動処理(孤児の掃除・監視の開始)が失敗して止まったときの理由(トレイの W-153 と同じ趣旨。#217)。
+    /// 原因を直さないと再起動しても同じところで止まるので、例外のメッセージを添える。
+    /// </summary>
+    public static string WorkerStartFailedReason(string message) =>
+        $"取り込みの起動処理に失敗しました: {message}(gui.log 参照 → 原因を直して再起動)";
+
+    // ワーカーはあるが止まっているときの理由。起動処理の失敗と、その後の異常終了・停止を分ける(#217)。
+    private static string WorkerStopped(ServiceStatusSnapshot snapshot) =>
+        snapshot.StartFailure is { } message ? WorkerStartFailedReason(message) : WorkerStoppedReason;
+
+    /// <summary>
     /// 取り込みが動いていなければその理由、動いていれば null。ワーカーが無い(縮退)ときに加え、ワーカーはあるが止まった
     /// (<see cref="ServiceStatusSnapshot.Running"/> が false)ときも止まっているとみなす。
     /// </summary>
@@ -207,7 +218,8 @@ public sealed class ControlPipeServer(
     {
         if (control is null)
             return degradedReason ?? "取り込みが止まっています";
-        return control.GetStatus().Running ? null : WorkerStoppedReason;
+        var snapshot = control.GetStatus();
+        return snapshot.Running ? null : WorkerStopped(snapshot);
     }
 
     private ControlStatus CurrentStatus()
@@ -216,7 +228,7 @@ public sealed class ControlPipeServer(
             return ControlStatus.Degraded(trayVersion, degradedReason, configPath);
         var snapshot = control.GetStatus();
         var status = ControlStatus.From(snapshot, configPath);
-        return snapshot.Running ? status : status with { DegradedReason = WorkerStoppedReason };
+        return snapshot.Running ? status : status with { DegradedReason = WorkerStopped(snapshot) };
     }
 
     private ControlResponse Reply(

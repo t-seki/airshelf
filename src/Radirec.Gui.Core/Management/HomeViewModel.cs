@@ -22,7 +22,7 @@ public sealed class HomeViewModel : ObservableObject
     /// <summary>W-111。再スキャンを押した後、次のスキャンが終わるまでボタンの横に出す(バルーンは出さない)。</summary>
     public const string RescanRequested = "手動再スキャンを要求しました";
 
-    /// <summary>W-112。取り込みが止まっている(W-103〜W-105)ときのボタン横の説明。</summary>
+    /// <summary>W-112。取り込みが止まっている(W-103〜W-105・W-153)ときのボタン横の説明。</summary>
     public const string RescanUnavailable = "取り込みが止まっているため、再スキャンできません";
 
     /// <summary>W-113。再スキャンの要求が例外で失敗したとき(ボタンの横に出す)。</summary>

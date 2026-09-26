@@ -119,15 +119,16 @@ internal static class Program
                     host = BuildHost(config!, configPath, toastSetting);
                     // ワーカーを解決(ctor = 台帳オープン。ローカルディスクで速い)。ここで throw すれば縮退。
                     control = host.Services.GetRequiredService<RadioMonitorWorker>();
-                    // ★ host の起動は UI スレッドで走らせない。BackgroundService の同期プレフィックス
-                    // (CleanupOrphans が I: = NAS を列挙、StartWatcher)は最初の await までホスト起動を
-                    // 呼んだスレッドで動くため、ログオン時に NAS 未接続だと数十秒ハングしトレイ生成を
-                    // ブロックしうる。別スレッドで起動してトレイを即出す(ハングは try/catch で捕まらない)。
+                    // host の起動は UI スレッドで待たない(トレイを即出す)。.NET 10 から BackgroundService は ExecuteAsync の
+                    // 全体を別のタスクで走らせるので、起動処理(CleanupOrphans が NAS を列挙、StartWatcher)がハングしても
+                    // ホストの起動は待たされない。起動処理の失敗もここには伝わらず、ワーカーが gui.log と状態に残す(#217)。
+                    // ここで捕まるのは、ホスト自身の起動の失敗だけ。
                     _ = Task.Run(() => host!.StartAsync())
                         .ContinueWith(
-                            t => TrayLog.Warn($"取り込みワーカーのホスト起動が失敗しました(状態は「停止」に反映): {t.Exception}"),
+                            t => TrayLog.Warn($"取り込みワーカーのホスト起動が失敗しました: {t.Exception}"),
                             TaskContinuationOptions.OnlyOnFaulted);
-                    TrayLog.Info("取り込みワーカーを起動しました");
+                    // 起動処理の結果(開始できたか・失敗したか)は、この後にワーカーが gui.log に書く。
+                    TrayLog.Info("取り込みワーカーの起動を始めました");
                 }
                 catch (Exception ex)
                 {

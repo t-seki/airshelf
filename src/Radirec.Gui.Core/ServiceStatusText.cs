@@ -26,6 +26,12 @@ public static class ServiceStatusText
     /// <summary><c>radirec.json</c> を読めなかったときの理由(W-105 の括弧の中)。</summary>
     public const string DegradedConfigUnreadable = "設定を読み込めませんでした";
 
+    /// <summary>
+    /// W-153。ワーカーは作れたが、起動処理(孤児の掃除・監視の開始)が失敗して止まったとき(#217)。W-104(ワーカーを作れなかった)と
+    /// 違い、設定ページには原因が出ないので gui.log へ案内する。
+    /// </summary>
+    public const string StartLoopFailed = "状態: 停止(取り込みの起動処理に失敗。gui.log 参照 → 原因を直して再起動)";
+
     /// <summary>W-108。取り込みが止まっているときの最終スキャン。</summary>
     public const string LastScanUnknown = "最終スキャン: —";
 
@@ -43,8 +49,12 @@ public static class ServiceStatusText
     {
         // ワーカーが異常終了してもトレイ(メッセージループ)は生存しうる。その場合「稼働中」と偽らず、
         // 停止を明示して制御を受け付けない(誤って「動いている」と信じさせない。ADR-0012)。
+        // 起動処理(掃除・監視の開始)で止まったときは、異常終了と分けて出す(#217)。原因(読めないフォルダ等)を直さないと、
+        // 再起動しても同じところで止まるため。
         if (!status.Running)
-            return new("状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)", LastScanUnknown, CanControl: false); // W-103 + W-108
+            return status.StartFailure is null
+                ? new("状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)", LastScanUnknown, CanControl: false) // W-103 + W-108
+                : new(StartLoopFailed, LastScanUnknown, CanControl: false); // W-153 + W-108
 
         var line = status.Watching ? "状態: 稼働中(監視中)" : "状態: 稼働中(定期スキャンのみ)"; // W-101 / W-102
         return new(line, LastScan(status, zone), CanControl: true);
