@@ -72,12 +72,13 @@ public sealed class ControlPipeClient(
     /// <summary>要求をそのまま送る(版の違う要求を送るテストにも使う)。</summary>
     public async Task<ControlCallResult> SendAsync(ControlRequest request, CancellationToken cancellationToken)
     {
-        await using var pipe = new NamedPipeClientStream(
-            ".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        await using var pipe = ControlPipeSecurity.CreateClient(PipeName);
 
         try
         {
             await pipe.ConnectAsync(connectTimeout ?? DefaultConnectTimeout, cancellationToken).ConfigureAwait(false);
+            // 所有者が別のユーザーのパイプ(同じ名前で待ち受けるなりすまし)には頼まない。繋がらないのと同じに扱う(#214)。
+            ControlPipeSecurity.VerifyServerOwner(pipe);
         }
         catch (Exception ex) when (ex is TimeoutException or IOException or UnauthorizedAccessException)
         {

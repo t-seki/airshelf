@@ -325,6 +325,8 @@ alias 設計が必要(§9)。
 > → **#179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で named pipe は形を変えて戻った**:CLI の
 > `radirec status` / `radirec reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前(`radirec-control-<SID>`)で、
 > 同じユーザーだけに `PipeOptions.CurrentUserOnly` で絞る(以下の ADR-0010 の固定名・`PipeSecurity` の記述とは違う)。
+> → #214 で、Windows では `CurrentUserOnly` をやめ、許可と所有者をユーザーの SID で作る `PipeSecurity` に戻した
+> (`CurrentUserOnly` はトークンの所有者で比べるので、UAC で昇格した端末の CLI が非昇格のトレイに繋がらなかった)。
 > → #180 で 5 種目の「走査の実行」を足した(CLI の `radirec ingest` が頼む。下の一覧)。
 > → #181 で「再適用の実行」を CLI からも頼めるようにした(`radirec reapply`。予定 ID で実行する。下の一覧)。
 
@@ -653,6 +655,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
       → #126 で 4 種目の「再適用の実行」(結果が返るまで待つ)を足した(§7.2)。
       → #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で named pipe は形を変えて戻った:CLI の
       `status` / `reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前で、同じユーザーへは `PipeOptions.CurrentUserOnly` で絞る。
+      → #214 で、Windows では同じユーザーへの絞り方をユーザーの SID の `PipeSecurity` にした(昇格した端末からも繋がるように)。
       → #180 で 5 種目の「走査の実行」(CLI の `ingest`。結果が返るまで待つ)を足した(§7.2)。
 - [x] radikool のフォーマット・命名・タグ: **MP3/ID3、`{局コード}/{番組名}_{YYYYMMDD}.mp3`、
       genre=局表示名** で確定(§5.2)。ルート=`I:\d\radikool\records`。

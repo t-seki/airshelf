@@ -1,6 +1,16 @@
 # CLI を普段の運用とエージェントの窓口にし、書き込む操作は制御チャネルで常駐に頼む
 
-Status: accepted(2026-09-25 の grill。[ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の「CLI は dev/batch 専用・named pipe は退役」を改める。[ADR-0010](0010-gui-service-control-via-named-pipe.md) の named pipe を形を変えて戻す。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、[ADR-0017](0017-management-window-owns-programs-json.md) の programs.json の書き手と関連)。**#178(2026-09-25)で、取込結果に兄弟フォルダの知らせを含める決定は実装しないことに — 下の注記を参照**。**#179(2026-09-26)で、パイプの名前と同じユーザーへの絞り方を変更 — 下の注記を参照**
+Status: accepted(2026-09-25 の grill。[ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の「CLI は dev/batch 専用・named pipe は退役」を改める。[ADR-0010](0010-gui-service-control-via-named-pipe.md) の named pipe を形を変えて戻す。[ADR-0016](0016-reapply-program-settings-to-ingested-episodes.md) の再適用、[ADR-0017](0017-management-window-owns-programs-json.md) の programs.json の書き手と関連)。**#178(2026-09-25)で、取込結果に兄弟フォルダの知らせを含める決定は実装しないことに — 下の注記を参照**。**#179(2026-09-26)で、パイプの名前と同じユーザーへの絞り方を変更 — 下の注記を参照**。**#214(2026-09-27)で、Windows の同じユーザーへの絞り方を再び変更 — 下の注記を参照**
+
+> **#214 で改めた(2026-09-27)**:#179 の「同じユーザーへの制限は `PipeOptions.CurrentUserOnly` で行う」を、Windows ではやめた。
+> .NET の `CurrentUserOnly` は、ユーザーの SID ではなく**トークンの所有者**で ACL を作り、相手のパイプの所有者と比べる
+> (dotnet/runtime の `NamedPipeServerStream.Windows.cs` / `NamedPipeClientStream.Windows.cs` の `ValidateRemotePipeUser`)。
+> UAC で昇格したトークンの所有者は `BUILTIN\Administrators` なので、管理者の端末の CLI が非昇格のトレイに繋がらず、
+> 「常駐が動いていません」と誤って答えていた。
+> - Windows では `ControlPipeSecurity` が、昇格の有無に関係なく**許可も所有者もユーザーの SID** で作る。CLI は繋いだ後に、
+>   パイプの所有者がユーザーの SID かを確かめる(同じ名前で待ち受けるなりすましを拒む。`CurrentUserOnly` の役目を保つ)。
+>   昇格した CLI → 非昇格のトレイ、非昇格の CLI → 昇格したトレイのどちらも繋がる。別のユーザーからは今までどおり繋がらない。
+> - Windows 以外(CI の Linux)は `CurrentUserOnly` のまま(相手の uid で比べ、昇格の問題は無い)。往復のテストは今までどおり CI で回る。
 
 > **#179 で改めた(2026-09-26)**:決定の「制御チャネルは named pipe を戻す(ADR-0010 の形。同じユーザーだけに `PipeSecurity` で絞る)」のうち、
 > 次の 2 点を変えた。
