@@ -215,8 +215,9 @@ public static class CompositionRoot
         }
 
         // dry-run: 副作用を避ける。既存台帳は読み取り専用、無ければ NullLedger。失敗 de-dup は notify 経路
-        // でしか使わない(dry-run は発行しない)ため、ここでは Null ストアを返す。
-        if (File.Exists(ledgerPath))
+        // でしか使わない(dry-run は発行しない)ため、ここでは Null ストアを返す。台帳のフォルダに届かなければ、
+        // 「台帳が無い」として全件を予定と答えず失敗にする(IOException。CLI は 5。#216)。
+        if (LedgerFile.Exists(ledgerPath))
         {
             var readOnly = new SqliteLedger(ledgerPath, readOnly: true);
             return (readOnly, new NullIngestFailureStore(), readOnly);

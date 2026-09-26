@@ -10,7 +10,7 @@ namespace Radirec.Hosting;
 public static class IngestHistoryReader
 {
     /// <summary>台帳の記録を新しい順(取込日時の降順)に返す。台帳がまだ無い(取込ゼロ)ときは空で、ファイルは作らない。</summary>
-    /// <exception cref="DirectoryNotFoundException">台帳の親フォルダに届かない(空とは答えない。<see cref="LedgerFile.Exists"/> / #216)。</exception>
+    /// <exception cref="LedgerUnreachableException">台帳の親フォルダに届かない(空とは答えない。<see cref="LedgerFile.Exists"/> / #216)。</exception>
     public static IReadOnlyList<LedgerEntry> Load(string ledgerPath)
     {
         if (!LedgerFile.Exists(ledgerPath))

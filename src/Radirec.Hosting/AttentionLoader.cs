@@ -22,7 +22,7 @@ public static class AttentionLoader
     /// <param name="programsFile">programs.json の場所。使わない設定(<c>ProgramsFile</c> が空)なら null か空。</param>
     /// <param name="knownRecordingKinds">らじれこの録音種別(<c>radirec.json</c> の <c>KnownRecordingKinds</c>)。</param>
     /// <exception cref="Exception">台帳か設定ファイルを読めなかった(呼び出し側で理由を出す)。</exception>
-    /// <exception cref="DirectoryNotFoundException">台帳の親フォルダに届かない(<see cref="LedgerFile.Exists"/>)。</exception>
+    /// <exception cref="LedgerUnreachableException">台帳の親フォルダに届かない(<see cref="LedgerFile.Exists"/>)。</exception>
     public static AttentionItems Load(
         string ledgerPath, string? stationsFile, string? programsFile, IEnumerable<string> knownRecordingKinds)
     {
