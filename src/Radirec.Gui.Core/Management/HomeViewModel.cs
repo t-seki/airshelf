@@ -110,7 +110,7 @@ public sealed class HomeViewModel : ObservableObject
         RefreshAttention();
     }
 
-    /// <summary>W-101〜W-105。</summary>
+    /// <summary>W-101〜W-105・W-153。</summary>
     public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
 
     /// <summary>W-106〜W-108。</summary>

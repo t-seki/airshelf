@@ -3,7 +3,7 @@ using Radirec.Hosting.Control;
 
 namespace Radirec.Tests;
 
-// 状態の文言(docs/mockups/management-window.md の W-101〜W-108)。トレイと管理画面のホームが共有する(#151)。
+// 状態の文言(docs/mockups/management-window.md の W-101〜W-108・W-153)。トレイと管理画面のホームが共有する(#151)。
 public sealed class ServiceStatusTextTests
 {
     internal static readonly TimeZoneInfo Jst = TimeZoneInfo.CreateCustomTimeZone("JST", TimeSpan.FromHours(9), "JST", "JST");

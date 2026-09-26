@@ -6,13 +6,13 @@ namespace Radirec.Gui.Core;
 /// <summary>
 /// 取り込みの状態を 2 行の文言にしたもの(状態 / 最終スキャン)と、制御(再スキャン等)を受け付けられるか。
 /// </summary>
-/// <param name="Status">W-101〜W-105(<c>状態: …</c>)。</param>
+/// <param name="Status">W-101〜W-105・W-153(<c>状態: …</c>)。</param>
 /// <param name="LastScan">W-106〜W-108(<c>最終スキャン: …</c>)。</param>
 /// <param name="CanControl">取り込みが動いていて、再スキャン等を受け付けられるか。</param>
 public sealed record ServiceStatusView(string Status, string LastScan, bool CanControl);
 
 /// <summary>
-/// 取り込みの状態の文言(docs/mockups/management-window.md の W-101〜W-108)。トレイのメニュー(W-604)と
+/// 取り込みの状態の文言(docs/mockups/management-window.md の W-101〜W-108・W-153)。トレイのメニュー(W-604)と
 /// 管理画面のホームが同じ文言を出すので、ここに 1 つだけ置く(#151)。
 /// </summary>
 public static class ServiceStatusText

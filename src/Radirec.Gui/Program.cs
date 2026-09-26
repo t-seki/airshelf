@@ -123,12 +123,13 @@ internal static class Program
                     // 全体を別のタスクで走らせるので、起動処理(CleanupOrphans が NAS を列挙、StartWatcher)がハングしても
                     // ホストの起動は待たされない。起動処理の失敗もここには伝わらず、ワーカーが gui.log と状態に残す(#217)。
                     // ここで捕まるのは、ホスト自身の起動の失敗だけ。
+                    // 起動処理の結果(開始できたか・失敗したか)は、この後にワーカーが gui.log に書く。この行はホストの起動を
+                    // 走らせる前に書く(後に書くと、別スレッドのワーカーの「起動処理を始めます」が先に出うる)。
+                    TrayLog.Info("取り込みワーカーの起動を始めました");
                     _ = Task.Run(() => host!.StartAsync())
                         .ContinueWith(
                             t => TrayLog.Warn($"取り込みワーカーのホスト起動が失敗しました: {t.Exception}"),
                             TaskContinuationOptions.OnlyOnFaulted);
-                    // 起動処理の結果(開始できたか・失敗したか)は、この後にワーカーが gui.log に書く。
-                    TrayLog.Info("取り込みワーカーの起動を始めました");
                 }
                 catch (Exception ex)
                 {

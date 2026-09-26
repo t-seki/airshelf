@@ -83,7 +83,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <!-- W-101〜W-105 -->
+                            <!-- W-101〜W-105・W-153 -->
                             <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,2" />
                             <!-- W-106〜W-108 -->
                             <TextBlock Text="{Binding LastScanText}" TextWrapping="Wrap" Margin="0,2" />
