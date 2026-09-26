@@ -101,7 +101,7 @@ internal sealed class ControlTrayMenu
         RefreshUpdateItem(); // 直近のチェックで見つかった保留更新を反映(S6)
 
         // 取り込みワーカー未起動(設定未読込 or 起動失敗)なら理由を、あれば in-process のスナップショットを
-        // 直接・即時に読んで出す(W-101〜W-108。文言は管理画面のホームと共有する)。ワーカーが異常終了しても
+        // 直接・即時に読んで出す(W-101〜W-108・W-153。文言は管理画面のホームと共有する)。ワーカーが異常終了しても
         // トレイ(メッセージループ)は生存しうるが、その場合は「稼働中」と偽らず停止を出す(ADR-0012)。
         var view = _control is null
             ? ServiceStatusText.Stopped(_degradedReason)

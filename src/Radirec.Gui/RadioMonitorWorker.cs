@@ -149,9 +149,10 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     /// <summary>
     /// ライブ状態のスナップショット(在中スキャン中でも直列チャネルを介さず即応)。
     /// 取り込みループの生死(<see cref="SerialLoop.Running"/>)を毎回反映する。トレイは生存したまま
-    /// ワーカーだけ異常終了した場合に「稼働中」と偽らないため(ADR-0012)。
+    /// ワーカーだけ異常終了した場合に「稼働中」と偽らないため(ADR-0012)。起動処理の失敗も、異常終了と見分けられるように載せる(#217)。
     /// </summary>
-    public ServiceStatusSnapshot GetStatus() => _status with { Running = _loop.Running };
+    public ServiceStatusSnapshot GetStatus() =>
+        _status with { Running = _loop.Running, StartFailure = _loop.StartFailure?.Message };
 
     /// <summary>
     /// 設定リロード。新 config の読込+構文検証だけ**同期実行**(グラフに触れない)し、妥当なら再構築を
@@ -277,7 +278,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     }
 
     // 起動処理(掃除・監視・タイマー)もループと同じ SerialLoop の中で走らせ、そこで例外が出ても(NAS 未接続など)「停止」に反映して
-    // 以降の要求を受理しない(#197)。例外そのものは投げ直すので、Program.cs のホスト起動の失敗として gui.log に残る。
+    // 以降の要求を受理しない(#197)。.NET 10 から ExecuteAsync は全体が別のタスクで走り、起動処理の例外はホストの起動
+    // (Program.cs の host.StartAsync())には伝わらない。なのでここで gui.log に残し、状態にも起動処理の失敗として出す(#217)。
+    // 投げ直した例外は BackgroundServiceExceptionBehavior.StopHost でホストを止める(.NET の [Host] の行も続けて出る)。
     // 停止要求ではないのにループが抜けたとき(#204)も gui.log に残す(トレイは生きたまま取り込みだけが黙って止まらないように)。
     protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
         _loop.RunAsync(
@@ -290,11 +293,12 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             },
             onUnexpectedExit: ex => _log.LogWarning(ex, "停止要求ではないのに取り込みのループが終わりました。取り込みは停止しています"),
+            onStartFailed: ex => _log.LogError(ex, "取り込みの起動処理に失敗しました。取り込みは停止しています(原因を直してから再起動してください)"),
             stoppingToken);
 
     private void StartLoop()
     {
-        _log.LogInformation("Radirec 常駐取り込み開始。監視ルート: {Root}", _config.RadioRoot);
+        _log.LogInformation("Radirec 常駐取り込みの起動処理を始めます。監視ルート: {Root}", _config.RadioRoot);
 
         var orphans = _ingest.CleanupOrphans();
         if (orphans > 0)
@@ -305,6 +309,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         Request("起動時");
+        _log.LogInformation("Radirec 常駐取り込みを開始しました");
     }
 
     private async Task ConsumeAsync(CancellationToken stoppingToken)

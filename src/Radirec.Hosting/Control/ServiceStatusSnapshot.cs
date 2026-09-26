@@ -40,6 +40,12 @@ public sealed record ServiceStatusSnapshot
     /// </summary>
     public bool Running { get; init; } = true;
 
+    /// <summary>
+    /// 起動処理(孤児の掃除・監視の開始)が失敗したときの理由(例外のメッセージ)。失敗していなければ null。
+    /// <see cref="Running"/> が false のとき、ループの異常終了と起動処理の失敗を見分けるために使う(#217)。
+    /// </summary>
+    public string? StartFailure { get; init; }
+
     /// <summary>最後にスキャンを完了した時刻(UTC)。未走査なら null。</summary>
     public DateTimeOffset? LastScanCompletedUtc { get; init; }
 
