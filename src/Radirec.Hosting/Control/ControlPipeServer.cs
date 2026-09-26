@@ -10,7 +10,7 @@ namespace Radirec.Hosting.Control;
 /// 縮退を返す(トレイの再起動はしない)。
 /// <para>
 /// 接続ごとに要求 1 つ・応答 1 つ(どちらも JSON 1 行)。受けた接続はすぐ別のタスクへ渡し、次の接続を待つ(遅い要求で
-/// 後の接続を止めない。#43 の教訓)。同じユーザーだけに <see cref="PipeOptions.CurrentUserOnly"/> で絞る。
+/// 後の接続を止めない。#43 の教訓)。同じユーザーだけに絞る(昇格の有無は問わない。<see cref="ControlPipeSecurity"/>。#214)。
 /// </para>
 /// </summary>
 /// <param name="pipeName">パイプ名。既定は <see cref="ControlProtocol.DefaultPipeName"/>(テストでは一意の名前を渡す)。</param>
@@ -61,12 +61,7 @@ public sealed class ControlPipeServer(
             NamedPipeServerStream? pipe = null;
             try
             {
-                pipe = new NamedPipeServerStream(
-                    PipeName,
-                    PipeDirection.InOut,
-                    NamedPipeServerStream.MaxAllowedServerInstances,
-                    PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                pipe = ControlPipeSecurity.CreateServer(PipeName);
                 await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
