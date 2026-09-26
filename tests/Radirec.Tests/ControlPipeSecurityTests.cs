@@ -68,6 +68,10 @@ public sealed class ControlPipeSecurityTests
         var rule = Assert.Single(security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<PipeAccessRule>());
         Assert.Equal(user, rule.IdentityReference);
         Assert.Equal(AccessControlType.Allow, rule.AccessControlType);
-        Assert.Equal(PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance, rule.PipeAccessRights);
+        // Synchronize は付けていないが、PipeAccessRule は Allow のとき必ず Synchronize を足す
+        // (dotnet/runtime release/10.0 の PipeAccessRule.AccessMaskFromRights)。読み戻すと含まれる。
+        Assert.Equal(
+            PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance | PipeAccessRights.Synchronize,
+            rule.PipeAccessRights);
     }
 }
