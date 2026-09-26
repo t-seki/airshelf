@@ -152,7 +152,8 @@ public sealed class ControlChannelTests
         await using var server = StartServer(new FakeControl(), degradedReason: null);
 
         // 要求だけ送って応答を読まずに切る。
-        await using (var rude = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.CurrentUserOnly))
+        // CLI と同じ作り方にする(素の CurrentUserOnly だと、昇格した Windows のプロセスで走らせたとき所有者の比べ方が違い拒まれる。#214)。
+        await using (var rude = ControlPipeSecurity.CreateClient(server.PipeName))
         {
             await rude.ConnectAsync(5000);
             var bytes = ControlProtocol.LineEncoding.GetBytes("""{"protocolVersion":1,"command":"status"}""" + "\n");
@@ -182,8 +183,8 @@ public sealed class ControlChannelTests
         var name = UniqueName();
         var fake = Task.Run(async () =>
         {
-            await using var pipe = new NamedPipeServerStream(
-                name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            // 受け口と同じ作り方にする(所有者がユーザーの SID でないと、CLI の所有者の確かめで拒まれる。#214)。
+            await using var pipe = ControlPipeSecurity.CreateServer(name);
             await pipe.WaitForConnectionAsync();
             using var reader = new StreamReader(pipe, leaveOpen: true);
             await reader.ReadLineAsync();

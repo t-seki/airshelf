@@ -43,23 +43,53 @@ public static class ControlPipeSecurity
             OperatingSystem.IsWindows() ? PipeOptions.Asynchronous : PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
     /// <summary>
-    /// 繋いだ相手のパイプの所有者が、このプロセスのユーザーの SID かを確かめる。違えば <see cref="UnauthorizedAccessException"/>。
+    /// 繋いだ相手のパイプの所有者が、このプロセスのユーザーの SID かを確かめる。違えば、または確かめられなければ
+    /// <see cref="UnauthorizedAccessException"/>(呼び出し側は繋がらないのと同じに扱う)。
     /// Windows 以外では何もしない(<c>CurrentUserOnly</c> が接続のときに確かめている)。
     /// </summary>
     public static void VerifyServerOwner(NamedPipeClientStream pipe)
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-        EnsureOwnedBy(pipe.GetAccessControl().GetOwner(typeof(SecurityIdentifier))?.Value, CurrentUser().Value);
+        if (OperatingSystem.IsWindows())
+            VerifyServerOwnerOnWindows(pipe);
     }
 
-    /// <summary>ユーザーの SID だけに全権を許し、所有者もユーザーの SID にしたパイプの ACL。</summary>
+    [SupportedOSPlatform("windows")]
+    private static void VerifyServerOwnerOnWindows(NamedPipeClientStream pipe)
+    {
+        VerifyOwner(
+            () => pipe.GetAccessControl().GetOwner(typeof(SecurityIdentifier))?.Value,
+            () => CurrentUser().Value);
+    }
+    /// <summary>
+    /// 所有者の SID とユーザーの SID を読んで比べる(<see cref="EnsureOwnedBy"/>)。読むときの失敗(ユーザーの SID が取れない・
+    /// ACL を読めないなど)も <see cref="UnauthorizedAccessException"/> に包む。確かめられないときは繋がない(fail-closed)。
+    /// </summary>
+    public static void VerifyOwner(Func<string?> readOwnerSid, Func<string?> readUserSid)
+    {
+        string? ownerSid;
+        string? userSid;
+        try
+        {
+            ownerSid = readOwnerSid();
+            userSid = readUserSid();
+        }
+        catch (Exception ex) when (ex is not UnauthorizedAccessException)
+        {
+            throw new UnauthorizedAccessException($"制御チャネルのパイプの所有者を確かめられません: {ex.Message}", ex);
+        }
+        if (userSid is null)
+            throw new UnauthorizedAccessException("制御チャネルのパイプの所有者を確かめられません(このユーザーの SID が取れません)");
+        EnsureOwnedBy(ownerSid, userSid);
+    }
+    /// <summary>ユーザーの SID だけに読み書きとインスタンスの作成を許し、所有者もユーザーの SID にしたパイプの ACL。</summary>
     [SupportedOSPlatform("windows")]
     public static PipeSecurity ForUser(SecurityIdentifier user)
     {
-        // 全権は、同じ名前のパイプを続けて作れる(受け口が接続ごとに作り直す)ように。CreateNamedPipe の既定と同じ。
+        // 最小の権限にする(ADR-0010 の時代の実装と同じ)。CreateNewInstance は、受け口が接続ごとに同じ名前のパイプを作り直すため。
+        // 読みには ReadPermissions が含まれ、CLI が所有者を確かめる(GetAccessControl)のに足りる。
         var security = new PipeSecurity();
-        security.AddAccessRule(new PipeAccessRule(user, PipeAccessRights.FullControl, AccessControlType.Allow));
+        security.AddAccessRule(new PipeAccessRule(
+            user, PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance, AccessControlType.Allow));
         security.SetOwner(user);
         return security;
     }

@@ -36,7 +36,26 @@ public sealed class ControlPipeSecurityTests
     }
 
     [Fact]
-    public void ForUser_ユーザーのSIDを所有者にし_全権をユーザーだけに許す()
+    public void VerifyOwner_所有者を取れないときは拒む()
+    {
+        // ACL を読めない・ユーザーの SID が取れないなど、確かめられないときも UnauthorizedAccessException にする
+        // (CLI では繋がらないのと同じ扱いになり、生の例外で落ちない)。
+        var ex = Assert.Throws<UnauthorizedAccessException>(() => ControlPipeSecurity.VerifyOwner(
+            () => throw new InvalidOperationException("読めない"), () => User));
+        Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.Throws<UnauthorizedAccessException>(() => ControlPipeSecurity.VerifyOwner(
+            () => User, () => throw new InvalidOperationException("SID が取れない")));
+        Assert.Throws<UnauthorizedAccessException>(() => ControlPipeSecurity.VerifyOwner(() => User, () => null));
+    }
+
+    [Fact]
+    public void VerifyOwner_所有者がユーザーのSIDなら通す()
+    {
+        ControlPipeSecurity.VerifyOwner(() => User, () => User);
+    }
+
+    [Fact]
+    public void ForUser_ユーザーのSIDを所有者にし_読み書きとインスタンスの作成だけをユーザーに許す()
     {
         // SecurityIdentifier は Windows 以外で作れない(PlatformNotSupportedException)。CI(Linux)では走らない。
         if (!OperatingSystem.IsWindows())
@@ -49,6 +68,6 @@ public sealed class ControlPipeSecurityTests
         var rule = Assert.Single(security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<PipeAccessRule>());
         Assert.Equal(user, rule.IdentityReference);
         Assert.Equal(AccessControlType.Allow, rule.AccessControlType);
-        Assert.Equal(PipeAccessRights.FullControl, rule.PipeAccessRights);
+        Assert.Equal(PipeAccessRights.ReadWrite | PipeAccessRights.CreateNewInstance, rule.PipeAccessRights);
     }
 }
