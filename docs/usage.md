@@ -637,16 +637,17 @@ radirec reload          # radirec.json などを直した後に(管理画面の�
 |------|------|------|
 | `status` | 常駐が答えた(取り込みが止まっている〔縮退〕ときも、`running: false` と理由を答える) | 0 |
 | `status` | 取り込みワーカーが起動した後に止まった(異常終了・更新の適用中) | 0(`running: false` と理由) |
+| `status` | 取り込みワーカーの起動処理(孤児の掃除・監視の開始)が失敗して止まった(出力先に読めないフォルダがあるなど) | 0(`running: false` と理由「取り込みの起動処理に失敗しました: {原因}(gui.log 参照 → 原因を直して再起動)」) |
 | `status` | トレイが起動していない(2 秒で繋ぐのを諦める) | 0(`reachable: false`・`running: false` と理由) |
 | `status` | 繋がったが応答を読めない(時間切れ・形が違う) | 0(`reachable: true`・`running: false` と理由) |
 | `reload` | 受理した(反映は取り込みの合間に後追いで行う。反映に失敗したら前の設定のまま動き続け、`gui.log` に残る) | 0 |
 | `reload` | 設定が不正で拒否した(理由を添える。前の設定のまま動き続ける) | 1 |
-| `reload` | トレイが起動していない・取り込みが止まっている(縮退・ワーカーが止まった。トレイの再起動はしない)・応答を読めない | 2 |
+| `reload` | トレイが起動していない・取り込みが止まっている(縮退・ワーカーが止まった・起動処理が失敗した。トレイの再起動はしない)・応答を読めない | 2 |
 | どちらも | トレイと CLI でプロトコルの版が違う(「トレイと CLI の版が違います(トレイ vX / CLI vY)」) | 1 |
 
 `--json` の `result`:
 
-- `status`: `reachable`(トレイに繋がったか)、`running`(取り込みが動いているか)、`reason`(動いていない理由)、
+- `status`: `reachable`(トレイに繋がったか)、`running`(取り込みが動いているか)、`reason`(動いていない理由。縮退・異常終了か更新の適用中・起動処理の失敗〔`取り込みの起動処理に失敗しました: {原因}…`〕を見分けられる)、
   `tray`(`version`・`startedUtc`・`configPath`・`radioRoot`・`watching`・`lastScanCompletedUtc`・`lastScanTrigger`・
   `lastImported`・`lastFailed`・`stationsFile`・`programsFile`・`degradedReason`。繋がらなければ null)
 - `reload`: `accepted`、`error`(拒否した理由)

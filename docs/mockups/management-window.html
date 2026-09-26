@@ -132,6 +132,7 @@
       <option value="polling">稼働中(定期スキャンのみ)・失敗あり</option>
       <option value="noscan">稼働中・未走査</option>
       <option value="crashed">停止(異常終了)</option>
+      <option value="startloop">停止(起動処理に失敗)</option>
       <option value="startfail">起動に失敗(設定は読めた)</option>
       <option value="noconfig">縮退(設定を読めない)</option>
     </select></label>
@@ -223,17 +224,18 @@
           <div class="status-line" data-if="run:watching,noscan" data-w="W-101">状態: 稼働中(監視中)</div>
           <div class="status-line" data-if="run:polling" data-w="W-102">状態: 稼働中(定期スキャンのみ)</div>
           <div class="status-line" data-if="run:crashed" data-w="W-103">状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)</div>
+          <div class="status-line an" data-if="run:startloop" data-w="W-153">状態: 停止(取り込みの起動処理に失敗。gui.log 参照 → 原因を直して再起動)</div>
           <div class="status-line an" data-if="run:startfail" data-w="W-104">状態: 取り込み停止中(取り込みの起動に失敗しました(設定ページ参照))</div>
           <div class="status-line" data-if="run:noconfig" data-w="W-105">状態: 取り込み停止中(設定を読み込めませんでした)</div>
           <div class="status-line" data-if="run:watching" data-w="W-106">最終スキャン: 9/25 10:42 検知(取込 3)</div>
           <div class="status-line" data-if="run:polling" data-w="W-106">最終スキャン: 9/25 10:40 定期(取込 0・失敗 1)</div>
           <div class="status-line" data-if="run:noscan" data-w="W-107">最終スキャン: 未走査</div>
-          <div class="status-line" data-if="run:crashed,startfail,noconfig" data-w="W-108">最終スキャン: —</div>
+          <div class="status-line" data-if="run:crashed,startloop,startfail,noconfig" data-w="W-108">最終スキャン: —</div>
         </div>
         <div style="text-align: right;">
           <button class="btn primary" data-if="run:watching,polling,noscan" data-go="rescan:done" data-w="W-110">今すぐ再スキャン</button>
-          <button class="btn" disabled data-if="run:crashed,startfail,noconfig" data-w="W-110">今すぐ再スキャン</button>
-          <div class="sub" data-if="run:crashed,startfail,noconfig" data-w="W-112">取り込みが止まっているため、再スキャンできません</div>
+          <button class="btn" disabled data-if="run:crashed,startloop,startfail,noconfig" data-w="W-110">今すぐ再スキャン</button>
+          <div class="sub" data-if="run:crashed,startloop,startfail,noconfig" data-w="W-112">取り込みが止まっているため、再スキャンできません</div>
         </div>
       </div>
       <div class="msg info" data-if="rescan:done run:watching,polling,noscan" data-w="W-111">手動再スキャンを要求しました</div>
@@ -243,13 +245,13 @@
         <span class="an" data-w="W-113">再スキャンを要求できませんでした(gui.log 参照)</span>。</div>
     </div>
 
-    <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startfail" data-w="W-120">要対応 7 件</span></h3>
+    <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startloop,startfail" data-w="W-120">要対応 7 件</span></h3>
     <div data-if="run:noconfig" class="msg warn" data-w="W-137">設定を読めないため、要対応を出せません</div>
     <div data-if="run:noconfig" class="mocknote">台帳か programs.json・stations.json を読めず計算できなかったときは、
       <span class="an" data-w="W-137">要対応を出せませんでした: {理由}</span> を出す(縮退していなくても)。</div>
-    <div data-if="attn:empty run:watching,polling,noscan,crashed,startfail" class="sub" data-w="W-121">要対応はありません</div>
+    <div data-if="attn:empty run:watching,polling,noscan,crashed,startloop,startfail" class="sub" data-w="W-121">要対応はありません</div>
 
-    <div data-if="attn:items run:watching,polling,noscan,crashed,startfail">
+    <div data-if="attn:items run:watching,polling,noscan,crashed,startloop,startfail">
       <div class="attn">
         <h4 data-w="W-122">統合設定の無い兄弟フォルダ</h4>
         <div class="mocknote">番組ページに保存していない変更があるときは、この下に
@@ -311,10 +313,10 @@
     </div>
 
     <h3><span data-w="W-140">取込履歴</span>
-      <span class="sub" data-if="hist:ok run:watching,polling,noscan,crashed,startfail" data-w="W-140">新しい方の 5 件</span></h3>
+      <span class="sub" data-if="hist:ok run:watching,polling,noscan,crashed,startloop,startfail" data-w="W-140">新しい方の 5 件</span></h3>
     <div data-if="run:noconfig" class="msg warn" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
-    <div data-if="hist:error run:watching,polling,noscan,crashed,startfail" class="msg err" data-w="W-149">読み込みに失敗しました</div>
-    <div data-if="hist:ok run:watching,polling,noscan,crashed,startfail">
+    <div data-if="hist:error run:watching,polling,noscan,crashed,startloop,startfail" class="msg err" data-w="W-149">読み込みに失敗しました</div>
+    <div data-if="hist:ok run:watching,polling,noscan,crashed,startloop,startfail">
       <table class="grid">
         <colgroup><col style="width:240px"><col style="width:120px"><col style="width:150px"><col style="width:140px"><col></colgroup>
         <tr data-w="W-141"><th>番組</th><th>放送局</th><th>放送</th><th>取込日時</th><th>ファイル</th></tr>
@@ -335,13 +337,13 @@
   <section data-if="page:history">
     <h2>取込履歴</h2>
     <div data-if="run:noconfig" class="msg warn" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
-    <div data-if="hist:error run:watching,polling,noscan,crashed,startfail">
+    <div data-if="hist:error run:watching,polling,noscan,crashed,startloop,startfail">
       <div class="row" style="margin-bottom: 6px;">
         <button class="btn small" data-w="W-143">更新</button>
         <span class="sub" data-w="W-149">読み込みに失敗しました</span>
       </div>
     </div>
-    <div data-if="hist:ok run:watching,polling,noscan,crashed,startfail">
+    <div data-if="hist:ok run:watching,polling,noscan,crashed,startloop,startfail">
       <div class="row" style="margin-bottom: 6px;">
         <button class="btn small" data-w="W-143">更新</button>
         <span class="sub" data-w="W-151">248 件</span>
@@ -392,13 +394,13 @@
     <div data-if="run:noconfig" class="msg warn" data-w="W-211">設定を読めないため、番組の設定を出せません</div>
 
     <!-- programs.json を使わない設定(ProgramsFile が空) -->
-    <div data-if="pf:unused run:watching,polling,noscan,crashed,startfail" class="card">
+    <div data-if="pf:unused run:watching,polling,noscan,crashed,startloop,startfail" class="card">
       <p style="margin-top: 0;" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
       <p class="sub" data-w="W-213">番組の設定を使うには、radirec.json の ProgramsFile にファイル名(例 programs.json)を書き、設定ページの「再読み込み」を押してください。</p>
       <div class="mocknote">この設定では、どのフォルダもフォルダ名がそのままアルバム名になる(統合もしない)。</div>
     </div>
 
-    <div data-if="pf:used run:watching,polling,noscan,crashed,startfail">
+    <div data-if="pf:used run:watching,polling,noscan,crashed,startloop,startfail">
     <!-- 一覧 -->
     <div data-if="prog:list,dirty,empty">
       <p class="sub" data-w="W-201">番組の設定 — programs.json の中身です。保存するまでファイルは変わりません</p>
@@ -666,7 +668,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         (下の stations.json の段には出さない)。</div>
     </div>
 
-    <div data-if="run:watching,polling,noscan,crashed,startfail">
+    <div data-if="run:watching,polling,noscan,crashed,startloop,startfail">
       <div data-if="set:normal,opened,reloadconfirm,reloaded,stations,nostations">
         <div class="card">
           <h3 style="margin-top: 0;" data-w="W-301">取り込みの知らせ</h3>
@@ -750,7 +752,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
     </div>
 
     <!-- radirec.json の再読み込みの確認 -->
-    <div class="overlay" data-if="set:reloadconfirm run:watching,polling,noscan,crashed,startfail">
+    <div class="overlay" data-if="set:reloadconfirm run:watching,polling,noscan,crashed,startloop,startfail">
       <div class="dialog">
         <div class="dh">設定リロード</div>
         <div class="db"><p data-w="W-309">設定を再読み込みします。取り込みは一時停止し、再構築されます。よろしいですか?</p></div>
@@ -769,14 +771,14 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       <p style="font-size: 16px; margin-top: 0;" data-if="upd:none,pending" data-w="W-501">Radirec 0.12.0</p>
       <p style="font-size: 16px; margin-top: 0;" data-if="upd:dev" data-w="W-501">Radirec 0.0.0-dev</p>
 
-      <div data-if="upd:none,pending run:watching,polling,noscan,crashed,startfail" class="row">
+      <div data-if="upd:none,pending run:watching,polling,noscan,crashed,startloop,startfail" class="row">
         <button class="btn" data-go="ver:latest" data-w="W-502">今すぐ更新を確認</button>
         <button class="btn primary" data-if="upd:pending" data-go="ver:applyconfirm" data-w="W-507">更新 v0.13.0 を適用して再起動</button>
       </div>
       <p class="sub" data-if="upd:dev" data-w="W-510">この版は自己更新の対象外です(開発版・portable)</p>
       <p class="sub an" data-if="upd:none,pending run:noconfig" data-w="W-511">設定を読めないため、更新を確認できません</p>
 
-      <div data-if="upd:none,pending run:watching,polling,noscan,crashed,startfail">
+      <div data-if="upd:none,pending run:watching,polling,noscan,crashed,startloop,startfail">
         <div class="msg info" data-if="ver:latest" data-w="W-503">最新版です。</div>
         <div class="msg info" data-if="ver:found" data-w="W-504">更新があります(v0.13.0)。</div>
         <div class="msg info" data-if="ver:busy" data-w="W-505">更新を確認中です。少し待って再度お試しください。</div>

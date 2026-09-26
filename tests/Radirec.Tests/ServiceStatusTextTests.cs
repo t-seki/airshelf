@@ -3,20 +3,21 @@ using Radirec.Hosting.Control;
 
 namespace Radirec.Tests;
 
-// 状態の文言(docs/mockups/management-window.md の W-101〜W-108)。トレイと管理画面のホームが共有する(#151)。
+// 状態の文言(docs/mockups/management-window.md の W-101〜W-108・W-153)。トレイと管理画面のホームが共有する(#151)。
 public sealed class ServiceStatusTextTests
 {
     internal static readonly TimeZoneInfo Jst = TimeZoneInfo.CreateCustomTimeZone("JST", TimeSpan.FromHours(9), "JST", "JST");
 
     internal static ServiceStatusSnapshot Snapshot(
         bool running = true, bool watching = true, DateTimeOffset? completed = null,
-        string? trigger = null, int imported = 0, int failed = 0) => new()
+        string? trigger = null, int imported = 0, int failed = 0, string? startFailure = null) => new()
     {
         Version = "0.0.0-dev",
         StartedUtc = DateTimeOffset.UnixEpoch,
         RadioRoot = @"I:\radio",
         Watching = watching,
         Running = running,
+        StartFailure = startFailure,
         LastScanCompletedUtc = completed,
         LastScanTrigger = trigger,
         LastImported = imported,
@@ -64,6 +65,15 @@ public sealed class ServiceStatusTextTests
         Assert.False(view.CanControl);
     }
 
+    [Fact]
+    public void Start_loop_failed_W153_W108_and_no_control()
+    {
+        // #217:ワーカーは作れたが起動処理(掃除・監視の開始)で止まった。異常終了(W-103)と分けて出す。
+        var view = ServiceStatusText.From(Snapshot(running: false, startFailure: "Access denied"), Jst);
+        Assert.Equal("状態: 停止(取り込みの起動処理に失敗。gui.log 参照 → 原因を直して再起動)", view.Status);
+        Assert.Equal("最終スキャン: —", view.LastScan);
+        Assert.False(view.CanControl);
+    }
     [Fact]
     public void Start_failed_W104()
     {

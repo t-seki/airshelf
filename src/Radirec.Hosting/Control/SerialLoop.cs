@@ -16,6 +16,12 @@ public sealed class SerialLoop
 
     /// <summary>ループが要求を処理できる状態か。状態取得の「稼働中」と、要求を受理するかの判定に使う。</summary>
     public bool Running => _running;
+    private volatile Exception? _startFailure;
+    /// <summary>
+    /// 起動処理(<c>start</c>)が投げた例外。起動処理が終わった・まだ走っていないときは null。状態取得で、ループの異常終了と
+    /// 起動処理の失敗を見分けて伝えるために使う(#217)。
+    /// </summary>
+    public Exception? StartFailure => _startFailure;
 
     /// <summary>
     /// 起動処理(<paramref name="start"/>)→ ループ(<paramref name="loop"/>)を走らせる。どこで抜けても(起動処理の例外を含む)
@@ -23,7 +29,12 @@ public sealed class SerialLoop
     /// <para>
     /// 停止要求で抜けたときは正常終了。停止要求でないのにループが抜けた(停止要求でない取り消し・ループの自然終了)ときは
     /// <paramref name="onUnexpectedExit"/> に渡す(取り込みだけが黙って止まらないよう gui.log に残すため)。
-    /// それ以外の例外(起動処理の失敗など)は投げ直す(呼び手が gui.log に残す。<c>Program.cs</c> のホスト起動の失敗)。
+    /// </para>
+    /// <para>
+    /// 起動処理の失敗(停止要求の取り消しを除く)は <see cref="StartFailure"/> に記録し、<paramref name="onStartFailed"/> に
+    /// 渡してから投げ直す(#217)。.NET 10 から <c>BackgroundService.StartAsync</c> は <c>ExecuteAsync</c> の全体を別のタスクで
+    /// 走らせるので、ここで投げ直した例外はホストの起動(<c>host.StartAsync()</c>)には伝わらない。呼び手が gui.log に残せるのは
+    /// <paramref name="onStartFailed"/> の中だけ。
     /// </para>
     /// </summary>
     public async Task RunAsync(
@@ -31,11 +42,21 @@ public sealed class SerialLoop
         Func<CancellationToken, Task> loop,
         Action onStopped,
         Action<Exception?> onUnexpectedExit,
+        Action<Exception> onStartFailed,
         CancellationToken stoppingToken)
     {
         try
         {
-            start();
+            try
+            {
+                start();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+            {
+                _startFailure = ex;
+                onStartFailed(ex);
+                throw;
+            }
             await loop(stoppingToken).ConfigureAwait(false);
             if (!stoppingToken.IsCancellationRequested)
                 onUnexpectedExit(null);
@@ -44,7 +65,7 @@ public sealed class SerialLoop
         {
             // 停止要求。正常終了。
         }
-        catch (OperationCanceledException ex)
+        catch (OperationCanceledException ex) when (_startFailure is null)
         {
             onUnexpectedExit(ex);
         }
