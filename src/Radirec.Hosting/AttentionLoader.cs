@@ -15,11 +15,14 @@ namespace Radirec.Hosting;
 /// </summary>
 public static class AttentionLoader
 {
-    /// <param name="ledgerPath">台帳の絶対パス。まだ無ければ(取込ゼロ)空の台帳として計算する。</param>
+    /// <param name="ledgerPath">
+    /// 台帳の絶対パス。まだ無ければ(取込ゼロ)空の台帳として計算する。親フォルダに届かなければ空とせず失敗にする(#216)。
+    /// </param>
     /// <param name="stationsFile">stations.json の場所。使わない設定(空)なら既定の放送局の設定。</param>
     /// <param name="programsFile">programs.json の場所。使わない設定(<c>ProgramsFile</c> が空)なら null か空。</param>
     /// <param name="knownRecordingKinds">らじれこの録音種別(<c>radirec.json</c> の <c>KnownRecordingKinds</c>)。</param>
     /// <exception cref="Exception">台帳か設定ファイルを読めなかった(呼び出し側で理由を出す)。</exception>
+    /// <exception cref="DirectoryNotFoundException">台帳の親フォルダに届かない(<see cref="LedgerFile.Exists"/>)。</exception>
     public static AttentionItems Load(
         string ledgerPath, string? stationsFile, string? programsFile, IEnumerable<string> knownRecordingKinds)
     {
@@ -32,7 +35,7 @@ public static class AttentionLoader
 
         IReadOnlyList<LedgerEntry> entries = [];
         IReadOnlyList<IngestFailureRecord> failures = [];
-        if (File.Exists(ledgerPath))
+        if (LedgerFile.Exists(ledgerPath))
         {
             // 取り込みワーカーの書込接続とは別の読み取り専用の接続(取込履歴と同じ。SQLite の WAL は並行に読める)。
             // 失敗のストアも同じ台帳の別テーブル(ADR-0011)。
