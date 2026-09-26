@@ -79,4 +79,20 @@ public interface IServiceControl
     /// (ディスクを読み直さない)。保存前の設定で確かめた結果は <see cref="ReloadAndApplyReapplyAsync"/> で実行する。
     /// </summary>
     Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan);
+
+    /// <summary>
+    /// CLI の <c>reapply</c> の確認(#181・ADR-0020)。設定リロードはせず、今の設定(radirec.json)とディスクの <c>programs.json</c> /
+    /// <c>stations.json</c> で dry-run し、予定と予定 ID(<see cref="ReapplyResult.PlanId"/>)を返す。直列ループの上で行う。
+    /// 常駐の状態(設定・管理画面の直前の確認)は変えないので、管理画面で開いている確認を古くしない。
+    /// 取り込みが止まっていれば <see cref="ReapplyResult.IsStopped"/> の失敗を返す。
+    /// </summary>
+    Task<ReapplyResult> PlanReapplyForCliAsync();
+
+    /// <summary>
+    /// CLI の <c>reapply --apply &lt;予定 ID&gt;</c>(#181・ADR-0020)。直列ループの 1 つのジョブの中で、設定リロード → 読み直した設定で
+    /// dry-run → 予定 ID が <paramref name="planId"/> と一致したときだけ実行する(間に取り込みの走査を挟まない)。一致しなければ実行せず、
+    /// dry-run し直した新しい予定と予定 ID を <see cref="ReapplyResult.IsStale"/> で返す。リロードで読めない・反映できなければ実行しない。
+    /// 管理画面の直前の確認には触れない。
+    /// </summary>
+    Task<ReapplyResult> ApplyReapplyPlanAsync(string planId);
 }

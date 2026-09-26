@@ -55,6 +55,9 @@ public static class CliJson
 /// コマンド名(<c>ingest</c> など)。コマンドが決まっていれば、解析の誤り・実行中の例外でも入る。知らないコマンドなどで決まらなければ null。
 /// </param>
 /// <param name="ExitCode">プロセスの終了コード(<see cref="ExitCodes"/>)。</param>
-/// <param name="Error">結果が出る前に止まった理由。結果が出たときは null。</param>
+/// <param name="Error">
+/// 結果が出る前に止まった理由。結果が出たときは null。例外は、再適用で予定が変わった(終了コード 3。#181)とき:実行しなかった理由と、
+/// 新しい予定の結果の両方が入る。
+/// </param>
 /// <param name="Result">コマンドごとの結果。止まったときは null。</param>
 public sealed record CliEnvelope(int SchemaVersion, string? Command, int ExitCode, string? Error, object? Result);

@@ -47,6 +47,8 @@ public sealed class HomeAttentionTests : IDisposable
         public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs) => Task.FromResult(ReapplyResult.Ok(
             new ReapplyReport { Items = [], DryRun = true, UnintegratedSiblings = [] }));
         public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => Task.FromResult(ReapplyResult.Ok(MoveOne(dryRun: false)));
+        public Task<ReapplyResult> PlanReapplyForCliAsync() => throw new NotSupportedException();
+        public Task<ReapplyResult> ApplyReapplyPlanAsync(string planId) => throw new NotSupportedException();
         public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
     }
 

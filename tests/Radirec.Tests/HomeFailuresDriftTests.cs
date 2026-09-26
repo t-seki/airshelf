@@ -25,6 +25,8 @@ public sealed class HomeFailuresDriftTests
         public Task<ReapplyResult> PlanReapplyAsync() => throw new NotSupportedException();
         public Task<ReapplyResult> PlanReapplyAsync(Radirec.Core.Configuration.ProgramMasterConfig programs) => throw new NotSupportedException();
         public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
+        public Task<ReapplyResult> PlanReapplyForCliAsync() => throw new NotSupportedException();
+        public Task<ReapplyResult> ApplyReapplyPlanAsync(string planId) => throw new NotSupportedException();
         public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
     }
 

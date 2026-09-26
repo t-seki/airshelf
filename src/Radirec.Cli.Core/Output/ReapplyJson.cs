@@ -6,6 +6,10 @@ namespace Radirec.Cli.Core.Output;
 /// <param name="Aligned">取り込み済みの回が今の設定と揃っているか(変える回も失敗も無い。対象外だけなら true)。</param>
 /// <param name="DuplicatesRewritingTags">重複の回のうち、移動先のファイルのタグも書き換える回の数。</param>
 /// <param name="UnintegratedSiblings">統合設定の無い兄弟フォルダの組(programs.json で統合するか確かめる)。</param>
+/// <param name="PlanId">
+/// 予定 ID(#181)。dry-run では <c>reapply --apply &lt;予定 ID&gt;</c> に渡す値。予定が変わった(終了コード 3)ときは新しい予定の予定 ID、
+/// 実行したときは実行した予定の予定 ID。
+/// </param>
 public sealed record ReapplyJson(
     bool DryRun,
     bool Aligned,
@@ -14,9 +18,10 @@ public sealed record ReapplyJson(
     IReadOnlyList<ReapplyAlbumSummary> Albums,
     IReadOnlyList<ReapplyItemJson> Items,
     IReadOnlyList<UnintegratedSiblingJson> UnintegratedSiblings,
-    LibraryRefreshJson LibraryRefresh)
+    LibraryRefreshJson LibraryRefresh,
+    string? PlanId)
 {
-    public static ReapplyJson From(ReapplyReport report) => new(
+    public static ReapplyJson From(ReapplyReport report, string? planId) => new(
         report.DryRun,
         report.IsAligned,
         new ReapplyCountsJson(
@@ -32,7 +37,8 @@ public sealed record ReapplyJson(
             i.Action, i.Station, i.FromAlbum, i.ToAlbum, i.BroadcastDate, i.BroadcastTime,
             i.FromPath, i.ToPath, i.SourcePath, i.Reason, i.RewritesTags)).ToList(),
         report.UnintegratedSiblings.Select(UnintegratedSiblingJson.From).ToList(),
-        new LibraryRefreshJson(report.LibraryRefresh, report.RefreshError));
+        new LibraryRefreshJson(report.LibraryRefresh, report.RefreshError),
+        planId);
 }
 
 /// <summary>扱いごとの件数(表の下の 1 行と同じ)。</summary>

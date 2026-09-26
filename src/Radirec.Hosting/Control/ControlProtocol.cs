@@ -26,6 +26,11 @@ public static class ControlProtocol
 
     /// <summary>走査の実行(CONTEXT.md。#180)。走査が終わるまで応答しない。</summary>
     public const string ScanCommand = "scan";
+    /// <summary>
+    /// 再適用(#181)。要求に <see cref="ControlRequest.PlanId"/> が無ければ確認(dry-run。予定と予定 ID を返す)、あれば設定リロード →
+    /// dry-run し直し → 予定 ID が一致したときだけ実行する。どちらも直列ループの上で、終わるまで応答しない。
+    /// </summary>
+    public const string ReapplyCommand = "reapply";
 
     /// <summary>
     /// 要求・応答の JSON。camelCase・列挙は camelCase の文字列・日本語はエスケープしない。1 行で送るので字下げしない。
@@ -79,14 +84,19 @@ public static class ControlProtocol
 /// <summary>CLI → 常駐の要求。</summary>
 /// <param name="ProtocolVersion">送り手のプロトコルの版(<see cref="ControlProtocol.Version"/>)。</param>
 /// <param name="Command">
-/// <see cref="ControlProtocol.StatusCommand"/>・<see cref="ControlProtocol.ReloadCommand"/>・<see cref="ControlProtocol.ScanCommand"/> のどれか。
+/// <see cref="ControlProtocol.StatusCommand"/>・<see cref="ControlProtocol.ReloadCommand"/>・<see cref="ControlProtocol.ScanCommand"/>・
+/// <see cref="ControlProtocol.ReapplyCommand"/> のどれか。
 /// </param>
-public sealed record ControlRequest(int ProtocolVersion, string Command);
+/// <param name="PlanId">
+/// 再適用(<see cref="ControlProtocol.ReapplyCommand"/>)で実行する予定 ID(#181)。無ければ確認(dry-run)。ほかのコマンドでは使わない。
+/// 足しただけなので、プロトコルの版は上げていない(古いトレイはこのフィールドを読み飛ばし、知らないコマンドとして返す)。
+/// </param>
+public sealed record ControlRequest(int ProtocolVersion, string Command, string? PlanId = null);
 
 /// <summary>応答の種類。</summary>
 public enum ControlResponseKind
 {
-    /// <summary>要求を処理した(状態取得の結果、設定リロードの受理 / 拒否、または走査の実行の結果)。</summary>
+    /// <summary>要求を処理した(状態取得の結果、設定リロードの受理 / 拒否、走査の実行の結果、または再適用の結果)。</summary>
     Ok,
 
     /// <summary>プロトコルの版が合わない。何もしていない。</summary>
@@ -121,6 +131,11 @@ public sealed record ControlResponse
 
     /// <summary>走査の実行の結果(<c>scan</c> で <see cref="ControlResponseKind.Ok"/> のときだけ。#180)。</summary>
     public ScanRunResult? ScanRun { get; init; }
+    /// <summary>
+    /// 再適用の結果(<c>reapply</c> で <see cref="ControlResponseKind.Ok"/> のときだけ。#181)。予定 ID が合わなかった・設定を読めない等の
+    /// 失敗もここに入る(<see cref="ReapplyResult.IsStale"/>・<see cref="ReapplyResult.Error"/>)。
+    /// </summary>
+    public ReapplyResult? Reapply { get; init; }
 }
 
 /// <summary>

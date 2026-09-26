@@ -34,7 +34,9 @@ public static class RadirecCli
         return app.RunAsync(args);
     }
 
-    /// <summary>常駐に頼むコマンド(<c>status</c> / <c>reload</c>。#179)を足す。</summary>
+    /// <summary>
+    /// 常駐に頼むコマンド(<c>status</c> / <c>reload</c>。#179)を足し、制御チャネルへ頼む口を登録する(<c>ingest</c> と <c>reapply</c> も使う)。
+    /// </summary>
     private static void ConfigureControl(IConfigurator config, string version, IControlClient controlClient)
     {
         config.Settings.Registrar.RegisterInstance(controlClient);
@@ -82,8 +84,9 @@ public static class RadirecCli
             .WithDescription("らじれこ録音を正規化して取り込む(--dry-run で予定表示)")
             .WithExample(IngestCommand.Name, "--dry-run");
         config.AddCommand<ReapplyCommand>(ReapplyCommand.Name)
-            .WithDescription("今の番組の設定(統合・正規名)を取り込み済みの回へ再適用する(--dry-run で予定表示)")
-            .WithExample(ReapplyCommand.Name, "--dry-run");
+            .WithDescription("今の番組の設定(統合・正規名)を取り込み済みの回へ再適用する(予定と予定 ID を表示。--apply <予定 ID> で実行)")
+            .WithExample(ReapplyCommand.Name)
+            .WithExample(ReapplyCommand.Name, "--apply", "3f9c0a1b2d4e5f67");
         config.AddCommand<RefreshCommand>(RefreshCommand.Name)
             .WithDescription("Jellyfin のライブラリ更新を手動で起動する")
             .WithExample(RefreshCommand.Name);
@@ -94,8 +97,8 @@ public static class RadirecCli
         config.AddCommand<AttentionCommand>(AttentionCommand.Name)
             .WithDescription("要対応(管理画面のホームと同じ)を出す(台帳と設定を読むだけ。常駐が動いていなくても使える)")
             .WithExample(AttentionCommand.Name, "--json");
-        // 常駐はトレイ(Radirec.Gui)が担う(ADR-0012)。reapply / refresh / history / attention と ingest --dry-run は CLI が直接行い、
-        // status / reload と ingest(走査の実行。#180)はトレイの制御チャネル(named pipe)へ頼む(ADR-0020 / #179。ConfigureControl)。
+        // 常駐はトレイ(Radirec.Gui)が担う(ADR-0012)。refresh / history / attention と ingest --dry-run は CLI が直接行い、
+        // status / reload と ingest(走査の実行。#180)と reapply(#181)はトレイの制御チャネル(named pipe)へ頼む(ADR-0020 / #179。ConfigureControl)。
         // 一回きりの移行のための ingest --root と organize-source、設定ファイルを指す --config は削った(ADR-0020)。設定は常にトレイと同じ既定の radirec.json を使う。
     }
 

@@ -18,7 +18,10 @@ public static class ExitCodes
     /// <summary>常駐が動いていない(制御チャネルに繋がらない・取り込みが止まっている。#179 から使う)。</summary>
     public const int ResidentNotRunning = 2;
 
-    /// <summary>確かめた予定が変わった(再適用の予定 ID が一致しない。#181 から使う)。dry-run からやり直す。</summary>
+    /// <summary>
+    /// 確かめた予定が変わった(再適用の予定 ID が一致しない。実行していない。#181)。出力の新しい予定を確かめ、その予定 ID で
+    /// <c>--apply</c> し直す。
+    /// </summary>
     public const int PlanChanged = 3;
 
     /// <summary>完了したが、一部の回が失敗した。明細の失敗を調べる。</summary>

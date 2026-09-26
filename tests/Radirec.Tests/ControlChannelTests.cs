@@ -481,6 +481,245 @@ public sealed class ControlChannelTests
         Assert.Contains("トレイが古ければ更新してください", doc.RootElement.GetProperty("error").GetString());
     }
 
+    // ---- 再適用(radirec reapply。#181)----
+
+    private static ReapplyReport Plan(bool dryRun, params string[] fromPaths) => new()
+    {
+        DryRun = dryRun,
+        Items = [.. fromPaths.Select(from => new ReapplyItem
+        {
+            Action = ReapplyAction.Move,
+            Station = "TBSラジオ",
+            FromAlbum = "安住紳一郎の日曜天国(1)",
+            ToAlbum = "安住紳一郎の日曜天国",
+            BroadcastDate = new DateOnly(2026, 9, 20),
+            BroadcastTime = new TimeOnly(10, 0),
+            FromPath = from,
+            ToPath = @"Z:\out\安住紳一郎の日曜天国\" + from,
+            SourcePath = @"I:\radio\" + from,
+        })],
+        UnintegratedSiblings = [new UnintegratedSiblingGroup(new("TBSラジオ", "a", ["a(1)", "a(2)"]), ["a(2)"])],
+    };
+
+    [Fact]
+    public async Task reapplyは予定とIDを運ぶ_予定は往復しても同じIDになる()
+    {
+        var plan = Plan(dryRun: true, "a.m4a", "b.m4a");
+        var control = new FakeControl { ReapplyPlan = ReapplyResult.Planned(plan) };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var result = await Client(server).SendAsync(
+            new ControlRequest(ControlProtocol.Version, ControlProtocol.ReapplyCommand), CancellationToken.None);
+
+        var reapply = result.Response!.Reapply!;
+        Assert.Equal(ReapplyPlanId.Of(plan), reapply.PlanId);
+        Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(reapply.Report!)); // 明細は値のまま届く
+        Assert.True(reapply.Report!.HasSamePlanAs(plan));
+        Assert.Equal("a(2)", Assert.Single(reapply.Report.UnintegratedSiblings).FoldersWithoutSetting[0]);
+        Assert.Equal(1, control.ReapplyPlanCalls);
+        Assert.Null(control.AppliedPlanId);
+    }
+
+    [Fact]
+    public async Task CLIのreapplyはオプションなしで確認だけを頼み_予定IDと実行の仕方を出す()
+    {
+        var plan = Plan(dryRun: true, "a.m4a");
+        var control = new FakeControl { ReapplyPlan = ReapplyResult.Planned(plan) };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply"], Client(server));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        var id = ReapplyPlanId.Of(plan);
+        Assert.Contains($"予定 ID: {id}", output);
+        Assert.Contains($"radirec reapply --apply {id}", output);
+        Assert.Null(control.AppliedPlanId);
+    }
+
+    [Fact]
+    public async Task CLIのreapplyのdry_runはオプションなしと同じで_jsonにplanIdを出す()
+    {
+        var plan = Plan(dryRun: true, "a.m4a");
+        var control = new FakeControl { ReapplyPlan = ReapplyResult.Planned(plan) };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply", "--dry-run", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        var result = doc.RootElement.GetProperty("result");
+        Assert.Equal(ReapplyPlanId.Of(plan), result.GetProperty("planId").GetString());
+        Assert.True(result.GetProperty("dryRun").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("error").ValueKind);
+        Assert.Null(control.AppliedPlanId);
+    }
+
+    [Fact]
+    public async Task CLIのreapply_applyは予定IDを添えて頼み_一致すれば実行の結果を返す()
+    {
+        var id = ReapplyPlanId.Of(Plan(dryRun: true, "a.m4a"));
+        var control = new FakeControl { ReapplyApply = ReapplyResult.Ok(Plan(dryRun: false, "a.m4a")) };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply", "--apply", id.ToUpperInvariant(), "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        Assert.Equal(id, control.AppliedPlanId); // 小文字にして頼む
+        using var doc = JsonDocument.Parse(output);
+        var result = doc.RootElement.GetProperty("result");
+        Assert.False(result.GetProperty("dryRun").GetBoolean());
+        Assert.Equal(id, result.GetProperty("planId").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのreapply_applyは予定が変わっていれば3で_新しい予定とIDと理由を返す()
+    {
+        var oldId = ReapplyPlanId.Of(Plan(dryRun: true, "a.m4a"));
+        var replanned = Plan(dryRun: true, "a.m4a", "b.m4a");
+        var control = new FakeControl { ReapplyApply = ReapplyResult.PlanChanged("確かめた予定から変わったため実行しませんでした", replanned) };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply", "--apply", oldId, "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.PlanChanged, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal(3, doc.RootElement.GetProperty("exitCode").GetInt32());
+        Assert.Contains("変わったため実行しませんでした", doc.RootElement.GetProperty("error").GetString());
+        var result = doc.RootElement.GetProperty("result");
+        Assert.Equal(ReapplyPlanId.Of(replanned), result.GetProperty("planId").GetString());
+        Assert.Equal(2, result.GetProperty("items").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task CLIのreapply_applyは予定が変わっていれば表でも新しい予定IDを出す()
+    {
+        var replanned = Plan(dryRun: true, "b.m4a");
+        var control = new FakeControl { ReapplyApply = ReapplyResult.PlanChanged("確かめた予定から変わったため実行しませんでした", replanned) };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply", "--apply", "0123456789abcdef"], Client(server));
+
+        Assert.Equal(ExitCodes.PlanChanged, exitCode);
+        Assert.Contains("変わったため実行しませんでした", output);
+        Assert.Contains($"radirec reapply --apply {ReapplyPlanId.Of(replanned)}", output);
+    }
+
+    [Theory]
+    [InlineData("0123456789abcde")]
+    [InlineData("0123456789abcdefg")]
+    [InlineData("0123456789abcdeg")]
+    public async Task CLIのreapply_applyは予定IDの形が違えば1で_常駐に頼まない(string id)
+    {
+        var control = new FakeControl();
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply", "--apply", id, "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Contains("予定 ID の形が違います", doc.RootElement.GetProperty("error").GetString());
+        Assert.Equal(0, control.ReapplyPlanCalls);
+        Assert.Null(control.AppliedPlanId);
+    }
+
+    [Fact]
+    public async Task CLIのreapplyはdry_runとapplyを一緒に指定すれば1()
+    {
+        var control = new FakeControl();
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, _) = await RunCli(["reapply", "--dry-run", "--apply", "0123456789abcdef"], Client(server));
+
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        Assert.Null(control.AppliedPlanId);
+    }
+
+    [Fact]
+    public async Task CLIのreapplyは常駐に繋がらなければ2で_自分では走らせない()
+    {
+        var (exitCode, output) = await RunCli(["reapply", "--json"], new ControlPipeClient(UniqueName(), ShortConnect));
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal(ControlPipeClient.NotRunningMessage, doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのreapplyは取り込みが止まっていれば2で理由を添え_頼まない()
+    {
+        var control = new FakeControl { Running = false };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Contains(ControlPipeServer.WorkerStoppedReason, doc.RootElement.GetProperty("error").GetString());
+        Assert.Equal(0, control.ReapplyPlanCalls);
+    }
+
+    [Fact]
+    public async Task CLIのreapplyは常駐のジョブが止まって中止したら2()
+    {
+        var control = new FakeControl { ReapplyPlan = ReapplyResult.Stopped("取り込みが停止したため中止しました") };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.ResidentNotRunning, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Equal("取り込みが停止したため中止しました", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのreapplyは設定を読めなければ1で理由を返す()
+    {
+        var control = new FakeControl
+        {
+            ReapplyApply = ReapplyResult.Failed("設定の読み込みに失敗しました: programs.json の JSON が壊れています"),
+        };
+        await using var server = StartServer(control, degradedReason: null);
+
+        var (exitCode, output) = await RunCli(["reapply", "--apply", "0123456789abcdef", "--json"], Client(server));
+
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Contains("programs.json の JSON が壊れています", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task CLIのreapplyは再適用を知らない古いトレイなら1で_更新を促す()
+    {
+        var oldTray = new FixedClient(new ControlCallResult(ControlCallOutcome.Answered, new ControlResponse
+        {
+            ProtocolVersion = ControlProtocol.Version,
+            TrayVersion = "0.9.0",
+            Kind = ControlResponseKind.BadRequest,
+            Error = "知らないコマンドです: reapply",
+        }, null, "0.9.0"));
+
+        var (exitCode, output) = await RunCli(["reapply", "--json"], oldTray);
+
+        Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Contains("トレイが古ければ更新してください", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void 古いトレイは予定IDのフィールドを読み飛ばし_コマンドを読める()
+    {
+        // 古いトレイの要求の型(PlanId を持たない)で、新しい CLI の要求を読めることを確かめる(読めれば、知らないコマンドとして返す)。
+        var line = JsonSerializer.Serialize(
+            new ControlRequest(ControlProtocol.Version, ControlProtocol.ReapplyCommand, "0123456789abcdef"), ControlProtocol.JsonOptions);
+
+        var old = JsonSerializer.Deserialize<OldControlRequest>(line, ControlProtocol.JsonOptions);
+
+        Assert.Equal(ControlProtocol.ReapplyCommand, old!.Command);
+        Assert.Equal(ControlProtocol.Version, old.ProtocolVersion);
+    }
+
+    private sealed record OldControlRequest(int ProtocolVersion, string Command);
+
     // ---- 組み立て ----
 
     private static string UniqueName() => "radirec-test-" + Guid.NewGuid().ToString("N");
@@ -512,6 +751,9 @@ public sealed class ControlChannelTests
     private sealed class FixedClient(ControlCallResult result) : IControlClient
     {
         public Task<ControlCallResult> SendAsync(string command, CancellationToken cancellationToken) => Task.FromResult(result);
+
+        public Task<ControlCallResult> SendAsync(ControlRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(result);
     }
 
     private sealed class FakeControl : IServiceControl
@@ -569,6 +811,23 @@ public sealed class ControlChannelTests
         public Task<ReapplyResult> PlanReapplyAsync(ProgramMasterConfig programs) => throw new NotSupportedException();
         public Task<ReapplyResult> ReloadAndApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
         public Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan) => throw new NotSupportedException();
+
+        public ReapplyResult ReapplyPlan { get; init; } = ReapplyResult.Failed("確認は用意していません");
+        public ReapplyResult ReapplyApply { get; init; } = ReapplyResult.Failed("実行は用意していません");
+        public int ReapplyPlanCalls { get; private set; }
+        public string? AppliedPlanId { get; private set; }
+
+        public Task<ReapplyResult> PlanReapplyForCliAsync()
+        {
+            ReapplyPlanCalls++;
+            return Task.FromResult(ReapplyPlan);
+        }
+
+        public Task<ReapplyResult> ApplyReapplyPlanAsync(string planId)
+        {
+            AppliedPlanId = planId;
+            return Task.FromResult(ReapplyApply);
+        }
     }
 }
 
