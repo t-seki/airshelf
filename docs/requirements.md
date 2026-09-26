@@ -583,7 +583,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。**普段の運用と AI エージェントの窓口**
     ([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md)。`ingest`/`reapply`/`refresh`/`history`/`attention`/`status`/`reload`)。
     TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
-    `Radirec.Cli.Core` にある(#178)。`status` / `reload`(#179)と `ingest`(走査の実行。#180)はトレイの制御チャネル(named pipe)へ頼む。
+    `Radirec.Cli.Core` にある(#178)。`status` / `reload`(#179)と `ingest`(走査の実行。#180)と `reapply`(再適用の確認と実行。#181)は
+    トレイの制御チャネル(named pipe)へ頼む。
     ※ かつては常駐サービス(`service` verb)と制御チャネル窓口(`status`/`rescan`/`reload`)も
     1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
     → `status` / `reload` は #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、トレイへ頼む形で戻った(`service` と `rescan` は戻していない)。

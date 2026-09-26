@@ -42,6 +42,7 @@ public sealed class ReapplyJobsTests
         Assert.Equal(0, host.ConfigLoads);
         Assert.Same(host.InitialConfig, host.Config);
         Assert.Equal(0, host.Executions);
+        Assert.Equal([true], host.LoggedReports); // 明細はトレイの確認と同じく gui.log にも書く
     }
 
     [Fact]
@@ -99,6 +100,7 @@ public sealed class ReapplyJobsTests
         Assert.Equal(1, host.ConfigLoads);
         Assert.NotSame(host.InitialConfig, host.Config); // 読み直した設定を反映した
         Assert.Same(host.Config, host.LastRunConfig);    // その設定で実行した
+        Assert.Equal([true, false], host.LoggedReports); // 確認と実行の明細を gui.log に書く
     }
 
     [Fact]
@@ -131,6 +133,7 @@ public sealed class ReapplyJobsTests
         Assert.Equal(2, applied.Report.Items.Count);
         Assert.NotEqual(planId, applied.PlanId);
         Assert.Equal(ReapplyPlanId.Of(applied.Report), applied.PlanId);
+        Assert.Equal([true, true], host.LoggedReports); // 確認と、変わった後の新しい予定の両方を gui.log に書く
 
         // 新しい予定 ID で頼み直せば実行する。
         var retried = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: applied.PlanId);
@@ -303,9 +306,10 @@ public sealed class ReapplyJobsTests
             return Task.FromResult<(ReapplyReport?, string?)>((report, null));
         }
 
-        public void LogReport(ReapplyReport report)
-        {
-        }
+        /// <summary>gui.log に書いた明細(dry-run なら true、実行なら false)。</summary>
+        public List<bool> LoggedReports { get; } = [];
+
+        public void LogReport(ReapplyReport report) => LoggedReports.Add(report.DryRun);
 
         public void LogWarning(string message)
         {

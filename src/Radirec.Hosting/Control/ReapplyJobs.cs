@@ -226,7 +226,11 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
         }
 
         var (plan, error) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
-        return plan is null ? ReapplyResult.Failed(error!) : ReapplyResult.Planned(plan);
+        if (plan is null)
+            return ReapplyResult.Failed(error!);
+
+        host.LogReport(plan); // 明細はトレイの確認と同じく gui.log にも書く
+        return ReapplyResult.Planned(plan);
     }
 
     // CLI の実行(#181・ADR-0020):設定リロード → 読み直した設定で dry-run → 予定 ID が一致したときだけ実行する。1 つのジョブの中で
@@ -243,6 +247,7 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
         if (ReapplyPlanId.Of(replanned) != ReapplyPlanId.Normalize(planId))
         {
             host.LogWarning("統合設定の再適用(CLI): 予定 ID が今の予定と違うため実行しませんでした");
+            host.LogReport(replanned);
             return ReapplyResult.PlanChanged(
                 "確かめた予定から変わったため実行しませんでした(設定・取り込みの変更で予定が変わりました)。" +
                 "新しい予定を確かめて、その予定 ID で頼み直してください", replanned);

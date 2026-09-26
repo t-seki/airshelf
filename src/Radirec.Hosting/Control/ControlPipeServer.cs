@@ -5,8 +5,9 @@ namespace Radirec.Hosting.Control;
 
 /// <summary>
 /// 制御チャネルの受け口(ADR-0020 / #179)。トレイのプロセスが起動し、CLI(<see cref="ControlPipeClient"/>)からの
-/// 状態取得・設定リロード・走査の実行(#180)を <see cref="IServiceControl"/> へつなぐ。取り込みが止まっている(縮退。<paramref name="control"/> が null)
-/// ときも起動し、状態取得には「止まっている」と理由を、設定リロード・走査の実行には縮退を返す(トレイの再起動はしない)。
+/// 状態取得・設定リロード・走査の実行(#180)・再適用の確認と実行(#181)を <see cref="IServiceControl"/> へつなぐ。取り込みが止まっている
+/// (縮退。<paramref name="control"/> が null)ときも起動し、状態取得には「止まっている」と理由を、設定リロード・走査の実行・再適用には
+/// 縮退を返す(トレイの再起動はしない)。
 /// <para>
 /// 接続ごとに要求 1 つ・応答 1 つ(どちらも JSON 1 行)。受けた接続はすぐ別のタスクへ渡し、次の接続を待つ(遅い要求で
 /// 後の接続を止めない。#43 の教訓)。同じユーザーだけに <see cref="PipeOptions.CurrentUserOnly"/> で絞る。
