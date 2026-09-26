@@ -197,6 +197,18 @@ public sealed class AttentionCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task 台帳のあるフォルダに届かなければ5で_空とは答えない()
+    {
+        // NAS に届かない UNC と同じく、File.Exists が例外を出さずに false を返す場所(#216)。
+        var unreachable = Path.Combine(_dir, "nas-down", "ledger.db");
+        var (exitCode, output) = await Run(["attention", "--json"], new StubConfigSource(Config(unreachable)));
+        Assert.Equal(ExitCodes.ExternalFailure, exitCode);
+        using var json = JsonDocument.Parse(output);
+        Assert.Equal("attention", json.RootElement.GetProperty("command").GetString());
+        Assert.Contains(Path.Combine(_dir, "nas-down"), json.RootElement.GetProperty("error").GetString());
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("result").ValueKind);
+    }
+    [Fact]
     public async Task programsjsonを読めなければ1()
     {
         File.WriteAllText(ProgramsPath, "{ \"Programs\": [ ");
@@ -226,9 +238,9 @@ public sealed class AttentionCommandTests : IDisposable
 
     // ---- 部品 ----
 
-    private RadirecConfig Config() => new()
+    private RadirecConfig Config(string? ledgerPath = null) => new()
     {
-        LedgerPath = LedgerPath,
+        LedgerPath = ledgerPath ?? LedgerPath,
         StationsFile = StationsPath,
         ProgramsFile = ProgramsPath,
         KnownRecordingKinds = ["TimeFree"],
