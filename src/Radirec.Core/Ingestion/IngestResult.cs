@@ -92,7 +92,7 @@ public sealed record IngestReport
     /// 取込要約シグナルを publisher に渡し、提示(新規取込のトースト)まで届いたか。取込0件・dry-run では要約を渡さない
     /// ので false。要約は取込があれば必ず作られる(提示とは独立した事実)が、publisher が提示への引き渡しを止めたとき
     /// (走査の実行・設定でオフ。<see cref="NotificationSuppressedReason"/>)も false になる(#215)。
-    /// publisher を注入しない経路(何もしない publisher)は理由を返さないので、取込があれば true になる。
+    /// 何もしない publisher は理由を返さない。
     /// </summary>
     public bool NotificationPublished { get; init; }
 
@@ -106,9 +106,8 @@ public sealed record IngestReport
     public string? NotificationSuppressedReason { get; init; }
 
     /// <summary>
-    /// 取込失敗シグナルを発行できたか(新規失敗0件・dry-run では false。ADR-0011)。publisher を注入しない経路は
-    /// 何もしない publisher に渡すので、新規失敗があれば true になる。新規取込のトーストの設定にも、走査の実行
-    /// (#180)にも左右されない(#152)。
+    /// 取込失敗シグナルを発行できたか(新規失敗0件・dry-run では false。ADR-0011)。新規取込のトーストの設定にも、
+    /// 走査の実行(#180)にも左右されない(#152)。
     /// </summary>
     public bool FailureNotificationPublished { get; init; }
 

@@ -18,8 +18,8 @@ public static class CompositionRoot
     /// 「無い」とは扱わず <see cref="LedgerUnreachableException"/> を投げる(#216)。
     /// </param>
     /// <param name="notify">
-    /// 取込通知を発行するか。**常駐経路のみ true**。手動 <c>ingest</c> は対話コマンドで、
-    /// 結果は標準出力に出るためトーストを重ねる意味が無い(ADR-0012)。
+    /// 取込通知を発行するか。**常駐経路のみ true**。CLI がここを直接組むのは <c>ingest --dry-run</c> だけで
+    /// (非 dry-run の <c>radirec ingest</c> は常駐に頼む。#203)、dry-run はそもそも発行しない(ADR-0012)。
     /// </param>
     /// <param name="summaryPublisher">
     /// 取込要約**シグナル**の publisher を注入する(現行の実装はトレイ常駐の in-process トースト。ADR-0012)。
@@ -50,7 +50,7 @@ public static class CompositionRoot
             (refresher, refresherDisposable) = BuildRefresher(config);
 
         // 発行するか・どの publisher を使うかを純粋関数で決める(テスト可能)。取込失敗の de-dup ストアも
-        // 発行経路でだけ実体を使う(非発行走査が失敗を記録して初回通知を潰さないため。ADR-0011)。
+        // 発行経路でだけ実体を使う(発行しない走査(dry-run など)が失敗を記録して初回通知を潰さないため。ADR-0011)。
         // 成功要約と失敗は同じゲートで揃える。新規取込のトーストを止める設定は、ここではなく提示側
         // (トレイの publisher)で見る。失敗のトーストと失敗のストアはその設定に関係なく動かす(#152・ADR-0019)。
         var (summaryPub, failurePub, useFailureStore) = SelectPublishers(
