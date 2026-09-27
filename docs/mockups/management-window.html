@@ -364,7 +364,7 @@
       <span class="sub" data-if="hist:ok run:watching,polling,noscan,crashed,startloop,startfail" data-w="W-140">新しい方の 5 件</span></h3>
     <div data-if="run:noconfig" class="msg warn" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
     <div data-if="hist:error run:watching,polling,noscan,crashed,startloop,startfail" class="msg err" data-w="W-149">読み込みに失敗しました</div>
-    <div data-if="hist:loading run:watching,polling,noscan,crashed,startloop,startfail" class="sub" data-w="W-154">読み込み中…</div>
+    <div data-if="hist:loading run:watching,polling,noscan,crashed,startloop,startfail" class="sub an" data-w="W-154">読み込み中…</div>
     <div data-if="hist:ok run:watching,polling,noscan,crashed,startloop,startfail">
       <table class="grid">
         <colgroup><col style="width:240px"><col style="width:120px"><col style="width:150px"><col style="width:140px"><col></colgroup>
@@ -395,7 +395,7 @@
     <div data-if="hist:loading run:watching,polling,noscan,crashed,startloop,startfail">
       <div class="row" style="margin-bottom: 6px;">
         <button class="btn small" data-w="W-143" disabled>更新</button>
-        <span class="sub" data-w="W-154">読み込み中…</span>
+        <span class="sub an" data-w="W-154">読み込み中…</span>
       </div>
       <div class="mocknote">台帳は UI スレッドの外で読む(#222)。最初の読み込みの間だけこれを出し、「更新」で読み直す間は前の行と件数を出したまま「更新」を押せなくする。</div>
     </div>
@@ -518,7 +518,7 @@
       </table>
       <div class="mocknote">ADR-0021・#235。ホームの要対応の「この番組の回」「取り込まない」「別の番組…」(W-159)で積んだ判断は、ここに保存していない行(太字)として出る。
         「アルバム名」は「別の番組」の行だけ。保存すると programs.json の <code>FilenamePrograms</code> に書き、設定リロードの後の走査で、保留していた回が判断どおりに取り込まれる。
-        取り込み済みの回は「保存して適用」の再適用で揃う(「別の番組」は判断のアルバムへ移る。「取り込まない」は #234 まで対象外として残る)。</div>
+        取り込み済みの回は「保存して適用」の再適用で揃う(「別の番組」は判断のアルバムへ移り、「取り込まない」は出力先から消える。取込元は残る)。</div>
 
       <div class="row" style="justify-content: flex-end; margin-top: 14px;">
         <button class="btn" disabled data-if="prog:list,empty" data-w="W-207">確認</button>
