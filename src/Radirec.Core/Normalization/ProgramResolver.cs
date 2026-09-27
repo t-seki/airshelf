@@ -42,7 +42,8 @@ public sealed class ProgramResolver : IProgramResolver
     private readonly Dictionary<(string Station, string Folder, string FilenameProgram), FilenameProgramJudgement> _decisions = new();
 
     /// <exception cref="ProgramsConfigException">
-    /// 「別の番組として取り込む」の判断にアルバム名が無い(設定の誤り。取り込みの起動・設定リロードを拒む)。
+    /// 「別の番組として取り込む」の判断にアルバム名が無い(設定の誤り。壊れた programs.json と同じく、取り込みの起動は縮退し、
+    /// 設定リロードでは新しい設定に切り替わらない〈前の設定のまま動く〉)。
     /// </exception>
     public ProgramResolver(ProgramMasterConfig config)
     {
