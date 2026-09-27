@@ -263,6 +263,40 @@ public sealed class ReapplyJobsTests
         Assert.Contains("stations.json を読めません", planned.Error);
     }
 
+    // ---- 台帳のある場所に届かない(#223) ----
+    private static ReapplyResult LedgerUnreachable() =>
+        ReapplyResult.Unreachable(@"再適用の準備に失敗しました: 台帳のあるフォルダに届きません: \\192.0.2.1\x");
+    [Theory]
+    [InlineData(ReapplyJobKind.PlanForCli)]
+    [InlineData(ReapplyJobKind.Plan)]
+    public async Task 確認で台帳に届かなければ_届かない印と理由をそのまま返す(ReapplyJobKind kind)
+    {
+        var host = new FakeHost { Items = [Item(@"Z:\a.m4a")], ServiceFailure = LedgerUnreachable() };
+        var planned = await Run(new ReapplyJobs(host), kind);
+        Assert.Null(planned.Report);
+        Assert.True(planned.IsUnreachable);
+        // 管理画面の確認の表示は変えない(文言は常駐が組み立てたまま)。
+        Assert.Equal(LedgerUnreachable().Error, planned.Error);
+    }
+    [Fact]
+    public async Task CLIの実行で台帳に届かなければ_届かない印を返し_実行しない()
+    {
+        var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
+        var planId = (await Run(new ReapplyJobs(host), ReapplyJobKind.PlanForCli)).PlanId;
+        var unreachable = new FakeHost { Items = [Item(@"Z:\a.m4a")], ServiceFailure = LedgerUnreachable() };
+        var applied = await Run(new ReapplyJobs(unreachable), ReapplyJobKind.ApplyPlanId, planId: planId);
+        Assert.True(applied.IsUnreachable);
+        Assert.False(applied.IsStale);
+        Assert.Equal(0, unreachable.Executions);
+    }
+    [Fact]
+    public async Task 組み立てのほかの失敗は_届かない印を付けない()
+    {
+        var host = new FakeHost { ServiceFailure = ReapplyResult.Failed("再適用の準備に失敗しました: 台帳を開けません") };
+        var planned = await Run(new ReapplyJobs(host), ReapplyJobKind.PlanForCli);
+        Assert.False(planned.IsUnreachable);
+        Assert.Equal("再適用の準備に失敗しました: 台帳を開けません", planned.Error);
+    }
     private sealed class FakeHost : IReapplyJobHost
     {
         public FakeHost() => Config = InitialConfig;
@@ -275,6 +309,8 @@ public sealed class ReapplyJobsTests
         public string? ConfigError { get; set; }
         public string? ApplyReloadError { get; set; }
         public string? SettingsError { get; init; }
+        /// <summary>再適用の組み立て(台帳オープン等)の失敗。あれば常駐はこれを返す。</summary>
+        public ReapplyResult? ServiceFailure { get; init; }
         public int ConfigLoads { get; private set; }
         public int Executions { get; private set; }
         public RadirecConfig? LastRunConfig { get; private set; }
@@ -309,9 +345,11 @@ public sealed class ReapplyJobsTests
 
         public StationMasterConfig LoadStations(RadirecConfig config) => new();
 
-        public Task<(ReapplyReport? Report, string? Error)> RunServiceAsync(
+        public Task<(ReapplyReport? Report, ReapplyResult? Failure)> RunServiceAsync(
             RadirecConfig config, ReapplySettings settings, bool dryRun, CancellationToken cancellationToken)
         {
+            if (ServiceFailure is { } failure)
+                return Task.FromResult<(ReapplyReport?, ReapplyResult?)>((null, failure));
             if (!dryRun)
             {
                 Executions++;
@@ -319,7 +357,7 @@ public sealed class ReapplyJobsTests
             }
 
             var report = new ReapplyReport { Items = [.. Items], DryRun = dryRun, UnintegratedSiblings = [] };
-            return Task.FromResult<(ReapplyReport?, string?)>((report, null));
+            return Task.FromResult<(ReapplyReport?, ReapplyResult?)>((report, null));
         }
 
         /// <summary>gui.log に書いた明細(dry-run なら true、実行なら false)。</summary>

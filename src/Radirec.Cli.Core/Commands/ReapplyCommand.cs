@@ -16,6 +16,7 @@ namespace Radirec.Cli.Core.Commands;
 /// <item><c>--apply &lt;予定 ID&gt;</c>:常駐が設定リロード → dry-run し直し → 予定 ID が一致したときだけ実行する。一致しなければ実行せず、
 /// 新しい予定と予定 ID を出して 3 で終わる。</item>
 /// </list>
+/// 再適用の準備で台帳のある場所(NAS など)に届かなければ、確認・実行とも 5 で終わる(#223)。
 /// </summary>
 public sealed class ReapplyCommand(
     IAnsiConsole console, ICliConfigSource configSource, IControlClient controlClient, CliVersion cliVersion)
@@ -71,6 +72,10 @@ public sealed class ReapplyCommand(
             case { IsStopped: true }:
                 return CommandSupport.Fail(console, Name, settings.Json, ExitCodes.ResidentNotRunning,
                     result.Error ?? "取り込みが止まっているため再適用できません");
+            // 再適用の準備で、台帳のある場所(NAS など)に届かなかった(#223)。ほかのコマンドと同じく 5。
+            case { IsUnreachable: true }:
+                return CommandSupport.Fail(console, Name, settings.Json, ExitCodes.ExternalFailure,
+                    result.Error ?? "台帳のある場所に届かないため再適用できません");
             default:
                 // 設定を読めない・反映できない・再適用の準備(台帳を開く等)に失敗した。
                 return CommandSupport.Fail(console, Name, settings.Json, ExitCodes.UsageOrConfig,

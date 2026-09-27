@@ -69,8 +69,11 @@ public interface IReapplyJobHost
     /// <summary>ディスクの放送局の設定だけを読む(番組の設定は下書きを使うとき)。読めなければ例外。</summary>
     StationMasterConfig LoadStations(RadirecConfig config);
 
-    /// <summary>読み込み済みの設定で再適用を組み立てて走らせる。組み立て(台帳オープン等)の失敗は理由で返す。</summary>
-    Task<(ReapplyReport? Report, string? Error)> RunServiceAsync(
+    /// <summary>
+    /// 読み込み済みの設定で再適用を組み立てて走らせる。組み立て(台帳オープン等)の失敗は <c>Failure</c> で返す
+    /// (台帳のある場所に届かなければ <see cref="ReapplyResult.Unreachable"/>、ほかは <see cref="ReapplyResult.Failed"/>。#223)。
+    /// </summary>
+    Task<(ReapplyReport? Report, ReapplyResult? Failure)> RunServiceAsync(
         RadirecConfig config, ReapplySettings settings, bool dryRun, CancellationToken cancellationToken);
 
     /// <summary>再適用の結果の明細を gui.log に書く。</summary>
@@ -140,9 +143,9 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
             return ReapplyResult.Failed($"設定の読み込みに失敗しました: {ex.Message}");
         }
 
-        var (plan, error) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
+        var (plan, failure) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
         if (plan is null)
-            return ReapplyResult.Failed(error!);
+            return failure!;
 
         host.LogReport(plan);
         _lastPlan = (plan, config, settings);
@@ -196,9 +199,9 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
     private async Task<ReapplyResult> ReplanAndRunAsync(
         ReapplyReport plan, RadirecConfig config, ReapplySettings settings, CancellationToken cancellationToken)
     {
-        var (replanned, replanError) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
+        var (replanned, replanFailure) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
         if (replanned is null)
-            return ReapplyResult.Failed(replanError!);
+            return replanFailure!;
         if (!replanned.HasSamePlanAs(plan))
         {
             host.LogWarning("統合設定の再適用: 確認のあとに状態が変わったため中止しました(実行直前の予定が確認と違います)");
@@ -228,9 +231,9 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
             return ReapplyResult.Failed($"設定の読み込みに失敗しました: {ex.Message}");
         }
 
-        var (plan, error) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
+        var (plan, failure) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
         if (plan is null)
-            return ReapplyResult.Failed(error!);
+            return failure!;
 
         host.LogReport(plan); // 明細はトレイの確認と同じく gui.log にも書く
         return ReapplyResult.Planned(plan);
@@ -244,9 +247,9 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
         if (!TryReloadThenLoadSettings(out var config, out var settings, out var failure))
             return failure;
 
-        var (replanned, replanError) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
+        var (replanned, replanFailure) = await host.RunServiceAsync(config, settings, dryRun: true, cancellationToken);
         if (replanned is null)
-            return ReapplyResult.Failed(replanError!);
+            return replanFailure!;
         if (ReapplyPlanId.Of(replanned) != ReapplyPlanId.Normalize(planId))
         {
             host.LogWarning("統合設定の再適用(CLI): 予定 ID が今の予定と違うため実行しませんでした");
@@ -301,9 +304,9 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
     // 予定を確かめ終えた後の実行。
     private async Task<ReapplyResult> RunAsync(RadirecConfig config, ReapplySettings settings, CancellationToken cancellationToken)
     {
-        var (result, error) = await host.RunServiceAsync(config, settings, dryRun: false, cancellationToken);
+        var (result, failure) = await host.RunServiceAsync(config, settings, dryRun: false, cancellationToken);
         if (result is null)
-            return ReapplyResult.Failed(error!);
+            return failure!;
 
         host.LogReport(result);
         return ReapplyResult.Ok(result);

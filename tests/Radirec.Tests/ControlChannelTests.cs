@@ -708,6 +708,35 @@ public sealed class ControlChannelTests
         Assert.Contains("programs.json の JSON が壊れています", doc.RootElement.GetProperty("error").GetString());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CLIのreapplyは台帳のある場所に届かなければ5で理由を返す(bool apply)
+    {
+        var unreachable = ReapplyResult.Unreachable(@"再適用の準備に失敗しました: 台帳のあるフォルダに届きません: \\192.0.2.1\x");
+        var control = apply ? new FakeControl { ReapplyApply = unreachable } : new FakeControl { ReapplyPlan = unreachable };
+        await using var server = StartServer(control, degradedReason: null);
+        string[] args = apply ? ["reapply", "--apply", "0123456789abcdef", "--json"] : ["reapply", "--json"];
+
+        var (exitCode, output) = await RunCli(args, Client(server));
+
+        Assert.Equal(ExitCodes.ExternalFailure, exitCode);
+        using var doc = JsonDocument.Parse(output);
+        Assert.Contains("台帳のあるフォルダに届きません", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void 届かない印の無い古いトレイの応答は_届かないとは読まない()
+    {
+        // #223 より前のトレイは isUnreachable を送らない。項目が無ければ false(今までどおり 1)。
+        var old = JsonSerializer.Deserialize<ReapplyResult>(
+            """{"error":"再適用の準備に失敗しました: 台帳を開けません","isStale":false,"isStopped":false}""",
+            ControlProtocol.JsonOptions)!;
+
+        Assert.False(old.IsUnreachable);
+        Assert.Equal("再適用の準備に失敗しました: 台帳を開けません", old.Error);
+    }
+
     [Fact]
     public async Task CLIのreapplyは再適用を知らない古いトレイなら1で_更新を促す()
     {

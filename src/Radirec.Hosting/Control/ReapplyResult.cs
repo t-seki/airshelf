@@ -28,6 +28,12 @@ public sealed record ReapplyResult
     public bool IsStopped { get; init; }
 
     /// <summary>
+    /// 再適用の準備で、外(台帳のある NAS など)に届かなかった(<see cref="LedgerUnreachableException"/>)。CLI はこれを終了コード 5 に
+    /// する(ADR-0020。ほかのコマンドの「NAS に届かない → 5」と同じ。#223)。古いトレイの応答には無く、false として読まれる(1 のまま)。
+    /// </summary>
+    public bool IsUnreachable { get; init; }
+
+    /// <summary>
     /// <see cref="Report"/> の予定 ID(<see cref="ReapplyPlanId"/>)。CLI の <c>reapply</c>(#181)の確認と、予定 ID が合わなかった
     /// ときの新しい予定(<see cref="IsStale"/> で <see cref="Report"/> あり)にだけ入る。管理画面の確認・実行では null。
     /// </summary>
@@ -37,6 +43,7 @@ public sealed record ReapplyResult
     public static ReapplyResult Failed(string error) => new() { Error = error };
     public static ReapplyResult Stale(string error) => new() { Error = error, IsStale = true };
     public static ReapplyResult Stopped(string error) => new() { Error = error, IsStopped = true };
+    public static ReapplyResult Unreachable(string error) => new() { Error = error, IsUnreachable = true };
 
     /// <summary>CLI の確認の結果(予定と、その予定 ID)。</summary>
     public static ReapplyResult Planned(ReapplyReport plan) => new() { Report = plan, PlanId = ReapplyPlanId.Of(plan) };
