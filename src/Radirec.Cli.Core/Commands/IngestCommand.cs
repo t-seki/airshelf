@@ -148,7 +148,8 @@ public sealed class IngestCommand(
             console.MarkupLine(
                 $"[yellow]差し替え放送の疑いがある回を{(report.DryRun ? "保留します" : "保留しました")}。[/]" +
                 "[grey]programs.json の FilenamePrograms に判断を書いて radirec reload で反映すると、次の走査で判断どおりに扱います" +
-                "(radirec attention にも出ます)[/]");
+                "(Match.Mode を Prefix・Contains にすると、スポンサー名やゲスト名の違う組を 1 つの判断で扱えます。" +
+                "radirec attention にも出ます)[/]");
 
         // 不要(取込0件・dry-run)のときは何も出さない。
         switch (report.LibraryRefresh)

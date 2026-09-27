@@ -48,7 +48,7 @@ public sealed record IngestCountsJson(
 /// <param name="UsedFallback">放送局・番組を解決できず、フォルダ名などから仮に決めたか。</param>
 /// <param name="FilenameProgram">
 /// 保留(<c>held</c>)・取り込まない判断(<c>skippedByDecision</c>)の回のファイル名の番組名(ADR-0021)。判断は programs.json の
-/// <c>FilenamePrograms</c> にこの名前で書く。ほかは null。
+/// <c>FilenamePrograms</c> にこの名前で書く(前方一致・部分一致〈<c>Match.Mode</c>。#240〉なら、この名前の先頭・一部)。ほかは null。
 /// </param>
 public sealed record IngestItemJson(
     IngestOutcome Outcome, string Source, string? Output, string? Message, bool UsedFallback, string? FilenameProgram);

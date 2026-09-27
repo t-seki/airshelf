@@ -144,7 +144,10 @@ public sealed class ProgramsPageViewModel : ObservableObject
     public const string OtherAlbumRequired = "「別の番組」にはアルバム名を入れてください";
 
     /// <summary>W-234。同じ組(照合キーで同じ)の判断が、ほかの行にある。</summary>
-    public const string DuplicateDecision = "同じ組(放送局・フォルダ・ファイル名の番組名)の判断がすでにあります";
+    public const string DuplicateDecision = "同じ組(放送局・フォルダ・照合・ファイル名の番組名)の判断がすでにあります";
+
+    /// <summary>W-236。「照合」欄の説明(#240)。</summary>
+    public const string MatchModeHint = "前方一致・部分一致なら、ファイル名の番組名の欄には照合する一部分(例: 番組名だけ)を入れます。スポンサー名やゲスト名の違う回を 1 つの判断で扱えます";
 
     /// <summary>W-163。番組ページが編集フォーム・確認・適用の途中なので、要対応から判断を積めない。</summary>
     public const string StageBlocked = "番組ページで編集か確認の途中のため、下書きに積めません";
@@ -158,6 +161,14 @@ public sealed class ProgramsPageViewModel : ObservableObject
         new(FilenameProgramTreatment.SameProgram),
         new(FilenameProgramTreatment.Skip),
         new(FilenameProgramTreatment.OtherProgram),
+    ];
+
+    /// <summary>判断の編集フォームの「照合」の選択肢(W-235 の 3 択。#240)。</summary>
+    public static IReadOnlyList<MatchModeOption> MatchModeOptions { get; } =
+    [
+        new(FilenameProgramMatchMode.Exact),
+        new(FilenameProgramMatchMode.Prefix),
+        new(FilenameProgramMatchMode.Contains),
     ];
 
     /// <summary>確認がこれより長くかかるときだけ W-240 を出す(すぐ終わるなら出さない。トレイの再適用と同じ 1.5 秒)。</summary>
@@ -202,6 +213,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     private string _formFolders = "";
     private string _formFolder = "";
     private string _formFilenameProgram = "";
+    private FilenameProgramMatchMode _formMatchMode = FilenameProgramMatchMode.Exact;
     private FilenameProgramTreatment _formTreat = FilenameProgramTreatment.SameProgram;
     private string _formAlbum = "";
     private string _formNote = "";
@@ -457,6 +469,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     /// <summary>判断のフォームの「ファイル名の番組名」(W-232)。</summary>
     public string FormFilenameProgram { get => _formFilenameProgram; set => SetProperty(ref _formFilenameProgram, value); }
+
+    /// <summary>判断のフォームの「照合」(W-235 の 3 択。#240)。</summary>
+    public FilenameProgramMatchMode FormMatchMode { get => _formMatchMode; set => SetProperty(ref _formMatchMode, value); }
 
     /// <summary>判断のフォームの「扱い」(W-231 の 3 択)。</summary>
     public FilenameProgramTreatment FormTreat
@@ -1010,6 +1025,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         FormStation = "";
         FormFolder = "";
         FormFilenameProgram = "";
+        FormMatchMode = FilenameProgramMatchMode.Exact;
         FormTreat = FilenameProgramTreatment.SameProgram;
         FormAlbum = "";
         FormNote = "";
@@ -1027,6 +1043,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         FormStation = row.Station;
         FormFolder = row.Folder;
         FormFilenameProgram = row.FilenameProgram;
+        FormMatchMode = row.Current.Match.Mode;
         FormTreat = row.Current.Treat;
         // 「別の番組」でない判断を編集して「別の番組」に変えるときは、ファイル名の番組名を初期値にする(要対応の W-159 と同じ)。
         FormAlbum = string.IsNullOrWhiteSpace(row.Current.Album) ? row.FilenameProgram : row.Current.Album;
@@ -1227,18 +1244,21 @@ public sealed class ProgramsPageViewModel : ObservableObject
         var filenameProgram = FormFilenameProgram.Trim();
         var album = FormAlbum.Trim();
         var treat = FormTreat;
+        var mode = FormMatchMode;
 
         var errors = new List<string>();
         if (station.Length == 0)
             errors.Add(StationRequired);
         if (folder.Length == 0)
             errors.Add(FolderRequired);
+        // 空の前方一致・部分一致は、フォルダのすべての回に当たるので取り込みの起動と設定リロードが受け付けない(#240)。
+        // 照合キーは空白を落とすだけなので、前後の空白を落として空でなければ照合キーも空にならない。
         if (filenameProgram.Length == 0)
             errors.Add(FilenameProgramRequired);
         // アルバム名の無い「別の番組」は、取り込みの起動と設定リロードが受け付けない(ProgramsConfigException)。
         if (treat == FilenameProgramTreatment.OtherProgram && album.Length == 0)
             errors.Add(OtherAlbumRequired);
-        if (errors.Count == 0 && FindDecision(ProgramsDraft.DecisionKey(station, folder, filenameProgram)) is { } other
+        if (errors.Count == 0 && FindDecision(ProgramsDraft.DecisionKey(station, folder, mode, filenameProgram)) is { } other
             && !ReferenceEquals(other, _editingDecision))
             errors.Add(DuplicateDecision);
         FormErrors = errors;
@@ -1247,7 +1267,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
         var entry = new FilenameProgramDecision
         {
-            Match = new FilenameProgramMatch { Station = station, Folder = folder, FilenameProgram = filenameProgram },
+            Match = new FilenameProgramMatch { Station = station, Folder = folder, FilenameProgram = filenameProgram, Mode = mode },
             Treat = treat,
             // 「別の番組」でないときはアルバム名を書かない(取り込みは使わない)。
             Album = treat == FilenameProgramTreatment.OtherProgram ? album : null,
@@ -1269,7 +1289,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         ListChanged();
     }
 
-    private FilenameProgramRow? FindDecision((string Station, string Folder, string FilenameProgram) key)
+    private FilenameProgramRow? FindDecision((string Station, string Folder, FilenameProgramMatchMode Mode, string FilenameProgram) key)
         => FilenamePrograms.FirstOrDefault(r => r.Key == key);
 
     // ---- 要対応の「この番組の回」「取り込まない」「別の番組…」(W-159。#235・ADR-0021)----
@@ -1278,6 +1298,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// 要対応の差し替え放送の疑いの 1 組に、判断を積む(W-159)。番組ページの一覧に保存していない行として足す(同じ組の行があれば、
     /// その行の判断を置き換える)。ファイルには書かず、ページも移らない(82 組をホームから続けて片付けられるように)。
     /// 「別の番組」のアルバム名は、同じ組の行にあればそれを、無ければファイル名の番組名を初期値にする(番組ページで直す)。
+    /// 積むのは常に完全一致の判断(要対応の組はファイル名の番組名そのもの。前方一致・部分一致には番組ページで直す。#240)。
     /// </summary>
     /// <returns>積めたら null。積めなかったら、その理由(W-163 / W-164)。</returns>
     public string? StageDecision(string station, string folder, string filenameProgram, FilenameProgramTreatment treat)
@@ -1287,7 +1308,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         if (!IsListMode)
             return StageBlocked; // W-163
 
-        var existing = FindDecision(ProgramsDraft.DecisionKey(station, folder, filenameProgram));
+        var existing = FindDecision(ProgramsDraft.DecisionKey(station, folder, FilenameProgramMatchMode.Exact, filenameProgram));
         var entry = new FilenameProgramDecision
         {
             // 同じ組の行があれば、その表記を残す(照合キーで同じなら、どちらで書いても当たる)。
@@ -1317,7 +1338,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// </summary>
     public string? StagedDecisionLabel(string station, string folder, string filenameProgram)
     {
-        if (FindDecision(ProgramsDraft.DecisionKey(station, folder, filenameProgram)) is not { IsChanged: true } row)
+        if (FindDecision(ProgramsDraft.DecisionKey(station, folder, FilenameProgramMatchMode.Exact, filenameProgram))
+            is not { IsChanged: true } row)
             return null;
         return row.Current.Treat == FilenameProgramTreatment.OtherProgram
             ? $"{row.Treat}「{row.Album}」"

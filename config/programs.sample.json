@@ -18,6 +18,10 @@
     {
       "Match": { "Station": "TBSラジオ", "Folder": "パンサー向井のふらっと(1)", "FilenameProgram": "パンサー向井の#ふらっと (1)" },
       "Treat": "SameProgram"
+    },
+    {
+      "Match": { "Station": "TBSラジオ", "Folder": "パンサー向井のふらっと(2)", "FilenameProgram": "パンサー向井の#ふらっと", "Mode": "Prefix" },
+      "Treat": "SameProgram"
     }
   ]
 }

@@ -38,7 +38,8 @@ public sealed record ProgramsFileSnapshot(string Path, byte[]? Original, Program
 /// </para>
 /// <para>
 /// 書き出しは字下げあり・非 ASCII(日本語)をエスケープしない・UTF-8(BOM なし)。<see cref="ProgramAlias.Note"/> が null の
-/// エントリ、空の <see cref="ProgramMasterConfig.KeepSeparate"/>・<see cref="ProgramMasterConfig.FilenamePrograms"/> は、キーごと書かない。これらを使わない限り、
+/// エントリ、空の <see cref="ProgramMasterConfig.KeepSeparate"/>・<see cref="ProgramMasterConfig.FilenamePrograms"/>、
+/// 完全一致の <see cref="FilenameProgramMatch.Mode"/> は、キーごと書かない。これらを使わない限り、
 /// 未知のプロパティを拒む古い版(<see cref="ConfigLoader"/>)でも読める。
 /// </para>
 /// </remarks>
@@ -53,7 +54,7 @@ public static class ProgramsFileWriter
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         // Note が null ならキーごと書かない。
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { OmitEmptyKeepSeparate } },
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { OmitDefaults } },
     };
 
     /// <summary><paramref name="path"/> を読む。ファイルが無ければ空の設定を返す(書くときに新しく作る)。</summary>
@@ -183,15 +184,25 @@ public static class ProgramsFileWriter
         => new($"読み込んだ後に {name} が変わったため、保存しませんでした(読み直してからやり直してください)");
 
     // 空の KeepSeparate・FilenamePrograms(ADR-0021)はキーごと書かない(使わない限り古い版でも読めるように)。
-    private static void OmitEmptyKeepSeparate(JsonTypeInfo typeInfo)
+    // 照合の種類が完全一致(#240)の判断も、Mode をキーごと書かない(同じく古い版でも読めるように)。
+    // 番組ページの設定の変更(W-241)も、書き出す形で見せるためにこれを使う。
+    public static void OmitDefaults(JsonTypeInfo typeInfo)
     {
-        if (typeInfo.Type != typeof(ProgramMasterConfig))
-            return;
-
-        foreach (var property in typeInfo.Properties)
+        if (typeInfo.Type == typeof(ProgramMasterConfig))
         {
-            if (property.Name is nameof(ProgramMasterConfig.KeepSeparate) or nameof(ProgramMasterConfig.FilenamePrograms))
-                property.ShouldSerialize = (_, value) => value is ICollection { Count: > 0 };
+            foreach (var property in typeInfo.Properties)
+            {
+                if (property.Name is nameof(ProgramMasterConfig.KeepSeparate) or nameof(ProgramMasterConfig.FilenamePrograms))
+                    property.ShouldSerialize = (_, value) => value is ICollection { Count: > 0 };
+            }
+        }
+        else if (typeInfo.Type == typeof(FilenameProgramMatch))
+        {
+            foreach (var property in typeInfo.Properties)
+            {
+                if (property.Name == nameof(FilenameProgramMatch.Mode))
+                    property.ShouldSerialize = (_, value) => value is not FilenameProgramMatchMode.Exact;
+            }
         }
     }
 }

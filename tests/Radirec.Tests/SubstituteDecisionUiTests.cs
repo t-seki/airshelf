@@ -381,6 +381,102 @@ public sealed class SubstituteDecisionUiTests : IDisposable
         Assert.Equal("プロ野球", vm.FormAlbum);
     }
 
+    // ---------- 照合の種類(W-235 / W-236。#240)----------
+
+    private const string WithModes = """
+        { "FilenamePrograms": [
+            { "Match": { "Station": "TOKYO FM", "Folder": "ベルク", "FilenameProgram": "土屋圭市のくるまの話" }, "Treat": "Skip" },
+            { "Match": { "Station": "TOKYO FM", "Folder": "ベルク", "FilenameProgram": "土屋圭市のくるまの話", "Mode": "Prefix" },
+              "Treat": "OtherProgram", "Album": "土屋圭市のくるまの話" },
+            { "Match": { "Station": "TBSラジオ", "Folder": "ねごと", "FilenameProgram": "川島明のねごと", "Mode": "Contains" },
+              "Treat": "SameProgram" } ] }
+        """;
+
+    [Fact]
+    public async Task Lists_the_match_mode_of_each_decision_W235()
+    {
+        var vm = await Page(WithModes);
+
+        // 完全一致と前方一致に同じ文字列を書いても、別の判断として並ぶ。
+        Assert.Equal(["完全一致", "前方一致", "部分一致"], vm.FilenamePrograms.Select(r => r.MatchMode));
+        Assert.All(vm.FilenamePrograms, r => Assert.False(r.IsChanged));
+    }
+
+    [Fact]
+    public async Task Decision_form_edits_the_match_mode_and_saves_it_by_name()
+    {
+        // 要対応から積んだ完全一致の行を開き、照合を前方一致に変えて文字列を縮める(#240 の直し方)。
+        var vm = await Page("""{ "Programs": [] }""");
+        vm.StageDecision(Lf, Chari, Shinbo, FilenameProgramTreatment.Skip);
+        vm.SelectedDecision = vm.FilenamePrograms[0];
+        vm.EditDecisionCommand.Execute(null);
+        Assert.Equal(FilenameProgramMatchMode.Exact, vm.FormMatchMode);
+
+        vm.FormMatchMode = FilenameProgramMatchMode.Prefix;
+        vm.FormFilenameProgram = "辛坊治郎";
+        vm.CommitFormCommand.Execute(null);
+
+        var row = Assert.Single(vm.FilenamePrograms);
+        Assert.Equal(FilenameProgramMatchMode.Prefix, row.Current.Match.Mode);
+        Assert.Equal("前方一致", row.MatchMode);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        Assert.Contains("\"Mode\": \"Prefix\"", vm.DiffAfter); // W-241 も書き出す形で見せる
+        await vm.SaveOnlyCommand.ExecuteAsync(null);
+
+        var saved = Assert.Single(ProgramsFileWriter.Read(ProgramsPath).Config.FilenamePrograms);
+        Assert.Equal(FilenameProgramMatchMode.Prefix, saved.Match.Mode);
+        Assert.Equal("辛坊治郎", saved.Match.FilenameProgram);
+    }
+
+    [Fact]
+    public async Task Decision_form_treats_the_same_string_with_another_mode_as_another_decision()
+    {
+        var vm = await Page(WithModes);
+        vm.AddDecisionCommand.Execute(null);
+        vm.FormStation = "TOKYO FM";
+        vm.FormFolder = "ベルク";
+        vm.FormFilenameProgram = "土屋圭市のくるまの話";
+        vm.FormTreat = FilenameProgramTreatment.SameProgram;
+
+        vm.FormMatchMode = FilenameProgramMatchMode.Prefix;
+        vm.CommitFormCommand.Execute(null);
+        Assert.Equal([ProgramsPageViewModel.DuplicateDecision], vm.FormErrors); // 同じ種類・同じ照合キー
+
+        vm.FormMatchMode = FilenameProgramMatchMode.Contains;
+        vm.CommitFormCommand.Execute(null);
+        Assert.True(vm.IsListMode);
+        Assert.Equal(4, vm.FilenamePrograms.Count);
+    }
+
+    [Fact]
+    public async Task Decision_form_rejects_an_empty_match_key_for_prefix_and_contains()
+    {
+        // 照合キーが空の前方一致・部分一致は、取り込みの起動と設定リロードが受け付けない。
+        var vm = await Page();
+        vm.AddDecisionCommand.Execute(null);
+        vm.FormStation = Lf;
+        vm.FormFolder = Chari;
+        vm.FormFilenameProgram = "　 ";
+        vm.FormMatchMode = FilenameProgramMatchMode.Contains;
+
+        vm.CommitFormCommand.Execute(null);
+
+        Assert.Equal([ProgramsPageViewModel.FilenameProgramRequired], vm.FormErrors);
+    }
+
+    [Fact]
+    public async Task Staging_stays_exact_even_when_a_prefix_decision_has_the_same_string()
+    {
+        // 要対応から積むのは常に完全一致。同じ文字列の前方一致の行は置き換えない。
+        var vm = await Page(WithModes);
+
+        vm.StageDecision("TOKYO FM", "ベルク", "土屋圭市のくるまの話", FilenameProgramTreatment.SameProgram);
+
+        Assert.Equal(FilenameProgramTreatment.SameProgram, vm.FilenamePrograms[0].Current.Treat);
+        Assert.Equal(FilenameProgramTreatment.OtherProgram, vm.FilenamePrograms[1].Current.Treat);
+        Assert.Equal(3, vm.FilenamePrograms.Count);
+    }
+
     // ---------- ホーム(W-159〜W-164)----------
 
     [Fact]
