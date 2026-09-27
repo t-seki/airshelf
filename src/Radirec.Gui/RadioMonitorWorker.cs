@@ -75,6 +75,10 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     // TryLoad は radirec.json しか見ないので、programs.json / stations.json の読み込み失敗はここで初めて判る。
     private string? _lastReloadError;
 
+    // 直近の反映の失敗が、台帳を開けなかった(LedgerUnreachableException)ためか。再適用の終了コードを分ける(#228)。
+    // _lastReloadError と一緒に書き換える。書き手・読み手とも直列ループ。
+    private bool _lastReloadUnreachable;
+
     // 再適用の確認・実行のジョブの中身(管理画面・トレイの「直前の確認」もここが持つ)。直列ループの上でだけ使う。
     private readonly ReapplyJobs _reapply;
     private FileSystemWatcher? _watcher;
@@ -413,10 +417,12 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             // 旧構成(グラフ + watcher + タイマー)は無傷。reload だけ失敗し、常駐は死なせない。
             _log.LogError(ex, "設定リロード: 新グラフの構築に失敗しました。旧構成を維持して継続します");
             _lastReloadError = ex.Message; // 再適用(#126)はこれを見て中止する
+            _lastReloadUnreachable = ex is LedgerUnreachableException;
             return;
         }
 
         _lastReloadError = null;
+        _lastReloadUnreachable = false;
 
         // 新グラフ構築成功 → 旧 config 由来ランタイムを破棄し、watcher/タイマーも新 config で張り直す。
         // この swap 相は直列ループスレッド上。ここで throw を漏らすと BackgroundService が fault し、
@@ -630,6 +636,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         public RadirecConfig Config => worker._config;
 
         public string? LastReloadError => worker._lastReloadError;
+
+        public bool LastReloadUnreachable => worker._lastReloadUnreachable;
 
         public bool TryLoadConfig(out RadirecConfig? config, out string? error) =>
             ConfigLoading.TryLoad(worker._configPath, out config, out error);
