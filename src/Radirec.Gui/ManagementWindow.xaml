@@ -238,7 +238,7 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- ===== 差し替え放送の疑い(W-155〜W-157。ADR-0021)。判断のボタンは #235 ===== -->
+                    <!-- ===== 差し替え放送の疑い(W-155〜W-164。ADR-0021・#235)===== -->
                     <Border Padding="14,8" CornerRadius="4" BorderThickness="1" Margin="0,6,0,0"
                             BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
                             Visibility="{Binding HasSubstitutes, Converter={StaticResource Visible}}">
@@ -248,11 +248,51 @@
                             <!-- W-157 -->
                             <TextBlock Style="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,4"
                                        Text="{x:Static m:AttentionText.SubstituteHint}" />
-                            <!-- W-156 -->
+                            <!-- W-161 / W-162(番組ページに保存していない判断がある) -->
+                            <Grid Margin="0,0,0,4" Visibility="{Binding IsStagedSummaryVisible, Converter={StaticResource Visible}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                           Text="{Binding StagedSummary}" />
+                                <Button Grid.Column="1" Margin="12,0,0,0" Padding="10,2" VerticalAlignment="Center"
+                                        Content="{x:Static m:AttentionText.ShowPrograms}"
+                                        Command="{Binding ShowProgramsCommand}" />
+                            </Grid>
+                            <!-- W-163 / W-164(積めなかった) -->
+                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,4" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                       Text="{Binding SubstituteNote}"
+                                       Visibility="{Binding IsSubstituteNoteVisible, Converter={StaticResource Visible}}" />
                             <ItemsControl ItemsSource="{Binding SubstituteRows}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock TextWrapping="Wrap" Margin="0,2" Text="{Binding Line}" />
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <!-- W-156 -->
+                                                <TextBlock TextWrapping="Wrap" Text="{Binding Line}" />
+                                                <!-- W-160(積んだ判断) -->
+                                                <TextBlock TextWrapping="Wrap" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                                           Text="{Binding Staged}"
+                                                           Visibility="{Binding IsStaged, Converter={StaticResource Visible}}" />
+                                            </StackPanel>
+                                            <!-- W-159 -->
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="12,0,0,0"
+                                                        VerticalAlignment="Center">
+                                                <Button Padding="10,2" Content="{x:Static m:AttentionText.StageSameProgram}"
+                                                        Command="{Binding SameProgramCommand}" />
+                                                <Button Padding="10,2" Margin="6,0,0,0" Content="{x:Static m:AttentionText.StageSkip}"
+                                                        Command="{Binding SkipCommand}" />
+                                                <Button Padding="10,2" Margin="6,0,0,0" Content="{x:Static m:AttentionText.StageOtherProgram}"
+                                                        Command="{Binding OtherProgramCommand}" />
+                                            </StackPanel>
+                                        </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>

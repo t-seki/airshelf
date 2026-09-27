@@ -442,5 +442,10 @@ public sealed class AttentionCommandTests : IDisposable
         public void Integrate(SiblingFolderGroup group) { }
         public Task<string?> KeepApartAsync(SiblingFolderGroup group) => Task.FromResult<string?>(null);
         public string? KeepApartBlockedReason => null;
+        public Task<string?> StageDecisionAsync(SubstituteSuspectGroup group, Radirec.Core.Configuration.FilenameProgramTreatment treat)
+            => Task.FromResult<string?>(null);
+        public string? StagedDecisionLabel(SubstituteSuspectGroup group) => null;
+        public int StagedDecisionCount => 0;
+        public void ShowPrograms() { }
     }
 }

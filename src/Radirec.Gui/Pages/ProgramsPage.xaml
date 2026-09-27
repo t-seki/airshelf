@@ -117,6 +117,8 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="2*" />
                     </Grid.RowDefinitions>
 
                     <!-- W-202 / W-206 / W-210(件数) -->
@@ -185,10 +187,48 @@
                     </DataGrid>
                     <!-- W-210 -->
                     <TextBlock Grid.Row="4" Style="{StaticResource Sub}" Margin="0,4,0,0" Text="{Binding KeepCountText}" />
+
+                    <!-- W-230 / W-206 / W-210(件数)。ファイル名の番組名の判断(ADR-0021・#235) -->
+                    <DockPanel Grid.Row="5" Margin="0,14,0,6">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource SmallButtonMargin}" Content="追加" Command="{Binding AddDecisionCommand}" />
+                            <Button Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource SmallButtonMargin}" Content="編集" Command="{Binding EditDecisionCommand}" />
+                            <Button Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource SmallButtonMargin}" Content="削除" Command="{Binding DeleteDecisionCommand}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource SectionHeading}" Text="ファイル名の番組名の判断" />
+                            <TextBlock Style="{StaticResource Sub}" Margin="12,0,0,0" VerticalAlignment="Center"
+                                       Text="{Binding DecisionCountText}" />
+                        </StackPanel>
+                    </DockPanel>
+                    <!-- W-230(列)/ W-231(扱い)。要対応から積んだ行も、保存していない行として太字で出る -->
+                    <DataGrid Grid.Row="6" ItemsSource="{Binding FilenamePrograms}"
+                              SelectedItem="{Binding SelectedDecision, Mode=TwoWay}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              CanUserAddRows="False" CanUserDeleteRows="False"
+                              CanUserSortColumns="False" CanUserReorderColumns="False"
+                              HeadersVisibility="Column" SelectionMode="Single"
+                              GridLinesVisibility="Horizontal" MinHeight="80"
+                              MouseDoubleClick="OnDecisionGridDoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="100"
+                                                ElementStyle="{StaticResource Cell}" />
+                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folder}" Width="190"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                            <DataGridTextColumn Header="ファイル名の番組名" Binding="{Binding FilenameProgram}" Width="230"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                            <DataGridTextColumn Header="扱い" Binding="{Binding Treat}" Width="100"
+                                                ElementStyle="{StaticResource Cell}" />
+                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="170"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="*"
+                                                ElementStyle="{StaticResource Wrapped}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </Grid>
             </DockPanel>
 
-            <!-- ========== 編集フォーム(W-220〜W-229) ========== -->
+            <!-- ========== 編集フォーム(W-220〜W-229・W-232〜W-234) ========== -->
             <ScrollViewer VerticalScrollBarVisibility="Auto"
                           Visibility="{Binding IsFormMode, Converter={StaticResource Visible}}">
                 <StackPanel MaxWidth="720" HorizontalAlignment="Left" MinWidth="480">
@@ -202,15 +242,36 @@
                     <TextBox Text="{Binding FormStation, UpdateSourceTrigger=PropertyChanged}" />
 
                     <!-- アルバム名と統合:フォルダ(W-222)/ 分けておく:フォルダの組(W-228) -->
-                    <TextBlock Style="{StaticResource Label}" Text="フォルダ"
-                               Visibility="{Binding IsProgramFormMode, Converter={StaticResource Visible}}" />
-                    <TextBlock Style="{StaticResource Label}" Text="フォルダの組"
-                               Visibility="{Binding IsKeepFormMode, Converter={StaticResource Visible}}" />
-                    <TextBox AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
-                             HorizontalScrollBarVisibility="Auto" MinHeight="64" MaxHeight="140"
-                             Text="{Binding FormFolders, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Style="{StaticResource Sub}" Margin="0,3,0,0"
-                               Text="{x:Static m:ProgramsPageViewModel.FoldersHint}" />
+                    <StackPanel Visibility="{Binding IsFoldersFormMode, Converter={StaticResource Visible}}">
+                        <TextBlock Style="{StaticResource Label}" Text="フォルダ"
+                                   Visibility="{Binding IsProgramFormMode, Converter={StaticResource Visible}}" />
+                        <TextBlock Style="{StaticResource Label}" Text="フォルダの組"
+                                   Visibility="{Binding IsKeepFormMode, Converter={StaticResource Visible}}" />
+                        <TextBox AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto" MinHeight="64" MaxHeight="140"
+                                 Text="{Binding FormFolders, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Style="{StaticResource Sub}" Margin="0,3,0,0"
+                                   Text="{x:Static m:ProgramsPageViewModel.FoldersHint}" />
+                    </StackPanel>
+
+                    <!-- ファイル名の番組名の判断(W-232〜W-233):フォルダ 1 つ・ファイル名の番組名・扱い・アルバム名 -->
+                    <StackPanel Visibility="{Binding IsDecisionFormMode, Converter={StaticResource Visible}}">
+                        <TextBlock Style="{StaticResource Label}" Text="フォルダ" />
+                        <TextBox Text="{Binding FormFolder, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Style="{StaticResource Label}" Text="ファイル名の番組名" />
+                        <TextBox Text="{Binding FormFilenameProgram, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Style="{StaticResource Label}" Text="扱い" />
+                        <ComboBox HorizontalAlignment="Left" MinWidth="200"
+                                  ItemsSource="{x:Static m:ProgramsPageViewModel.TreatOptions}"
+                                  DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding FormTreat, Mode=TwoWay}" />
+                        <StackPanel Visibility="{Binding IsFormOtherProgram, Converter={StaticResource Visible}}">
+                            <TextBlock Style="{StaticResource Label}" Text="アルバム名" />
+                            <TextBox Text="{Binding FormAlbum, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Style="{StaticResource Sub}" Margin="0,3,0,0"
+                                       Text="{x:Static m:ProgramsPageViewModel.DecisionAlbumHint}" />
+                        </StackPanel>
+                    </StackPanel>
 
                     <!-- アルバム名(W-223)。分けておく兄弟フォルダには無い -->
                     <StackPanel Visibility="{Binding IsProgramFormMode, Converter={StaticResource Visible}}">
@@ -225,7 +286,7 @@
                              HorizontalScrollBarVisibility="Auto" MinHeight="64" MaxHeight="140"
                              Text="{Binding FormNote, UpdateSourceTrigger=PropertyChanged}" />
 
-                    <!-- W-224 / W-225 -->
+                    <!-- W-224 / W-225 / W-234 -->
                     <TextBlock Style="{StaticResource Error}" Text="{Binding FormErrorText}" />
 
                     <!-- W-227。Enter / Esc は、いま出している画面のボタンにだけ結ぶ(隠れた画面の既定のボタンと取り合わない) -->
