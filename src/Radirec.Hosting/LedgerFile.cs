@@ -1,3 +1,5 @@
+using Radirec.Core.Ledger;
+
 namespace Radirec.Hosting;
 
 /// <summary>
@@ -22,11 +24,41 @@ public static class LedgerFile
             throw new LedgerUnreachableException(directory);
         return File.Exists(ledgerPath);
     }
+
+    /// <summary>
+    /// 取り込み(トレイ)のために、台帳を書き込み用に開く。フォルダがまだ無ければ作る(初めて使うとき。<see cref="SqliteLedger"/>)。
+    /// </summary>
+    /// <exception cref="LedgerUnreachableException">
+    /// フォルダを作れない・開けない(NAS に届かない・権限が無い)。元の例外を内側に持つ。設定の反映の失敗が台帳のせいか、
+    /// ほかの設定ファイル(programs.json など)のせいかを、理由の文字列ではなく型で見分けるため(#228)。
+    /// </exception>
+    public static SqliteLedger OpenWritable(string ledgerPath)
+    {
+        try
+        {
+            return new SqliteLedger(ledgerPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new LedgerUnreachableException(Path.GetDirectoryName(Path.GetFullPath(ledgerPath)) ?? ledgerPath, ex);
+        }
+    }
 }
 
 /// <summary>
 /// 台帳の親フォルダに届かない(#216)。<see cref="IOException"/> なので、CLI では外部との接続の失敗として 5 になる。
-/// 設定ファイルの読み込みの失敗(1)と分けて扱えるように、専用の型にしている(<c>ingest --dry-run</c>)。
+/// 設定ファイルの読み込みの失敗(1)と分けて扱えるように、専用の型にしている(<c>ingest --dry-run</c>・<c>reapply</c>)。
 /// </summary>
-public sealed class LedgerUnreachableException(string directory)
-    : DirectoryNotFoundException($"台帳のあるフォルダに届きません: {directory}");
+public sealed class LedgerUnreachableException : DirectoryNotFoundException
+{
+    public LedgerUnreachableException(string directory)
+        : base($"台帳のあるフォルダに届きません: {directory}")
+    {
+    }
+
+    /// <summary>台帳を書き込み用に開けなかった(<see cref="LedgerFile.OpenWritable"/>)。元の例外の文言も添える。</summary>
+    public LedgerUnreachableException(string directory, Exception inner)
+        : base($"台帳のあるフォルダに届きません: {directory}({inner.Message})", inner)
+    {
+    }
+}

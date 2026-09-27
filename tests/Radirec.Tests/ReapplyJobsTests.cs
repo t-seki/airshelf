@@ -289,18 +289,22 @@ public sealed class ReapplyJobsTests
         Assert.False(applied.IsStale);
         Assert.Equal(0, unreachable.Executions);
     }
-    // 読み直した設定の台帳の場所。親フォルダが無い = 届かない(LedgerFile.Exists)。
-    private static string UnreachableLedgerPath() =>
-        Path.Combine(Path.GetTempPath(), $"radirec-unreachable-{Guid.NewGuid():N}", "ledger.db");
+    // 読み直した設定の台帳の場所。親フォルダがまだ無い(届く場所でも、反映が作る前はこうなる)。
+    private static string NotYetCreatedLedgerPath() =>
+        Path.Combine(Path.GetTempPath(), $"radirec-notyet-{Guid.NewGuid():N}", "ledger.db");
+    // 反映が台帳を開けなかった(LedgerFile.OpenWritable の LedgerUnreachableException。RadioMonitorWorker.ApplyReload が記録する)。
+    private static void FailReloadAtLedger(FakeHost host)
+    {
+        host.ApplyReloadError = @"台帳のあるフォルダに届きません: \\192.0.2.1\x(The network path was not found.)";
+        host.ApplyReloadUnreachable = true;
+    }
     [Fact]
     public async Task CLIの実行で反映が台帳に届かず失敗したら_届かない印を返す()
     {
         var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
         var jobs = new ReapplyJobs(host);
         var planId = (await Run(jobs, ReapplyJobKind.PlanForCli)).PlanId!;
-        // 反映は書き込み用に台帳を開き、届かない NAS では素の IOException の文字列になる(RadioMonitorWorker.ApplyReload)。
-        host.ApplyReloadError = @"The network path was not found. : '\\192.0.2.1\x'";
-        host.NewLedgerPath = UnreachableLedgerPath();
+        FailReloadAtLedger(host);
         var applied = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: planId);
         Assert.True(applied.IsUnreachable);
         Assert.StartsWith("設定の反映に失敗しました: ", applied.Error);
@@ -314,8 +318,7 @@ public sealed class ReapplyJobsTests
         var jobs = new ReapplyJobs(host);
         var plan = (await jobs.RunAsync(
             new ReapplyJob(ReapplyJobKind.PlanDraft, Draft: new ProgramMasterConfig()), CancellationToken.None)).Report!;
-        host.ApplyReloadError = @"The network path was not found. : '\\192.0.2.1\x'";
-        host.NewLedgerPath = UnreachableLedgerPath();
+        FailReloadAtLedger(host);
         var applied = await Run(jobs, ReapplyJobKind.ReloadAndApply, plan: plan);
         Assert.True(applied.IsUnreachable);
         Assert.Equal(0, host.Executions);
@@ -330,6 +333,21 @@ public sealed class ReapplyJobsTests
         var applied = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: planId);
         Assert.False(applied.IsUnreachable);
         Assert.Contains("stations.json を読めません", applied.Error);
+    }
+    [Fact]
+    public async Task 台帳を新しいフォルダに変えて_設定の壊れで反映に失敗しても_届かない印を付けない()
+    {
+        // #228:反映は programs.json を台帳より先に読むので、台帳のフォルダは作られないまま失敗する。
+        // 失敗の後に台帳の場所を確かめる作りだと「フォルダが無い」を「届かない」(5)と取り違えた。正しくは設定の問題(1)。
+        var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
+        var jobs = new ReapplyJobs(host);
+        var planId = (await Run(jobs, ReapplyJobKind.PlanForCli)).PlanId!;
+        host.NewLedgerPath = NotYetCreatedLedgerPath();
+        host.ApplyReloadError = "programs.json を読めません";
+        var applied = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: planId);
+        Assert.False(applied.IsUnreachable);
+        Assert.Contains("programs.json を読めません", applied.Error);
+        Assert.Equal(0, host.Executions);
     }
     [Fact]
     public void 組み立ての例外は_台帳に届かないときだけ届かない印にする()
@@ -360,7 +378,9 @@ public sealed class ReapplyJobsTests
 
         public string? ConfigError { get; set; }
         public string? ApplyReloadError { get; set; }
-        /// <summary>読み直した設定の台帳の場所(既定は今のフォルダの ledger.db = 届く)。</summary>
+        /// <summary>反映の失敗が、台帳を開けなかったためか(<see cref="ApplyReloadError"/> と一緒に使う)。</summary>
+        public bool ApplyReloadUnreachable { get; set; }
+        /// <summary>読み直した設定の台帳の場所(既定は今のフォルダの ledger.db)。</summary>
         public string NewLedgerPath { get; set; } = "ledger.db";
         public string? SettingsError { get; init; }
         /// <summary>再適用の組み立て(台帳オープン等)の失敗。あれば常駐はこれを返す。</summary>
@@ -372,6 +392,8 @@ public sealed class ReapplyJobsTests
         public RadirecConfig Config { get; private set; }
 
         public string? LastReloadError { get; set; }
+
+        public bool LastReloadUnreachable { get; private set; }
 
         public bool TryLoadConfig(out RadirecConfig? config, out string? error)
         {
@@ -386,10 +408,12 @@ public sealed class ReapplyJobsTests
             if (ApplyReloadError is { } error)
             {
                 LastReloadError = error;
+                LastReloadUnreachable = ApplyReloadUnreachable;
                 return;
             }
 
             LastReloadError = null;
+            LastReloadUnreachable = false;
             Config = config;
         }
 

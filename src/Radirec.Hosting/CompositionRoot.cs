@@ -212,7 +212,8 @@ public static class CompositionRoot
     {
         if (!dryRun)
         {
-            var writable = new SqliteLedger(ledgerPath);
+            // 開けなければ LedgerUnreachableException(#228)。設定の反映の失敗を台帳のせいと見分けられるようにする。
+            var writable = LedgerFile.OpenWritable(ledgerPath);
             return (writable, writable, writable); // 同一インスタンスが台帳 + 失敗 de-dup ストアを兼ねる。
         }
 
