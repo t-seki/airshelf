@@ -257,7 +257,7 @@
     <!-- W-161 / W-162 は要対応の欄(スクロールする)の外に置く。差し替え放送の疑いは導入直後に 82 組並ぶので、送っても見えるように -->
     <div class="row" data-if="attn:staged run:watching,polling,noscan,crashed,startloop,startfail" style="justify-content: space-between; flex-wrap: nowrap; margin: 4px 0 8px;">
       <div class="an" data-w="W-161">番組ページに保存していない判断が 2 件あります。番組ページで「確認」→「保存して適用」を押すと反映します</div>
-      <button class="btn small" data-go="page:programs prog:dirty" data-w="W-162">番組ページへ</button>
+      <button class="btn small an" data-go="page:programs prog:dirty" data-w="W-162">番組ページへ</button>
     </div>
 
     <div data-if="attn:items,staged run:watching,polling,noscan,crashed,startloop,startfail">
@@ -324,31 +324,31 @@
 
       <div class="attn">
         <h4 data-w="W-155">差し替え放送の疑い</h4>
-        <div class="sub" data-w="W-157">ファイル名の番組名がフォルダ名を含まない回です。判断するまで、新しい回は取り込まずに保留します。ボタンで番組ページの下書きに積み、番組ページで保存すると反映します</div>
+        <div class="sub an" data-w="W-157">ファイル名の番組名がフォルダ名を含まない回です。判断するまで、新しい回は取り込まずに保留します。ボタンで番組ページの下書きに積み、番組ページで保存すると反映します</div>
         <div class="item">
-          <div><div data-w="W-156">ニッポン放送「パンサー向井のチャリで30分」に「辛坊治郎 ズーム そこまで言うか！」 保留 1 回 / 取り込み済み 4 回</div>
+          <div><div class="an" data-w="W-156">ニッポン放送「パンサー向井のチャリで30分」に「辛坊治郎 ズーム そこまで言うか！」 保留 1 回 / 取り込み済み 4 回</div>
                <div class="an" data-if="attn:staged" data-w="W-160"><b>下書き: 別の番組「辛坊治郎 ズーム そこまで言うか！」</b></div></div>
           <div class="row" style="flex-wrap: nowrap;">
-            <button class="btn small" data-w="W-159">この番組の回</button>
-            <button class="btn small" data-w="W-159">取り込まない</button>
-            <button class="btn small" data-w="W-159">別の番組…</button>
+            <button class="btn small an" data-w="W-159">この番組の回</button>
+            <button class="btn small an" data-w="W-159">取り込まない</button>
+            <button class="btn small an" data-w="W-159">別の番組…</button>
           </div>
         </div>
         <div class="item">
-          <div><div data-w="W-156">TBSラジオ「パンサー向井のふらっと(1)」に「パンサー向井の#ふらっと (1)」 取り込み済み 933 回</div>
+          <div><div class="an" data-w="W-156">TBSラジオ「パンサー向井のふらっと(1)」に「パンサー向井の#ふらっと (1)」 取り込み済み 933 回</div>
                <div class="an" data-if="attn:staged" data-w="W-160"><b>下書き: この番組の回</b></div></div>
           <div class="row" style="flex-wrap: nowrap;">
-            <button class="btn small" data-w="W-159">この番組の回</button>
-            <button class="btn small" data-w="W-159">取り込まない</button>
-            <button class="btn small" data-w="W-159">別の番組…</button>
+            <button class="btn small an" data-w="W-159">この番組の回</button>
+            <button class="btn small an" data-w="W-159">取り込まない</button>
+            <button class="btn small an" data-w="W-159">別の番組…</button>
           </div>
         </div>
         <div class="item">
-          <div><div data-w="W-156">文化放送「日向坂46の「ひ」」に「文化放送スポーツスペシャル プロ野球日本シリーズ2025第2戦　福岡ソフトバンクホークス 対 阪神タイガース　実況中継 17時55分～19時」 保留 1 回</div></div>
+          <div><div class="an" data-w="W-156">文化放送「日向坂46の「ひ」」に「文化放送スポーツスペシャル プロ野球日本シリーズ2025第2戦　福岡ソフトバンクホークス 対 阪神タイガース　実況中継 17時55分～19時」 保留 1 回</div></div>
           <div class="row" style="flex-wrap: nowrap;">
-            <button class="btn small" data-w="W-159">この番組の回</button>
-            <button class="btn small" data-w="W-159">取り込まない</button>
-            <button class="btn small" data-w="W-159">別の番組…</button>
+            <button class="btn small an" data-w="W-159">この番組の回</button>
+            <button class="btn small an" data-w="W-159">取り込まない</button>
+            <button class="btn small an" data-w="W-159">別の番組…</button>
           </div>
         </div>
         <div class="mocknote">ADR-0021(#233・#235)。組ごとに 1 行。保留 = 取り込まずにいる回(保留のストア)、取り込み済み = 仕組みを入れる前にフォルダの番組へ取り込んだ回(台帳)。数が 0 の側は出さない。
@@ -499,7 +499,7 @@
       <p class="sub" data-if="prog:list,dirty"><span data-w="W-210">1 件</span></p>
 
       <div class="row" style="justify-content: space-between; margin-top: 10px;">
-        <h3><span data-w="W-230">ファイル名の番組名の判断</span>
+        <h3><span class="an" data-w="W-230">ファイル名の番組名の判断</span>
           <span class="sub" data-if="prog:list,empty" data-w="W-210">3 件</span><span class="sub" data-if="prog:dirty" data-w="W-210">5 件</span></h3>
         <div class="row">
           <button class="btn small" data-go="prog:decisionedit" data-w="W-206">追加</button>
@@ -509,12 +509,12 @@
       </div>
       <table class="grid">
         <colgroup><col style="width:100px"><col style="width:190px"><col style="width:230px"><col style="width:100px"><col style="width:170px"><col></colgroup>
-        <tr data-w="W-230"><th>放送局</th><th>フォルダ</th><th>ファイル名の番組名</th><th>扱い</th><th>アルバム名</th><th>メモ</th></tr>
-        <tr><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(1)</td><td class="wrap">パンサー向井の#ふらっと (1)</td><td data-w="W-231">この番組の回</td><td></td><td></td></tr>
-        <tr><td>文化放送</td><td class="wrap">日向坂46の「ひ」</td><td class="wrap">文化放送スポーツスペシャル プロ野球日本シリーズ2024 第2戦 横浜DeNAベイスターズ 対 福岡ソフトバンクホークス 実況中継</td><td data-w="W-231">取り込まない</td><td></td><td class="wrap">実況中継</td></tr>
-        <tr><td>TOKYO FM</td><td class="wrap">ベルクpresents日向坂46の余計な事までやりましょう</td><td class="wrap">土屋圭市のくるまの話 supported by プレソフィア</td><td data-w="W-231">別の番組</td><td class="wrap">土屋圭市のくるまの話</td><td class="wrap">番組の終了後も予約が残っていた</td></tr>
-        <tr class="changed" data-if="prog:dirty"><td>ニッポン放送</td><td class="wrap">パンサー向井のチャリで30分</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td data-w="W-231">別の番組</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td>(要対応から積んだ・未保存)</td></tr>
-        <tr class="changed" data-if="prog:dirty"><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(2)</td><td class="wrap">パンサー向井の#ふらっと (2)</td><td data-w="W-231">この番組の回</td><td></td><td>(要対応から積んだ・未保存)</td></tr>
+        <tr class="an" data-w="W-230"><th>放送局</th><th>フォルダ</th><th>ファイル名の番組名</th><th>扱い</th><th>アルバム名</th><th>メモ</th></tr>
+        <tr><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(1)</td><td class="wrap">パンサー向井の#ふらっと (1)</td><td class="an" data-w="W-231">この番組の回</td><td></td><td></td></tr>
+        <tr><td>文化放送</td><td class="wrap">日向坂46の「ひ」</td><td class="wrap">文化放送スポーツスペシャル プロ野球日本シリーズ2024 第2戦 横浜DeNAベイスターズ 対 福岡ソフトバンクホークス 実況中継</td><td class="an" data-w="W-231">取り込まない</td><td></td><td class="wrap">実況中継</td></tr>
+        <tr><td>TOKYO FM</td><td class="wrap">ベルクpresents日向坂46の余計な事までやりましょう</td><td class="wrap">土屋圭市のくるまの話 supported by プレソフィア</td><td class="an" data-w="W-231">別の番組</td><td class="wrap">土屋圭市のくるまの話</td><td class="wrap">番組の終了後も予約が残っていた</td></tr>
+        <tr class="changed" data-if="prog:dirty"><td>ニッポン放送</td><td class="wrap">パンサー向井のチャリで30分</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td class="an" data-w="W-231">別の番組</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td>(要対応から積んだ・未保存)</td></tr>
+        <tr class="changed" data-if="prog:dirty"><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(2)</td><td class="wrap">パンサー向井の#ふらっと (2)</td><td class="an" data-w="W-231">この番組の回</td><td></td><td>(要対応から積んだ・未保存)</td></tr>
       </table>
       <div class="mocknote">ADR-0021・#235。ホームの要対応の「この番組の回」「取り込まない」「別の番組…」(W-159)で積んだ判断は、ここに保存していない行(太字)として出る。
         「アルバム名」は「別の番組」の行だけ。保存すると programs.json の <code>FilenamePrograms</code> に書き、設定リロードの後の走査で、保留していた回が判断どおりに取り込まれる。
@@ -584,23 +584,23 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 
     <!-- ファイル名の番組名の判断 の編集(W-232〜W-234。#235) -->
     <div data-if="prog:decisionedit,decisioninvalid">
-      <h3 data-w="W-232">ファイル名の番組名の判断を編集</h3>
+      <h3 class="an" data-w="W-232">ファイル名の番組名の判断を編集</h3>
       <div class="mocknote">「追加」から来たときの見出しは <span class="an" data-w="W-232">ファイル名の番組名の判断を追加</span>(欄は空、扱いは「この番組の回」)。</div>
       <div class="form card">
-        <label data-w="W-232">放送局</label><input value="ニッポン放送">
-        <label data-w="W-232">フォルダ</label><input value="パンサー向井のチャリで30分">
-        <label data-w="W-232">ファイル名の番組名</label><input value="辛坊治郎 ズーム そこまで言うか！">
-        <label data-w="W-232">扱い</label>
-        <select style="width: 200px;"><option data-w="W-231">この番組の回</option><option data-w="W-231">取り込まない</option><option data-w="W-231" selected>別の番組</option></select>
-        <label data-w="W-232">アルバム名</label>
+        <label class="an" data-w="W-232">放送局</label><input value="ニッポン放送">
+        <label class="an" data-w="W-232">フォルダ</label><input value="パンサー向井のチャリで30分">
+        <label class="an" data-w="W-232">ファイル名の番組名</label><input value="辛坊治郎 ズーム そこまで言うか！">
+        <label class="an" data-w="W-232">扱い</label>
+        <select style="width: 200px;"><option class="an" data-w="W-231">この番組の回</option><option class="an" data-w="W-231">取り込まない</option><option class="an" data-w="W-231" selected>別の番組</option></select>
+        <label class="an" data-w="W-232">アルバム名</label>
         <input data-if="prog:decisionedit" value="辛坊治郎 ズーム そこまで言うか！"><input data-if="prog:decisioninvalid" value="">
-        <div class="hint" data-w="W-233">「別の番組」のときだけ使うアルバム名です(放送局はそのまま)</div>
-        <div class="err" data-if="prog:decisioninvalid" data-w="W-234">「別の番組」にはアルバム名を入れてください</div>
-        <label data-w="W-232">メモ</label><textarea>月曜の特番枠</textarea>
+        <div class="hint an" data-w="W-233">「別の番組」のときだけ使うアルバム名です(放送局はそのまま)</div>
+        <div class="err an" data-if="prog:decisioninvalid" data-w="W-234">「別の番組」にはアルバム名を入れてください</div>
+        <label class="an" data-w="W-232">メモ</label><textarea>月曜の特番枠</textarea>
       </div>
       <div class="mocknote">「アルバム名」の欄は、扱いが「別の番組」のときだけ出す。「別の番組」でない判断を編集して「別の番組」に変えるときは、ファイル名の番組名を初期値にする。
-        ほかの入力エラーは <span data-w="W-234">フォルダを入れてください</span> / <span data-w="W-234">ファイル名の番組名を入れてください</span> /
-        <span data-w="W-234">同じ組(放送局・フォルダ・ファイル名の番組名)の判断がすでにあります</span>(照合キーで比べる)と、放送局の W-224。</div>
+        ほかの入力エラーは <span class="an" data-w="W-234">フォルダを入れてください</span> / <span class="an" data-w="W-234">ファイル名の番組名を入れてください</span> /
+        <span class="an" data-w="W-234">同じ組(放送局・フォルダ・ファイル名の番組名)の判断がすでにあります</span>(照合キーで比べる)と、放送局の W-224。</div>
       <div class="row" style="justify-content: flex-end;">
         <button class="btn primary" data-go="prog:dirty" data-w="W-227">決定</button>
         <button class="btn" data-go="prog:list" data-w="W-227">キャンセル</button>

@@ -137,8 +137,8 @@ public sealed record KeepApartResult(KeepApartOutcome Outcome, string? Message =
 }
 
 /// <summary>
-/// ホームの要対応が、計算と「統合する」「分けておく」をシェル(管理画面)に頼む面。ViewModel 同士をつなぐだけなので、
-/// テストでは差し替える。
+/// ホームの要対応が、計算と「統合する」「分けておく」、差し替え放送の判断(番組ページの下書きに積む・積んだ判断の表示と数・
+/// 番組ページへ移る。W-159〜W-164。#235)をシェル(管理画面)に頼む面。ViewModel 同士をつなぐだけなので、テストでは差し替える。
 /// </summary>
 public interface IAttentionActions
 {
