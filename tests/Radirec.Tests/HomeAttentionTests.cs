@@ -172,7 +172,7 @@ public sealed class HomeAttentionTests : IDisposable
     [Fact]
     public async Task Nothing_to_do_W121()
     {
-        // 兄弟フォルダの無い番組で、記録どおりに取り込んだ回だけ(3 種のどれも無い)。
+        // 兄弟フォルダの無い番組で、記録どおりに取り込んだ回だけ(4 種のどれも無い)。
         Ingested(Tbs, "単発の番組");
 
         var home = (await Create()).Home;

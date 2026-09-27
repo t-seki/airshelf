@@ -110,11 +110,11 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
 
 | コマンド | 主なフィールド |
 |------|------|
-| `ingest` | `dryRun`、`counts`(`imported` / `planned` / `alreadyImported` / `unstable` / `junk` / `unsupported` / `failed`)、`items[]`(`outcome`・`source`・`output`・`message`・`usedFallback`)、`libraryRefresh`(`status`:`notNeeded` / `notConfigured` / `started` / `failed` / `misconfigured`、`error`) |
+| `ingest` | `dryRun`、`counts`(`imported` / `planned` / `alreadyImported` / `unstable` / `junk` / `unsupported` / `failed` / `held` / `skippedByDecision`)、`items[]`(`outcome`・`source`・`output`・`message`・`usedFallback`・`filenameProgram`(保留・取り込まない判断の回のファイル名の番組名。ほかは null。§5「差し替え放送」))、`libraryRefresh`(`status`:`notNeeded` / `notConfigured` / `started` / `failed` / `misconfigured`、`error`) |
 | `reapply` | `dryRun`、`aligned`(揃っているか)、`counts`(`move` / `ledgerAndTags` / `ledgerOnly` / `duplicateLeft` / `excluded` / `failed`)、`duplicatesRewritingTags`、`albums[]`(アルバム単位のまとめ)、`items[]`(明細。`action`・`broadcastDate`・`fromPath`・`toPath`・`reason` など)、`unintegratedSiblings[]`(統合設定の無い兄弟フォルダの組)、`libraryRefresh`、`planId`(予定 ID。dry-run では `--apply` に渡す値、予定が変わった(3)ときは新しい予定の値、実行したときは実行した予定の値。#181) |
 | `refresh` | `status`(`started` / `notConfigured` / `misconfigured` / `failed`)、`error` |
 | `history` | `entries[]`(新しい順。`program`・`station`・`broadcastDate`・`broadcastTime`(時刻の無い録音は null)・`part`・`importedAt`(ISO 8601、時差つき)・`outputPath`・`sourcePath`) |
-| `attention` | `count`(要対応の件数)、`unintegratedSiblings[]`(`station`・`folders`・`foldersWithoutSetting`・`mergedAlbum`・`foldersNewToKeptApart`)、`unresolvedFailures[]`(`sourcePath`・`reason`・`failedAt`。記録の無い古い失敗は null)、`settingsDrift[]`(`station`・`fromAlbum`・`toAlbum`・`count`) |
+| `attention` | `count`(要対応の件数)、`unintegratedSiblings[]`(`station`・`folders`・`foldersWithoutSetting`・`mergedAlbum`・`foldersNewToKeptApart`)、`unresolvedFailures[]`(`sourcePath`・`reason`・`failedAt`。記録の無い古い失敗は null)、`settingsDrift[]`(`station`・`fromAlbum`・`toAlbum`・`count`)、`substituteSuspects[]`(差し替え放送の疑い。`station`・`folder`・`filenameProgram`・`heldCount`・`importedCount`)、`pendingRemovals[]`(取り込まないと判断した取り込み済みの回。`station`・`album`・`folder`・`filenameProgram`・`count`) |
 
 列挙の値(`outcome`・`action`・`status`)は camelCase の文字列です(`skippedAlreadyImported` など)。日本語は
 エスケープせずにそのまま出し、出力は UTF-8 です。
@@ -125,7 +125,7 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
 
 | コード | 意味 | 次にすること |
 |------|------|------|
-| 0 | 成功(失敗した回は 0 件) | 次へ進む |
+| 0 | 成功(失敗した回は 0 件。差し替え放送の疑いで保留した回は失敗に数えない) | 次へ進む(`ingest` で保留があれば §5「差し替え放送」) |
 | 1 | 使い方の誤り(知らないオプション・コマンド)・設定を読めない・Jellyfin が未設定か URL の形式が不正(`refresh`。`ingest` / `reapply` は URL の形式不正だけ)。想定外の例外(内部エラー)も 1 | 引数か設定を直す。想定外の例外なら、理由は `gui.log` ではなく出力(`--json` なら `error`)にある |
 | 2 | 常駐が動いていない・取り込みが止まっている・常駐から応答を得られない(`ingest`・`reapply`・`reload` など常駐に頼むコマンド。`status` は答えとして 0。§6「CLI から状態を見る」) | トレイを起動する(縮退なら設定を直してトレイを再起動する)。`ingest` / `reapply` の時間切れ・途中で切れたときは、走査・再適用がトレイで続いていることがあるので、先に `radirec status` / `gui.log` で確かめる |
 | 3 | 確かめた予定が変わった(`reapply --apply` の予定 ID が、実行の直前に計算し直した予定と違う。実行していない。#181) | 出力の新しい予定を確かめ、その予定 ID(`planId`)で `--apply` し直す |
@@ -156,6 +156,10 @@ dotnet run --project src/Radirec.Cli -- ingest --dry-run
 | ジャンク | スキップパターン一致で除外 |
 | 対象外 | 当該 importer が扱えない |
 | 失敗 | パース/コピー等に失敗 |
+| 保留 | 差し替え放送の疑い(ファイル名の番組名がフォルダ名を含まず、判断も無い)。判断するまで取り込まない(§5) |
+| 取り込まない | ファイル名の番組名に「取り込まない」と判断済み(§5) |
+
+保留・取り込まないの行は「出力 / 詳細」にファイル名の番組名を出します。保留があると、表の下に判断のしかたを 1 行添えます。
 
 `(fallback)` は、放送局または番組名が alias 未登録で生名を採用したことを示します。
 
@@ -193,7 +197,7 @@ radirec history --since 2026-09-01 --json     # 取込日時が 9/1 以降のも
 `programs.json` / `stations.json` から毎回計算し直すので、常駐(トレイ)が動いていなくても使えます(#183)。
 
 ```powershell
-radirec attention           # 統合設定の無い兄弟フォルダ・解決していない取込失敗・再適用が要る番組
+radirec attention           # 統合設定の無い兄弟フォルダ・解決していない取込失敗・再適用が要る番組・差し替え放送の疑い
 radirec attention --json    # エージェント・スクリプト向け(result の形は上の表)
 ```
 
@@ -201,6 +205,8 @@ radirec attention --json    # エージェント・スクリプト向け(result 
   あるときも終了コードは 0 です(要対応は失敗ではないため)。件数は `count` か表の見出しで見ます
 - 要対応を CLI から解決する操作(「統合する」「分けておく」)はありません。`programs.json` を直してから
   `radirec reapply` で確かめます(§5)。再適用が要る番組は、`radirec reapply --apply <予定 ID>` で揃えると消えます
+- 差し替え放送の疑いは、`programs.json` の `FilenamePrograms` に判断を書くと消えます(§5「差し替え放送」)。取り込み済みの回を
+  「取り込まない」と判断すると、「再適用が要る番組」に「出力先から消す予定」として出ます
 - 台帳・`programs.json` / `stations.json` を読めない(壊れた JSON など)ときは 1 です
 - 台帳のあるフォルダ(NAS など)に届かないときは、「要対応はありません」とは答えず 5 で終わります。以前は 0 で空(`count` 0)を返していました(#216)
 
@@ -310,6 +316,9 @@ radikool 固有の扱い:
   (出力はパートと同じ `-N` / `(N)` / `MMDD*10+N` の形になります)
   ([ADR-0004](adr/0004-part-index-dedup-for-timeless-sources.md))。
   台帳(`LedgerPath`)に記録し、再実行しても重複しません。
+- **差し替え放送の保留**: らじれこのファイル名の番組名(ゲスト名や副題を含む部分)が番組フォルダ名を含まない回は、
+  予約した枠で別の番組が放送された回かもしれないので、`programs.json` に判断を書くまで**取り込まずに保留**します
+  ([ADR-0021](adr/0021-substitute-broadcast-held-by-filename-program-name.md)。§5「差し替え放送」)。
 
 ## 5. アルバムの束ね方・表示名の整え方
 
@@ -382,6 +391,50 @@ radikool 固有の扱い:
 > `programs.json` の変更は新しく取り込む回にだけ効きます。取り込み済みの回へ効かせるには、変更後に
 > **`radirec reapply`** で予定を確かめ、**`radirec reapply --apply <予定 ID>`** で実行します(§3「統合設定を取り込み済みの回へ再適用する」)。
 
+### 差し替え放送(フォルダの番組と違う番組の回)
+
+らじれこは予約(時間帯)単位で録音するので、予約した番組の枠で特番やプロ野球中継などが放送されると、その回も予約した
+番組のフォルダに入ります。番組が終わった後も予約が残っていれば、後の番組を録り続けます。フォルダ名のまま取り込むと、
+予約した番組のアルバムに別の番組が混ざります(**差し替え放送**。[ADR-0021](adr/0021-substitute-broadcast-held-by-filename-program-name.md))。
+
+そこで、らじれこのファイル名から局の `[...]`・`(TimeFree)`・日時を除いた部分(**ファイル名の番組名**)を見ます
+(空白・全角半角・大文字小文字は区別しません)。
+
+1. ファイル名の番組名がフォルダ名を含む(ゲスト名入りの回など、ほとんどの回)→ これまでどおり取り込む
+2. `programs.json` の `FilenamePrograms` に、その (局, フォルダ, ファイル名の番組名) の判断がある → 判断どおりに扱う
+3. どちらでもない → **取り込まずに保留**する。初めて保留したときにトースト「判断待ち N件（差し替え放送の疑い）」が出て、
+   管理画面のホームと `radirec attention` の要対応に「差し替え放送の疑い」として出る
+
+判断は 3 択で、組ごとに `FilenamePrograms` に書きます。一度書けば、同じファイル名の番組名の回は次から自動でその判断どおりに
+扱われます。
+
+```jsonc
+"FilenamePrograms": [
+  // この番組の回(表記ゆれ・改名・スポンサーの交代・ローテーションゲストなど)
+  { "Match": { "Station": "TBSラジオ", "Folder": "パンサー向井のふらっと(1)", "FilenameProgram": "パンサー向井の#ふらっと (1)" },
+    "Treat": "SameProgram" },
+  // 取り込まない
+  { "Match": { "Station": "文化放送", "Folder": "日向坂46の「ひ」",
+               "FilenameProgram": "文化放送スポーツスペシャル プロ野球日本シリーズ2024 第2戦 横浜DeNAベイスターズ 対 福岡ソフトバンクホークス 実況中継" },
+    "Treat": "Skip" },
+  // 別の番組として取り込む(Album が要る。放送局はそのまま)
+  { "Match": { "Station": "ニッポン放送", "Folder": "パンサー向井のチャリで30分", "FilenameProgram": "辛坊治郎 ズーム そこまで言うか！" },
+    "Treat": "OtherProgram", "Album": "辛坊治郎 ズーム そこまで言うか！", "Note": "月曜の特番枠" }
+]
+```
+
+- `Station` は正規名(`stations.json` で寄せた後の名前)、`Folder` はらじれこの番組フォルダ名 1 つ、`FilenameProgram` は
+  ファイル名の番組名です。`radirec attention --json` の `substituteSuspects[]` の `station`・`folder`・`filenameProgram` を
+  そのまま写せば足ります(`radirec ingest --json` の `items[].filenameProgram` にも出ます)。
+- `Treat` は省略できません。`OtherProgram` に `Album` が無いと、設定リロードが拒まれます(トレイは前の設定のまま動きます)。
+- 書いたら `radirec reload` で反映します。保留していた回は、反映の後の走査で判断どおりに取り込まれます(または取り込まれません。
+  結果を見たいときは `radirec ingest` で走査を頼みます)。要対応からは、書いた時点で消えます。
+- **取り込み済みの回**(この仕組みを入れる前に取り込んだ回)も、判断待ちなら要対応に「取り込み済み N 回」と出ます。
+  「別の番組として取り込む」「取り込まない」の判断を取り込み済みの回へ効かせるのは再適用です(#234 で対応。「取り込まない」は
+  出力先のファイルを消します。取込元は消さないので、判断を戻せば取り込み直されます)。
+- ファイル名の番組名が回ごとに変わる差し替え(`… パート１` / `… パート２` など)は、1 回ずつ判断が要ります。
+- **古い版では読めなくなります**:`FilenamePrograms` を知らない版は、`Note` / `KeepSeparate` と同じく設定を拒みます。
+
 ### 既に取り込み済みアルバムを手作業で統合する(再適用で扱えない回の予備の手順)
 
 取り込み済みの回を統合するには、まず `radirec reapply`(確認)と `radirec reapply --apply <予定 ID>`(実行)を使います(§3)。次の手順は、再適用で**対象外**になった回
@@ -450,7 +503,9 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 `radirec ingest` が頼む**走査の実行**でも走査します(§3。結果は CLI に返り、新規取込のトーストは出ません)。最終スキャンの
 きっかけが「再走査」と出るのは、走査の実行を頼まれたときに束ねられた①〜⑤の要求を、後から通常の走査としてまとめて走らせたときです。新規取込時は
 トレイが **in-process でトースト表示**します。**新規取込のトーストは管理画面の設定ページで止められます**。
-**取込失敗のトーストは、この設定に関係なく常に出ます**(#152)。統合設定の無い兄弟フォルダは、トーストではなく
+**取込失敗のトーストは、この設定に関係なく常に出ます**(#152)。差し替え放送の疑いで録音を**初めて保留した**ときの
+トースト「判断待ち N件（差し替え放送の疑い）」も、同じく常に出ます(§5「差し替え放送」。同じ録音の保留では出し直しません)。
+統合設定の無い兄弟フォルダは、トーストではなく
 管理画面のホームの**要対応**に出ます(下記。#155 より前は、初めて取り込んだときに新規取込のトーストの最後の 1 行で
 知らせていました)。
 
@@ -468,8 +523,8 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
     出来事の記録ではなく、台帳とディスクの `programs.json` / `stations.json` から毎回計算し直すので、原因が解消すれば
     消えます(既読にして消す操作はありません)。計算し直すのは、管理画面を開いたとき・ホームへ切り替えたとき・
     スキャンが終わったとき・「分けておく」を押した後です。設定を読み込めていないときは出しません。
-    出すのは次の 3 種で、どれも無ければ「要対応はありません」と出します。見出しの横の件数は、兄弟フォルダの組・失敗・
-    再適用が要る番組のまとまりを 1 件ずつ数えた合計です。
+    出すのは次の 4 種で、どれも無ければ「要対応はありません」と出します。見出しの横の件数は、兄弟フォルダの組・失敗・
+    再適用が要る番組のまとまり(出力先から消す予定を含む)・差し替え放送の疑いの組を 1 件ずつ数えた合計です。
     - **統合設定の無い兄弟フォルダ**の組(同じ放送局で、末尾の `(1)` / `(2)`、`Part1` / `Part2`、
       `8時9時` / `9時10時` などを除くと同じ名前になるフォルダ。§3 の `reapply` と同じ判定):
       - 1 組ずつ「放送局: フォルダ / フォルダ(設定なし)」の形で出します。組の一部がすでに統合番組に入っていれば
@@ -505,6 +560,12 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
         「再読み込み」と同じ確認)。揃う回が無ければ移らずに、確かめられなければその理由を、ボタンの下に 1 行で出します。
       - 取り込みが止まっているとき、番組ページに保存していない変更があるとき、確かめている途中は押せず、その理由を
         ボタンの下に出します(番組ページで保存するか取り消すと、2 秒以内に押せるようになります)。
+      - 差し替え放送で「取り込まない」と判断した取り込み済みの回も、ここに「放送局「アルバム」 出力先から消す予定 N 回
+        (ファイル名の番組名「…」)」の形で出ます(再適用で出力先から消します。#234)。
+    - **差し替え放送の疑い**:ファイル名の番組名がフォルダ名を含まず、`programs.json` の `FilenamePrograms` に判断も無い回
+      (§5「差し替え放送」)。「放送局「フォルダ」に「ファイル名の番組名」 保留 N 回 / 取り込み済み M 回」の形で、組ごとに出します。
+      保留は取り込まずにいる回、取り込み済みはこの仕組みを入れる前にフォルダの番組のアルバムへ取り込んだ回です。
+      判断を書けば、次のスキャンを待たずに消えます。いまは `programs.json` を直接直します(管理画面から判断するボタンは #235)。
   - 「今すぐ再スキャン」を押すと、次のスキャンが終わるまでボタンの横に「手動再スキャンを要求しました」と出ます
     (バルーンは出しません)。取り込みが止まっているときは押せず、その理由をボタンの横に出します。
     番組ページで「確認」を押してから保存と適用が終わるまでも押せません。

@@ -28,7 +28,7 @@ public sealed class AttentionCommandTests : IDisposable
 
     private static readonly DateTimeOffset FailedAt = new(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
 
-    // 3 種とも 1 件以上ある状態:兄弟フォルダ Y(1) / Y(2)(設定なし)、理由と時刻のある失敗 1 件、
+    // 3 種(差し替え放送の疑い〈#233〉を除く)とも 1 件以上ある状態:兄弟フォルダ Y(1) / Y(2)(設定なし)、理由と時刻のある失敗 1 件、
     // X(1) / X(2) を X へ統合した設定と食い違った回。理由・時刻の無い失敗などは、表を直接出すテスト(Render)で確かめる。
     private void AllThreeKinds()
     {

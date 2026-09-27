@@ -138,7 +138,7 @@
     </select></label>
   <label>要対応
     <select data-key="attn">
-      <option value="items">3 種あり</option>
+      <option value="items">4 種あり</option>
       <option value="empty">なし</option>
     </select></label>
   <label>取込履歴
@@ -246,7 +246,7 @@
         <span class="an" data-w="W-113">再スキャンを要求できませんでした(gui.log 参照)</span>。</div>
     </div>
 
-    <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startloop,startfail" data-w="W-120">要対応 7 件</span></h3>
+    <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startloop,startfail" data-w="W-120">要対応 10 件</span></h3>
     <div data-if="run:noconfig" class="msg warn" data-w="W-137">設定を読めないため、要対応を出せません</div>
     <div data-if="run:noconfig" class="mocknote">台帳か programs.json・stations.json を読めず計算できなかったときは、
       <span class="an" data-w="W-137">要対応を出せませんでした: {理由}</span> を出す(縮退していなくても)。</div>
@@ -309,7 +309,16 @@
         </div>
         <div class="item"><div data-w="W-135">TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」 24 回</div></div>
         <div class="item"><div class="an" data-w="W-135">TBSラジオ「伊集院光 深夜の馬鹿力」 パートの番号が変わる 3 回</div></div>
-        <div class="mocknote">今の設定で放送局が変わる回(stations.json で局の正規名を変えた等)は、再適用で揃えないので、ここには出さない(#156)。局の変更は、再適用の確認の「対象外 N 回」で知らせる。「再適用の確認へ」は、番組ページの確認の画面(W-252 / W-253 / W-312)へ移り、「戻る」でホームへ戻る(設定ページの stations.json の「再読み込み」と同じ入口。#164)。押せないときは理由をボタンの下に出す:取り込みが止まっている → <span class="an" data-w="W-119">取り込みが止まっているため、再適用を確かめられません</span>、番組ページに保存していない変更がある → W-256。確かめている間は W-240 を出す。揃う回が無ければ移らずに W-254、確かめられなければ W-255 を、同じくボタンの下に 1 行で出す。この 1 行は、要対応を計算し直して食い違いの中身が変わったら消す。</div>
+        <div class="item"><div class="an" data-w="W-158">文化放送「日向坂46の「ひ」」 出力先から消す予定 3 回(ファイル名の番組名「文化放送スポーツスペシャル プロ野球日本シリーズ2024 第2戦」)</div></div>
+        <div class="mocknote">今の設定で放送局が変わる回(stations.json で局の正規名を変えた等)は、再適用で揃えないので、ここには出さない(#156)。局の変更は、再適用の確認の「対象外 N 回」で知らせる。「再適用の確認へ」は、番組ページの確認の画面(W-252 / W-253 / W-312)へ移り、「戻る」でホームへ戻る(設定ページの stations.json の「再読み込み」と同じ入口。#164)。押せないときは理由をボタンの下に出す:取り込みが止まっている → <span class="an" data-w="W-119">取り込みが止まっているため、再適用を確かめられません</span>、番組ページに保存していない変更がある → W-256。確かめている間は W-240 を出す。揃う回が無ければ移らずに W-254、確かめられなければ W-255 を、同じくボタンの下に 1 行で出す。この 1 行は、要対応を計算し直して食い違いの中身が変わったら消す。W-158 は、差し替え放送で「取り込まない」と判断した取り込み済みの回(ADR-0021。再適用で出力先から消す。#234)。</div>
+      </div>
+
+      <div class="attn">
+        <h4 data-w="W-155">差し替え放送の疑い</h4>
+        <div class="sub" data-w="W-157">ファイル名の番組名がフォルダ名を含まない回です。判断するまで、新しい回は取り込まずに保留します(判断は programs.json の FilenamePrograms に書きます)</div>
+        <div class="item"><div data-w="W-156">ニッポン放送「パンサー向井のチャリで30分」に「辛坊治郎 ズーム そこまで言うか！」 保留 1 回 / 取り込み済み 4 回</div></div>
+        <div class="item"><div data-w="W-156">TBSラジオ「パンサー向井のふらっと(1)」に「パンサー向井の#ふらっと (1)」 取り込み済み 933 回</div></div>
+        <div class="mocknote">ADR-0021(#233)。組ごとに 1 行。保留 = 取り込まずにいる回(保留のストア)、取り込み済み = 仕組みを入れる前にフォルダの番組へ取り込んだ回(台帳)。数が 0 の側は出さない。判断のボタン(この番組の回 / 取り込まない / 別の番組…)は #235 で足す。</div>
       </div>
     </div>
 
