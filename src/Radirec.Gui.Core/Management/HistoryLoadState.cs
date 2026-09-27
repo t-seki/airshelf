@@ -11,6 +11,12 @@ public enum HistoryLoadState
 
     /// <summary>設定を読めず、台帳の場所が決まらない(W-150)。</summary>
     Unavailable,
+
+    /// <summary>
+    /// まだ一度も読み終えていない(W-154 <c>読み込み中…</c>)。台帳は UI スレッドの外で読む(NAS に届かないと SMB の
+    /// 時間切れまで返らない。#222)。読み直しの間はこの状態にせず、前の行と状態を出したままにする。
+    /// </summary>
+    Loading,
 }
 
 /// <summary>取込履歴の文言(docs/mockups/management-window.md)。</summary>
@@ -21,6 +27,9 @@ public static class HistoryText
 
     /// <summary>W-150。</summary>
     public const string Unavailable = "設定を読めないため、取込履歴を出せません";
+
+    /// <summary>W-154(最初の読み込みの途中)。</summary>
+    public const string Loading = "読み込み中…";
 
     /// <summary>W-151(取込履歴ページの件数)。</summary>
     public static string Count(int count) => $"{count} 件";
