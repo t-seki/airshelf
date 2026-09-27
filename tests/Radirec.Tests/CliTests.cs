@@ -416,6 +416,20 @@ public sealed class CliTests
     }
 
     [Fact]
+    public void reapplyのJSONは出力先から消す回をremoveで出し_揃っていないとする()
+    {
+        var report = Reapply(ReapplyAction.Remove);
+        using var doc = Parse(CliJson.Result("reapply", ExitCodeRules.For(report), ReapplyJson.From(report, planId: null)));
+        var result = doc.RootElement.GetProperty("result");
+
+        Assert.Equal(0, doc.RootElement.GetProperty("exitCode").GetInt32());
+        Assert.False(result.GetProperty("aligned").GetBoolean());
+        Assert.Equal(1, result.GetProperty("counts").GetProperty("remove").GetInt32());
+        Assert.Equal(1, result.GetProperty("albums")[0].GetProperty("removals").GetInt32());
+        Assert.Equal("remove", result.GetProperty("items")[0].GetProperty("action").GetString());
+    }
+
+    [Fact]
     public void refreshのJSONは状態と理由を持つ()
     {
         var result = new RefreshJson(RefreshStatus.Failed, "503");

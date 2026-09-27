@@ -36,6 +36,13 @@ public interface ILedger
     bool Replace(LedgerEntry current, LedgerEntry updated);
 
     /// <summary>
+    /// 記録 1 件を消す(再適用で、ファイル名の番組名に「取り込まない」と判断した回を出力先から消すとき。ADR-0021)。
+    /// 主キーと取込元の両方が一致する行だけを消し、無ければ何も変えずに false を返す。取込元は台帳に無くなるので、
+    /// 判断を戻せば次の走査で取り込み直される。
+    /// </summary>
+    bool Remove(LedgerEntry entry);
+
+    /// <summary>
     /// 取り込み済みの全記録を取込日時の降順(新しい順)で返す(取込履歴ビュー用。S4)。
     /// 読み取り専用の用途で、書き込み側とは独立の接続から呼ばれうる。使用不能な台帳(dry-run の
     /// NullLedger・互換スキーマでない read-only DB)は空を返す。

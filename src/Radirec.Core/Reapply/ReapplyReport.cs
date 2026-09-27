@@ -35,6 +35,13 @@ public enum ReapplyAction
     /// 次の再適用で揃う。
     /// </summary>
     Failed,
+
+    /// <summary>
+    /// ファイル名の番組名に「取り込まない」と判断した回(ADR-0021)。出力先のファイルを消し、台帳の行を消し、空になったフォルダを消す。
+    /// 出力ファイルが既に無ければ台帳の行だけを消す(<see cref="ReapplyItem.Reason"/> に添える)。取込元は消さないので、
+    /// 判断を戻せば次の走査で取り込み直される。値の並びを変えないよう最後に置く(表示の順は各表示側で決める)。
+    /// </summary>
+    Remove,
 }
 
 /// <summary>再適用の 1 回分。</summary>
@@ -73,9 +80,10 @@ public sealed record ReapplyItem
 }
 
 /// <summary>アルバム単位のまとめ(変更前 → 変更後の組ごとの件数)。</summary>
+/// <param name="Removals">出力先から消す回(<see cref="ReapplyAction.Remove"/>)。</param>
 public sealed record ReapplyAlbumSummary(
     string Station, string FromAlbum, string ToAlbum,
-    int Moves, int LedgerAndTags, int LedgerOnly, int DuplicatesLeft, int Excluded, int Failed);
+    int Moves, int LedgerAndTags, int LedgerOnly, int DuplicatesLeft, int Excluded, int Failed, int Removals = 0);
 
 /// <summary>
 /// 統合設定の無いフォルダを含む兄弟フォルダの組(再適用の確認と、管理画面の要対応で、分割されたままの番組に気づけるようにする。
@@ -110,7 +118,7 @@ public sealed record ReapplyReport
     public required IReadOnlyList<UnintegratedSiblingGroup> UnintegratedSiblings { get; init; }
 
     /// <summary>
-    /// ファイルを書き換えた後の Jellyfin ライブラリ更新(<see cref="RewritesFiles"/> が 0 件・dry-run は
+    /// ファイルを書き換えた・消した後の Jellyfin ライブラリ更新(<see cref="ChangesLibrary"/> が偽・dry-run は
     /// <see cref="LibraryRefreshStatus.NotNeeded"/>)。
     /// </summary>
     public LibraryRefreshStatus LibraryRefresh { get; init; }
@@ -119,15 +127,21 @@ public sealed record ReapplyReport
 
     public int Count(ReapplyAction action) => Items.Count(i => i.Action == action);
 
-    /// <summary>ファイルか台帳を変える回(移動・台帳とタグ・台帳のみ・重複)があるか。</summary>
+    /// <summary>ファイルか台帳を変える回(移動・台帳とタグ・台帳のみ・重複・出力先から消す)があるか。</summary>
     public bool HasChanges => Items.Any(i => i.Action is ReapplyAction.Move or ReapplyAction.LedgerAndTags
-        or ReapplyAction.LedgerOnly or ReapplyAction.DuplicateLeft);
+        or ReapplyAction.LedgerOnly or ReapplyAction.DuplicateLeft or ReapplyAction.Remove);
 
     /// <summary>
-    /// 出力ファイル(置き場所かタグ)を書き換える回の数(移動・台帳とタグ・移動先のタグも直す重複)。Jellyfin の
-    /// ライブラリ更新と、メタデータ更新の案内はこれが 1 以上のときに出す。
+    /// 出力ファイル(置き場所かタグ)を書き換える回の数(移動・台帳とタグ・移動先のタグも直す重複)。メタデータ更新の案内は
+    /// これが 1 以上のときに出す。出力先から消す回はタグを書き換えないので含めない(ライブラリ更新は <see cref="ChangesLibrary"/>)。
     /// </summary>
     public int RewritesFiles => Count(ReapplyAction.Move) + DuplicatesRewritingTags + Count(ReapplyAction.LedgerAndTags);
+
+    /// <summary>
+    /// Jellyfin のライブラリの中身を変える回があるか(ファイルを書き換えた回か、出力先から消した回)。ライブラリ更新(通常スキャン)は
+    /// これが真のときに行う。
+    /// </summary>
+    public bool ChangesLibrary => RewritesFiles > 0 || Count(ReapplyAction.Remove) > 0;
 
     /// <summary>重複の回のうち、移動先のファイルのタグも直す回の数。</summary>
     public int DuplicatesRewritingTags => Items.Count(i => i.Action == ReapplyAction.DuplicateLeft && i.RewritesTags);
@@ -159,6 +173,7 @@ public sealed record ReapplyReport
             g.Count(i => i.Action == ReapplyAction.LedgerOnly),
             g.Count(i => i.Action == ReapplyAction.DuplicateLeft),
             g.Count(i => i.Action == ReapplyAction.Excluded),
-            g.Count(i => i.Action == ReapplyAction.Failed)))
+            g.Count(i => i.Action == ReapplyAction.Failed),
+            g.Count(i => i.Action == ReapplyAction.Remove)))
         .ToList();
 }

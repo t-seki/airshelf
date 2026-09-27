@@ -30,7 +30,8 @@ public sealed record ReapplyJson(
             report.Count(ReapplyAction.LedgerOnly),
             report.Count(ReapplyAction.DuplicateLeft),
             report.Count(ReapplyAction.Excluded),
-            report.Count(ReapplyAction.Failed)),
+            report.Count(ReapplyAction.Failed),
+            report.Count(ReapplyAction.Remove)),
         report.DuplicatesRewritingTags,
         report.Albums,
         report.Items.Select(i => new ReapplyItemJson(
@@ -42,9 +43,13 @@ public sealed record ReapplyJson(
 }
 
 /// <summary>扱いごとの件数(表の下の 1 行と同じ)。</summary>
-public sealed record ReapplyCountsJson(int Move, int LedgerAndTags, int LedgerOnly, int DuplicateLeft, int Excluded, int Failed);
+/// <param name="Remove">出力先から消す回(ファイル名の番組名に「取り込まない」と判断した回。ADR-0021)。</param>
+public sealed record ReapplyCountsJson(
+    int Move, int LedgerAndTags, int LedgerOnly, int DuplicateLeft, int Excluded, int Failed, int Remove);
 
-/// <param name="Action">扱い(<c>move</c>・<c>ledgerAndTags</c>・<c>ledgerOnly</c>・<c>duplicateLeft</c>・<c>excluded</c>・<c>failed</c>)。</param>
+/// <param name="Action">
+/// 扱い(<c>move</c>・<c>ledgerAndTags</c>・<c>ledgerOnly</c>・<c>duplicateLeft</c>・<c>excluded</c>・<c>failed</c>・<c>remove</c>)。
+/// </param>
 /// <param name="Reason">対象外・失敗の理由、重複の注記。無ければ null。</param>
 /// <param name="RewritesTags">置き場所を変えずにタグ(album / title / track)を書き換えるか。</param>
 public sealed record ReapplyItemJson(

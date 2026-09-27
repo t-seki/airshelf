@@ -22,6 +22,8 @@ namespace Radirec.Core.Reapply;
 /// 次の再適用で揃う(ADR-0003 と同じ考え方)。ファイルが既に今の設定の場所にある回は、タグ(<c>album</c> /
 /// <c>title</c> / <c>track</c>)が違えば同じ場所で書き換えてから台帳を直し、揃っていれば台帳だけを直す(#141)。
 /// 移動先に同じ内容のファイルがある回(重複)も、移動先のタグが違えば同じように書き換える。
+/// ファイル名の番組名に「取り込まない」と判断した回(ADR-0021)は、出力先のファイル → 台帳の行 → 空になったフォルダの順に消す
+/// (取込元は消さない)。「別の番組として取り込む」と判断した回は、解決したアルバムが変わるので、統合の変更と同じく動かす。
 /// </remarks>
 public sealed class ReapplyService(
     IFileSystem fileSystem,
@@ -78,13 +80,16 @@ public sealed class ReapplyService(
             var file = resolved.Source;
             knownFolders.Add(new ProgramFolder(episode.Station, file.ProgramFolder));
 
-            // ファイル名の番組名に「取り込まない」と判断した回(ADR-0021)は動かさない。アルバムはフォルダの番組のまま解決されるので、
-            // 「別の番組」から変えた回を記録どおりでないとして予約した番組のアルバムへ動かしてしまうため。記録どおりの回も同じく
-            // 対象外として出す(どちらも消す予定の回。放送局が変わる回と同じく、揃っているかの判定には数えず、予定 ID には含む)。
-            // 出力先から消すのは #234 で、この対象外を「消す」区分に差し替える。
+            // ファイル名の番組名に「取り込まない」と判断した回(ADR-0021)は、出力先から消す。記録どおりかの判定より前に見る
+            // (アルバムはフォルダの番組のまま解決されるので、先に見ないと「別の番組」から変えた回を予約した番組のアルバムへ
+            // 動かしてしまう。記録どおりの回も消す対象)。放送局が変わる回も消す(置き場所を決め直すわけではないので、
+            // 放送局の変更を再適用しない理由が当てはまらない。要対応の「出力先から消す予定」と同じ回を扱う)。
             if (resolved.IsSkipDecided)
             {
-                items.Add(Item(entry, ReapplyAction.Excluded, entry.Program, entry.OutputPath, SkipDecidedReason));
+                var removal = PlanRemoval(entry);
+                if (!dryRun)
+                    removal = ApplyRemoval(removal, entry, vacatedDirectories);
+                items.Add(removal);
                 continue;
             }
 
@@ -126,8 +131,8 @@ public sealed class ReapplyService(
             UnintegratedSiblings = Reapply.UnintegratedSiblings.Find(knownFolders, programResolver, keepSeparate ?? []),
         };
 
-        // ファイル(置き場所かタグ)を書き換えた回があれば、Jellyfin の通常スキャンを起動する。
-        var (refreshStatus, refreshError) = dryRun || report.RewritesFiles == 0
+        // ファイル(置き場所かタグ)を書き換えた・消した回があれば、Jellyfin の通常スキャンを起動する。
+        var (refreshStatus, refreshError) = dryRun || !report.ChangesLibrary
             ? (LibraryRefreshStatus.NotNeeded, null)
             : await LibraryRefresh.RunAsync(refresher, cancellationToken);
 
@@ -173,8 +178,42 @@ public sealed class ReapplyService(
             : item with { Action = ReapplyAction.LedgerAndTags, RewritesTags = true };
     }
 
-    private const string SkipDecidedReason =
-        "ファイル名の番組名に「取り込まない」と判断した回です。再適用はまだ出力先から消しません(#234)";
+    // 「取り込まない」と判断した回の予定(副作用なし。dry-run と実行で同じ)。移動先は無いので、変更後のアルバム・場所は今のまま。
+    // 出力ファイルが既に無ければ、台帳の行だけを消す(利用者が手で消した等)。
+    private ReapplyItem PlanRemoval(LedgerEntry entry) =>
+        fileSystem.File.Exists(entry.OutputPath)
+            ? Item(entry, ReapplyAction.Remove, entry.Program, entry.OutputPath)
+            : Item(entry, ReapplyAction.Remove, entry.Program, entry.OutputPath, RemoveLedgerOnlyReason);
+
+    // 出力先のファイルを消してから台帳の行を消す(逆の順だと、ファイルを消せなかったときに台帳から見えないファイルが残る)。
+    // ファイルを消した後・台帳の前に止まっても、次の再適用が「出力ファイルが無い回」として台帳の行だけを消す。取込元には触れない。
+    private ReapplyItem ApplyRemoval(ReapplyItem item, LedgerEntry entry, HashSet<string> vacatedDirectories)
+    {
+        try
+        {
+            if (fileSystem.File.Exists(entry.OutputPath))
+            {
+                fileSystem.File.Delete(entry.OutputPath);
+                vacatedDirectories.Add(fileSystem.Path.GetDirectoryName(entry.OutputPath)!);
+            }
+
+            if (!ledger.Remove(entry))
+                return item with
+                {
+                    Action = ReapplyAction.Failed,
+                    Reason = "台帳の記録を消せませんでした(記録が見つかりません)",
+                };
+
+            return item;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 消せなかった(他のアプリが開いている等)。ファイルも台帳も残り、次の再適用でもう一度消す。
+            return item with { Action = ReapplyAction.Failed, Reason = ex.Message };
+        }
+    }
+
+    private const string RemoveLedgerOnlyReason = "出力ファイルが見つかりません。台帳の記録だけを消します";
 
     private const string DuplicateReason ="移動先に同じ内容のファイルがあるため、元の場所のファイルを残しています";
 

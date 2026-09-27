@@ -36,10 +36,11 @@ public static class ReapplyDialogFormatter
 
     // ---- 確認(dry-run の結果)----
 
-    /// <summary>確認で変える回の数(移動・台帳とタグ・台帳だけ・重複。対象外は含めない)。</summary>
+    /// <summary>確認で変える回の数(移動・台帳とタグ・台帳だけ・重複・出力先から消す。対象外は含めない)。</summary>
     public static int ChangeCount(ReapplyReport plan)
         => plan.Count(ReapplyAction.Move) + plan.Count(ReapplyAction.LedgerAndTags)
-           + plan.Count(ReapplyAction.LedgerOnly) + plan.Count(ReapplyAction.DuplicateLeft);
+           + plan.Count(ReapplyAction.LedgerOnly) + plan.Count(ReapplyAction.DuplicateLeft)
+           + plan.Count(ReapplyAction.Remove);
 
     /// <summary>
     /// dry-run の結果が揃っている(<see cref="ReapplyReport.IsAligned"/>)ときの表示(W-248)。対象外の回が残っていれば
@@ -78,6 +79,8 @@ public static class ReapplyDialogFormatter
         var notes = new List<string>();
         if (plan.Count(ReapplyAction.LedgerAndTags) > 0)
             notes.Add("台帳とタグを直す回は、ファイル名はそのままで、ファイルのタグ(album / title / track)を書き換えます。");
+        if (plan.Count(ReapplyAction.Remove) > 0)
+            notes.Add(RemoveNote);
         if (plan.Count(ReapplyAction.DuplicateLeft) > 0)
             notes.Add("重複が残っている回は、移動先に同じ内容のファイルがあるため、元の場所のファイルを消さずに残します(確かめて手で消してください)。");
         if (plan.DuplicatesRewritingTags > 0)
@@ -120,6 +123,8 @@ public static class ReapplyDialogFormatter
             lines.Add("失敗した回は、もう一度再適用すると揃います。");
         if (result.Count(ReapplyAction.DuplicateLeft) > 0)
             lines.Add("重複が残っている回は、元の場所のファイルを残しています(確かめて手で消してください)。");
+        if (result.Count(ReapplyAction.Remove) > 0)
+            lines.Add("出力先から消した回の録音は、取込元に残っています(判断を「この番組の回」などに戻すと、次の取り込みで取り込み直されます)。");
         if (lines.Count > 0)
             sections.Add(string.Join("\n", lines));
 
@@ -157,17 +162,27 @@ public static class ReapplyDialogFormatter
 
     // ---- 部品 ----
 
-    // 全体の件数。失敗は dry-run では起きないので、あるときだけ出す。
+    /// <summary>確認の注記(出力先から消す回があるとき)。</summary>
+    public const string RemoveNote =
+        "出力先から消す回は、ファイル名の番組名に「取り込まない」と判断した回です。出力先のファイルと台帳の記録を消します" +
+        "(取込元の録音は消しません。判断を戻せば取り込み直されます)。";
+    // 全体の件数。失敗は dry-run では起きないので、あるときだけ出す。出力先から消す回も、あるときだけ出す
+    // (差し替え放送の判断が無い利用者の表示を変えないため)。NAS 上のファイルに書き込む区分の並びに置く(#141)。
     private static string Totals(ReapplyReport report)
     {
         var parts = new List<string>
         {
             $"移動・リネーム {report.Count(ReapplyAction.Move)} 回",
             $"台帳とタグを直す {report.Count(ReapplyAction.LedgerAndTags)} 回",
+        };
+        if (report.Count(ReapplyAction.Remove) > 0)
+            parts.Add($"出力先から消す {report.Count(ReapplyAction.Remove)} 回");
+        parts.AddRange(
+        [
             $"台帳だけ直す {report.Count(ReapplyAction.LedgerOnly)} 回",
             $"重複が残っている {report.Count(ReapplyAction.DuplicateLeft)} 回",
             $"対象外 {report.Count(ReapplyAction.Excluded)} 回",
-        };
+        ]);
         if (report.Count(ReapplyAction.Failed) > 0)
             parts.Add($"失敗 {report.Count(ReapplyAction.Failed)} 回");
         return string.Join(" / ", parts);
@@ -196,6 +211,7 @@ public static class ReapplyDialogFormatter
         var parts = new List<string>();
         if (album.Moves > 0) parts.Add($"移動・リネーム {album.Moves}");
         if (album.LedgerAndTags > 0) parts.Add($"台帳とタグを直す {album.LedgerAndTags}");
+        if (album.Removals > 0) parts.Add($"出力先から消す {album.Removals}");
         if (album.LedgerOnly > 0) parts.Add($"台帳だけ直す {album.LedgerOnly}");
         if (album.DuplicatesLeft > 0) parts.Add($"重複が残っている {album.DuplicatesLeft}");
         if (album.Excluded > 0) parts.Add($"対象外 {album.Excluded}");
@@ -214,7 +230,7 @@ public static class ReapplyDialogFormatter
         return $"{sibling.Group.Station}: {folders}";
     }
 
-    // 移動した後の Jellyfin ライブラリ更新。移動が無ければ(NotNeeded)出さない。
+    // 移動・消した後の Jellyfin ライブラリ更新。無ければ(NotNeeded)出さない。
     private static string? Refresh(ReapplyReport report) => report.LibraryRefresh switch
     {
         LibraryRefreshStatus.Started => "Jellyfin ライブラリ更新: 起動しました",
@@ -232,6 +248,7 @@ public static class ReapplyDialogFormatter
         ReapplyAction.DuplicateLeft => "重複",
         ReapplyAction.Excluded => "対象外",
         ReapplyAction.Failed => "失敗",
+        ReapplyAction.Remove => dryRun ? "消す予定" : "消した",
         _ => action.ToString(),
     };
 
