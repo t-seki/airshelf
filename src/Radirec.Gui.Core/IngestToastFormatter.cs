@@ -28,6 +28,22 @@ public static class IngestToastFormatter
     public static IReadOnlyList<string> BuildFailureTexts(IngestFailurePayload payload) =>
         Compose($"取込失敗 {payload.FailedCount}件", FormatFiles(payload), payload.Truncated);
 
+    // ---- 保留(差し替え放送の疑い。ADR-0021)----
+
+    /// <summary>
+    /// 保留の通知(「判断待ち N件」)の text 要素列。本文は (ファイル名の番組名, フォルダ) ごとに 1 行。判断は管理画面の要対応で行う。
+    /// </summary>
+    public static IReadOnlyList<string> BuildHeldTexts(IngestHeldPayload payload) =>
+        Compose($"判断待ち {payload.HeldCount}件（差し替え放送の疑い）", FormatHeld(payload), payload.Truncated);
+
+    private static IReadOnlyList<string> FormatHeld(IngestHeldPayload payload) =>
+        payload.Groups.Select(FormatHeldGroup).ToList();
+
+    private static string FormatHeldGroup(IngestHeldGroupPayload group) =>
+        group.Count > 1
+            ? $"{group.FilenameProgram}（{group.Folder}）{group.Count}件"
+            : $"{group.FilenameProgram}（{group.Folder}）";
+
     /// <summary>
     /// 表題 + 本文行(整形済み)から text 要素列を組み立てる。要約・失敗・不在中で共通の切り詰めロジック
     /// (「…ほか」の付与・要素数上限)を 1 箇所に集約し、成功/失敗で挙動が drift しないようにする。

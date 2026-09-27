@@ -78,6 +78,16 @@ public sealed class ReapplyService(
             var file = resolved.Source;
             knownFolders.Add(new ProgramFolder(episode.Station, file.ProgramFolder));
 
+            // ファイル名の番組名に「取り込まない」と判断した回(ADR-0021)は動かさない。アルバムはフォルダの番組のまま解決されるので、
+            // 「別の番組」から変えた回を記録どおりでないとして予約した番組のアルバムへ動かしてしまうため。記録どおりの回も同じく
+            // 対象外として出す(どちらも消す予定の回。放送局が変わる回と同じく、揃っているかの判定には数えず、予定 ID には含む)。
+            // 出力先から消すのは #234 で、この対象外を「消す」区分に差し替える。
+            if (resolved.IsSkipDecided)
+            {
+                items.Add(Item(entry, ReapplyAction.Excluded, entry.Program, entry.OutputPath, SkipDecidedReason));
+                continue;
+            }
+
             // 記録どおり(アルバム名・パート・放送局が今の設定と同じ)の回は触らない。2 回目の再適用が何もしないのはこのため。
             if (resolved.IsAsRecorded)
                 continue;
@@ -163,7 +173,10 @@ public sealed class ReapplyService(
             : item with { Action = ReapplyAction.LedgerAndTags, RewritesTags = true };
     }
 
-    private const string DuplicateReason = "移動先に同じ内容のファイルがあるため、元の場所のファイルを残しています";
+    private const string SkipDecidedReason =
+        "ファイル名の番組名に「取り込まない」と判断した回です。再適用はまだ出力先から消しません(#234)";
+
+    private const string DuplicateReason ="移動先に同じ内容のファイルがあるため、元の場所のファイルを残しています";
 
     private const string DuplicateReasonWithTags =
         DuplicateReason + "。移動先のファイルのタグ(album / title / track)を直します";

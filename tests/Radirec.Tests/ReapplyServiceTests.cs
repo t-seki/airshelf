@@ -67,12 +67,13 @@ public sealed class ReapplyServiceTests : IDisposable
             ],
         };
 
-    // 無音フィクスチャを らじれこ風の {局}/{番組}/ に置く(ファイル名の番組部は識別に使わないので表示用)。
+    // 無音フィクスチャを らじれこ風の {局}/{番組}/ に置く。ファイル名の番組部は既定でフォルダ名にする
+    // (フォルダ名を含まないと、差し替え放送の疑いとして保留になり取り込まれない。ADR-0021)。
     private string PlaceSource(string folder, string stamp, string station = Station, string? program = null)
     {
         var dir = Path.Combine(RadioRoot, station, folder);
         Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, $"[{station}]{program ?? Album}(TimeFree)_{stamp}.m4a");
+        var path = Path.Combine(dir, $"[{station}]{program ?? folder}(TimeFree)_{stamp}.m4a");
         File.Copy(Fixture, path);
         return path;
     }
@@ -139,6 +140,70 @@ public sealed class ReapplyServiceTests : IDisposable
             comparer,
             refresher ?? new NullLibraryRefresher(),
             programs.KeepSeparate);
+    }
+
+    // ---- 差し替え放送の「取り込まない」(ADR-0021)。消すのは #234 で、それまでは動かさず対象外にする ----
+
+    private const string SubstituteName = "試験の特番";
+
+    private static ProgramMasterConfig Decided(FilenameProgramTreatment treat, string? album = null) => new()
+    {
+        FilenamePrograms =
+        [
+            new FilenameProgramDecision
+            {
+                Match = new FilenameProgramMatch { Station = Station, Folder = Folder1, FilenameProgram = SubstituteName },
+                Treat = treat,
+                Album = album,
+            },
+        ],
+    };
+
+    [Fact]
+    public async Task 別の番組から取り込まないに変えた回は_予約した番組へ動かさず対象外にする()
+    {
+        // rc1 の実機確認で見つかった不具合:Skip の回はアルバムがフォルダの番組のまま解決されるので、「別の番組」で取り込んだ回が
+        // 記録どおりでないとされ、予約した番組のアルバムへ移動しようとしていた。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunOnceAsync(dryRun: false);
+        var imported = OutputOf("試験の別番組", "2024-12-23");
+        Assert.True(File.Exists(imported));
+
+        var plan = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true);
+        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false);
+
+        foreach (var report in new[] { plan, applied })
+        {
+            var item = Assert.Single(report.Items);
+            Assert.Equal(ReapplyAction.Excluded, item.Action);
+            Assert.Equal(imported, item.ToPath);
+            Assert.Contains("取り込まない", item.Reason);
+            Assert.True(report.IsAligned); // 放送局が変わる回と同じく、揃っているかの判定には数えない
+        }
+        Assert.True(File.Exists(imported));
+        Assert.False(Directory.Exists(Path.Combine(OutputRoot, Station, Folder1)));
+        Assert.Equal("試験の別番組", Assert.Single(ledger.ListAll()).Program);
+    }
+
+    [Fact]
+    public async Task フォルダの番組のまま取り込まれた回を取り込まないにしても_動かさず対象外にする()
+    {
+        // 記録どおり(アルバムはフォルダの番組)の Skip の回も、消す予定の回として同じく対象外に出す(予定 ID に含む)。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        var imported = OutputOf(Folder1, "2024-12-23");
+
+        var same = await Reapply(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunAsync(dryRun: true);
+        var skip = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false);
+
+        Assert.Empty(same.Items);
+        var item = Assert.Single(skip.Items);
+        Assert.Equal(ReapplyAction.Excluded, item.Action);
+        Assert.True(skip.IsAligned);
+        Assert.NotEqual(ReapplyPlanId.Of(same), ReapplyPlanId.Of(skip));
+        Assert.True(File.Exists(imported));
     }
 
     // (1) の 1 回だけを統合設定の無いまま取り込み、統合先の名前へファイルを mv しただけ(タグは (1) のまま)の状態を作る。
@@ -788,7 +853,7 @@ public sealed class ReapplyServiceTests : IDisposable
         const string main = "垣花正あなたとハッピー！";
         const string part2 = "垣花正あなたとハッピー！Part2";
         PlaceSource(main, Dec23At0830, station, main);
-        PlaceSource(part2, Dec23At1000, station, main);
+        PlaceSource(part2, Dec23At1000, station, part2);
         var ledger = Ledger();
         await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
 

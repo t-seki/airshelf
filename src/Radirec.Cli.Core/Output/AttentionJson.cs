@@ -7,21 +7,33 @@ namespace Radirec.Cli.Core.Output;
 /// <c>attention --json</c> の <c>result</c>(#183)。管理画面のホームの要対応と同じもの(<see cref="AttentionItems"/>)を、
 /// 表の見た目に整形する前の値で出す。
 /// </summary>
-/// <param name="Count">要対応の件数。兄弟フォルダの組・失敗・再適用が要る番組のまとまりを 1 件ずつ数えた合計(ホームの見出しの件数と同じ)。</param>
+/// <param name="Count">
+/// 要対応の件数。兄弟フォルダの組・失敗・再適用が要る番組のまとまり・差し替え放送の疑いの組・出力先から消す予定のまとまりを
+/// 1 件ずつ数えた合計(ホームの見出しの件数と同じ)。
+/// </param>
 /// <param name="UnintegratedSiblings">統合設定の無い兄弟フォルダの組。programs.json を使わない設定では空。</param>
 /// <param name="UnresolvedFailures">解決していない取込失敗(記録した時刻の新しい順。時刻を持たない失敗は後ろ)。</param>
 /// <param name="SettingsDrift">番組の設定と食い違ったままの回のまとまり(再適用すれば消える)。</param>
+/// <param name="SubstituteSuspects">
+/// 差し替え放送の疑い(ADR-0021)。(局, フォルダ, ファイル名の番組名) の組ごとに、保留した回と取り込み済みの判断待ちの回の数。
+/// programs.json の <c>FilenamePrograms</c> に判断を書けば消える。
+/// </param>
+/// <param name="PendingRemovals">「取り込まない」と判断された取り込み済みの回のまとまり(再適用で出力先から消す。ADR-0021)。</param>
 public sealed record AttentionJson(
     int Count,
     IReadOnlyList<UnintegratedSiblingJson> UnintegratedSiblings,
     IReadOnlyList<UnresolvedFailureJson> UnresolvedFailures,
-    IReadOnlyList<SettingsDriftGroup> SettingsDrift)
+    IReadOnlyList<SettingsDriftGroup> SettingsDrift,
+    IReadOnlyList<SubstituteSuspectGroup> SubstituteSuspects,
+    IReadOnlyList<PendingRemovalGroup> PendingRemovals)
 {
     public static AttentionJson From(AttentionItems items) => new(
-        items.UnintegratedSiblings.Count + items.UnresolvedFailures.Count + items.SettingsDrift.Count,
+        items.Count,
         items.UnintegratedSiblings.Select(UnintegratedSiblingJson.From).ToList(),
         items.UnresolvedFailures.Select(UnresolvedFailureJson.From).ToList(),
-        items.SettingsDrift);
+        items.SettingsDrift,
+        items.SubstituteSuspects,
+        items.PendingRemovals);
 }
 
 /// <summary>解決していない取込失敗の 1 件。</summary>

@@ -227,8 +227,29 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <!-- W-135 -->
+                            <!-- W-135 / W-158(出力先から消す予定。ADR-0021) -->
                             <ItemsControl ItemsSource="{Binding DriftRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock TextWrapping="Wrap" Margin="0,2" Text="{Binding Line}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 差し替え放送の疑い(W-155〜W-157。ADR-0021)。判断のボタンは #235 ===== -->
+                    <Border Padding="14,8" CornerRadius="4" BorderThickness="1" Margin="0,6,0,0"
+                            BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
+                            Visibility="{Binding HasSubstitutes, Converter={StaticResource Visible}}">
+                        <StackPanel>
+                            <!-- W-155 -->
+                            <TextBlock FontWeight="SemiBold" Margin="0,0,0,2" Text="{x:Static m:AttentionText.SubstituteHeading}" />
+                            <!-- W-157 -->
+                            <TextBlock Style="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                       Text="{x:Static m:AttentionText.SubstituteHint}" />
+                            <!-- W-156 -->
+                            <ItemsControl ItemsSource="{Binding SubstituteRows}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock TextWrapping="Wrap" Margin="0,2" Text="{Binding Line}" />

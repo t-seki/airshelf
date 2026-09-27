@@ -27,6 +27,34 @@ public sealed class CliTests
     }
 
     [Fact]
+    public void 保留と取り込まない判断は失敗ではないので0()
+    {
+        // ADR-0021。保留は判断を待っているだけで、録音ファイルにも処理にも誤りは無い。
+        var report = Ingest(IngestOutcome.Imported, IngestOutcome.Held, IngestOutcome.SkippedByDecision);
+
+        Assert.Equal(ExitCodes.Success, ExitCodeRules.For(report));
+        Assert.Equal(ExitCodes.Success, ExitCodeRules.For(ScanRunReport.From(report)));
+    }
+
+    [Fact]
+    public void ingestのjsonは保留の件数とファイル名の番組名を出す()
+    {
+        var report = Ingest(IngestOutcome.Held, IngestOutcome.Held, IngestOutcome.SkippedByDecision);
+        report = report with
+        {
+            Items = report.Items.Select(i => i with { FilenameProgram = "特番" }).ToList(),
+        };
+
+        var json = JsonSerializer.SerializeToElement(IngestJson.From(report), CliJson.Options);
+
+        Assert.Equal(2, json.GetProperty("counts").GetProperty("held").GetInt32());
+        Assert.Equal(1, json.GetProperty("counts").GetProperty("skippedByDecision").GetInt32());
+        var item = json.GetProperty("items")[0];
+        Assert.Equal("held", item.GetProperty("outcome").GetString());
+        Assert.Equal("特番", item.GetProperty("filenameProgram").GetString());
+    }
+
+    [Fact]
     public void 取り込みで一部の回が失敗したら4()
     {
         Assert.Equal(ExitCodes.PartialFailure, ExitCodeRules.For(Ingest(IngestOutcome.Imported, IngestOutcome.Failed)));
@@ -217,6 +245,53 @@ public sealed class CliTests
             Directory.Delete(dir, recursive: true);
         }
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task dry_runで別の番組の判断にアルバム名が無ければ_設定の誤りとして1(bool json)
+    {
+        // ADR-0021。JSON として読めても中身が使えない programs.json は、壊れた JSON と同じ「設定の読み込みに失敗しました」で 1。
+        var dir = Directory.CreateTempSubdirectory("radirec-dryrun-programs-").FullName;
+        try
+        {
+            var config = new RadirecConfig
+            {
+                RadioRoot = Path.Combine(dir, "radio"),
+                OutputRoot = Path.Combine(dir, "out"),
+                LedgerPath = Path.Combine(dir, "ledger.db"),
+                StationsFile = Path.Combine(dir, "stations.json"),
+                ProgramsFile = Path.Combine(dir, "programs.json"),
+            };
+            Directory.CreateDirectory(config.RadioRoot);
+            File.WriteAllText(config.ProgramsFile, """
+                { "FilenamePrograms": [ { "Match": { "Station": "TBSラジオ", "Folder": "Z", "FilenameProgram": "特番" },
+                                          "Treat": "OtherProgram" } ] }
+                """);
+            string[] args = json ? ["ingest", "--dry-run", "--json"] : ["ingest", "--dry-run"];
+
+            var (exitCode, output) = await Run(args, new StubConfigSource(config));
+
+            Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+            if (json)
+            {
+                using var doc = JsonDocument.Parse(output);
+                var error = doc.RootElement.GetProperty("error").GetString();
+                Assert.StartsWith("設定の読み込みに失敗しました: ", error);
+                Assert.Contains("Album", error);
+                Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("result").ValueKind);
+            }
+            else
+            {
+                Assert.Contains("設定の読み込みに失敗しました", output);
+                Assert.Contains("Album", output);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task コマンドの実行中の想定外の例外は1でjsonにコマンド名と理由が出る()
     {

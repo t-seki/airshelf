@@ -1224,6 +1224,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
         Defaults = snapshot.Config.Defaults,
         Programs = Programs.Select(r => ProgramsDraft.Copy(r.Current)).ToList(),
         KeepSeparate = KeepSeparate.Select(r => ProgramsDraft.Copy(r.Current)).ToList(),
+        // ファイル名の番組名の判断(ADR-0021)はまだこのページで編集しない(#235)。読んだときのものをそのまま書き戻す(落とさない)。
+        FilenamePrograms = snapshot.Config.FilenamePrograms,
     };
 
     // W-241。変更前 = 消した・変えたエントリの元、変更後 = 足した・変えたエントリの今。

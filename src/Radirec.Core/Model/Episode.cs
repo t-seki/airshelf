@@ -23,6 +23,15 @@ public sealed record Episode
     /// <summary>複数フォルダ統合番組でのパート番号(1 始まり)。単一フォルダなら null。出力名の <c>-N</c> に使う。</summary>
     public int? PartIndex { get; init; }
 
+    /// <summary>ファイル名の番組名(CONTEXT.md)。らじれこ以外は null。</summary>
+    public string? FilenameProgram { get; init; }
+
+    /// <summary>
+    /// ファイル名の番組名から見た扱い(ADR-0021)。<see cref="FilenameProgramVerdict.OtherProgram"/> なら、
+    /// <see cref="Program"/> は判断のアルバム名になっている。
+    /// </summary>
+    public FilenameProgramVerdict FilenameVerdict { get; init; } = FilenameProgramVerdict.ContainsFolder;
+
     public string Station => Identity.CanonicalStation;
     public string Program => Identity.CanonicalProgram;
     public DateOnly BroadcastDate => Identity.BroadcastDate;

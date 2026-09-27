@@ -55,6 +55,30 @@ public static class AttentionText
             ? $"{group.Station}「{group.FromAlbum}」 パートの番号が変わる {group.Count} 回"
             : $"{group.Station}「{group.FromAlbum}」→「{group.ToAlbum}」 {group.Count} 回";
 
+    /// <summary>
+    /// W-158。「取り込まない」と判断された取り込み済みの回の 1 まとまり(ADR-0021)。W-134 の中に W-135 と並べる(再適用で消す)。
+    /// </summary>
+    public static string RemovalLine(PendingRemovalGroup group)
+        => $"{group.Station}「{group.Album}」 出力先から消す予定 {group.Count} 回(ファイル名の番組名「{group.FilenameProgram}」)";
+
+    /// <summary>W-155(種類の見出し)。</summary>
+    public const string SubstituteHeading = "差し替え放送の疑い";
+
+    /// <summary>W-157(W-155 の説明)。</summary>
+    public const string SubstituteHint =
+        "ファイル名の番組名がフォルダ名を含まない回です。判断するまで、新しい回は取り込まずに保留します(判断は programs.json の FilenamePrograms に書きます)";
+
+    /// <summary>W-156。差し替え放送の疑いの 1 組(ADR-0021)。数が 0 の側は出さない。</summary>
+    public static string SuspectLine(SubstituteSuspectGroup group)
+    {
+        var counts = new List<string>();
+        if (group.HeldCount > 0)
+            counts.Add($"保留 {group.HeldCount} 回");
+        if (group.ImportedCount > 0)
+            counts.Add($"取り込み済み {group.ImportedCount} 回");
+        return $"{group.Station}「{group.Folder}」に「{group.FilenameProgram}」 {string.Join(" / ", counts)}";
+    }
+
     /// <summary>W-136(ボタン)。</summary>
     public const string ReapplyConfirm = "再適用の確認へ";
 
@@ -148,13 +172,41 @@ public sealed class FailureAttentionRow
     }
 }
 
-/// <summary>要対応の「再適用が要る番組」の 1 まとまり(W-135)。</summary>
-public sealed class DriftAttentionRow(SettingsDriftGroup drift)
+/// <summary>
+/// 要対応の「再適用が要る番組」の 1 まとまり(W-135)。「取り込まない」と判断された回の「出力先から消す予定」(W-158。ADR-0021)も
+/// 同じ欄に並べる。
+/// </summary>
+public sealed class DriftAttentionRow
 {
-    public SettingsDriftGroup Drift { get; } = drift;
+    public DriftAttentionRow(SettingsDriftGroup drift)
+    {
+        Key = drift;
+        Line = AttentionText.DriftLine(drift);
+    }
 
-    /// <summary>W-135。</summary>
-    public string Line { get; } = AttentionText.DriftLine(drift);
+    public DriftAttentionRow(PendingRemovalGroup removal)
+    {
+        Key = removal;
+        Line = AttentionText.RemovalLine(removal);
+    }
+
+    /// <summary>元のまとまり(<see cref="SettingsDriftGroup"/> か <see cref="PendingRemovalGroup"/>。中身が変わったかの比較に使う)。</summary>
+    public object Key { get; }
+
+    /// <summary>食い違いのまとまり(W-135)。消す予定のまとまり(W-158)なら null。</summary>
+    public SettingsDriftGroup? Drift => Key as SettingsDriftGroup;
+
+    /// <summary>W-135 / W-158。</summary>
+    public string Line { get; }
+}
+
+/// <summary>要対応の「差し替え放送の疑い」の 1 組(W-156。ADR-0021)。判断のボタンは #235 で足す。</summary>
+public sealed class SubstituteAttentionRow(SubstituteSuspectGroup suspect)
+{
+    public SubstituteSuspectGroup Suspect { get; } = suspect;
+
+    /// <summary>W-156。</summary>
+    public string Line { get; } = AttentionText.SuspectLine(suspect);
 }
 
 /// <summary>要対応の「統合設定の無い兄弟フォルダ」の 1 組(W-123〜W-127)。</summary>

@@ -298,6 +298,8 @@ internal static class Program
         builder.Services.AddSingleton<IIngestSummaryPublisher>(
             new GatedIngestSummaryPublisher(toastPublisher, () => toastSetting.Enabled));
         builder.Services.AddSingleton<IIngestFailurePublisher>(toastPublisher);
+        // 保留(差し替え放送の疑い。ADR-0021)のトーストも、失敗と同じくこの設定を通さない。
+        builder.Services.AddSingleton<IIngestHeldPublisher>(toastPublisher);
 
         // worker は取込ワーカー兼 in-process 制御の IServiceControl。同一インスタンスを
         // HostedService と IServiceControl(トレイメニューが参照)で共有する。

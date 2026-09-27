@@ -172,7 +172,7 @@ public sealed class HomeAttentionTests : IDisposable
     [Fact]
     public async Task Nothing_to_do_W121()
     {
-        // 兄弟フォルダの無い番組で、記録どおりに取り込んだ回だけ(3 種のどれも無い)。
+        // 兄弟フォルダの無い番組で、記録どおりに取り込んだ回だけ(4 種のどれも無い)。
         Ingested(Tbs, "単発の番組");
 
         var home = (await Create()).Home;
@@ -195,8 +195,32 @@ public sealed class HomeAttentionTests : IDisposable
 
         Assert.Empty(home.SiblingRows);
         Assert.Equal(2, home.DriftRows.Count);
-        Assert.All(home.DriftRows, row => Assert.Equal("パンサー向井のふらっと", row.Drift.ToAlbum));
+        Assert.All(home.DriftRows, row => Assert.Equal("パンサー向井のふらっと", row.Drift!.ToAlbum));
         Assert.False(home.IsAttentionEmpty);
+    }
+
+    [Fact]
+    public async Task Substitute_suspects_and_pending_removals_are_listed_W155_W158()
+    {
+        // ADR-0021。差し替え放送の疑いは自分の欄(W-155)に、消す予定は「再適用が要る番組」(W-134)の中に並ぶ。
+        var items = new AttentionItems
+        {
+            SubstituteSuspects = [new SubstituteSuspectGroup("ニッポン放送", "チャリ", "辛坊治郎 ズーム", HeldCount: 1, ImportedCount: 4)],
+            PendingRemovals = [new PendingRemovalGroup("文化放送", "日向坂46の「ひ」", "日向坂46の「ひ」", "プロ野球", 3)],
+        };
+
+        var home = (await Create(compute: () => items)).Home;
+
+        var suspect = Assert.Single(home.SubstituteRows);
+        Assert.Equal("ニッポン放送「チャリ」に「辛坊治郎 ズーム」 保留 1 回 / 取り込み済み 4 回", suspect.Line); // W-156
+        var removal = Assert.Single(home.DriftRows);
+        Assert.Equal("文化放送「日向坂46の「ひ」」 出力先から消す予定 3 回(ファイル名の番組名「プロ野球」)", removal.Line); // W-158
+        Assert.Null(removal.Drift);
+        Assert.True(home.HasSubstitutes);
+        Assert.True(home.HasDrift);
+        Assert.Equal(2, home.AttentionCount);
+        Assert.Equal(items.Count, home.AttentionCount);
+        Assert.Equal("要対応 2 件", home.AttentionCountText);
     }
 
     [Fact]

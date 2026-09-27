@@ -38,6 +38,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     // 注入された取込要約の publisher を包んだもの。取り込みグラフにはこれを渡し、走査の実行(#180)の間だけ新規取込のトーストを止める。
     private readonly ScanRunSummaryGate _summaryGate;
     private readonly IIngestFailurePublisher _failurePublisher;
+    private readonly IIngestHeldPublisher _heldPublisher;
 
     // 走査の実行(#180)。結果を返す非冪等の要求なので、再適用と同じく取りこぼさないキューで運ぶ(起こしはトリガチャネル)。
     private readonly ScanRunQueue _scanRuns;
@@ -90,8 +91,10 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         ServiceRuntimeOptions options,
         IIngestSummaryPublisher summaryPublisher,
         IIngestFailurePublisher failurePublisher,
+        IIngestHeldPublisher heldPublisher,
         ILogger<RadioMonitorWorker> log)
     {
+        _heldPublisher = heldPublisher;
         _config = config;
         _configPath = options.ConfigPath;
         _summaryGate = new ScanRunSummaryGate(summaryPublisher);
@@ -118,7 +121,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     private (IngestService, IDisposable?) BuildGraph(RadirecConfig config) =>
         CompositionRoot.Build(
             config, dryRun: false, notify: true,
-            summaryPublisher: _summaryGate, failurePublisher: _failurePublisher);
+            summaryPublisher: _summaryGate, failurePublisher: _failurePublisher, heldPublisher: _heldPublisher);
 
     // --- IServiceControl(in-process 制御。ADR-0010/0012)------------------------------------
 
@@ -553,7 +556,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             var report = await _ingest.RunOnceAsync(dryRun: false, cancellationToken);
             var imported = report.Count(IngestOutcome.Imported);
             var failed = report.Count(IngestOutcome.Failed);
-            if (imported > 0 || failed > 0)
+            var held = report.Count(IngestOutcome.Held);
+            if (imported > 0 || failed > 0 || report.HeldNotificationPublished || report.HeldNotificationError is not null)
             {
                 var refresh = report.LibraryRefresh switch
                 {
@@ -570,9 +574,12 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                 // 失敗通知の発行結果も残す。新規失敗が無ければ "-"、発行失敗なら理由を残して
                 // 「失敗トーストが出ない理由」を診断可能にする(さもないと無痕跡)。
                 var failNotify = report.FailureNotificationPublished ? "発行" : report.FailureNotificationError ?? "-";
+                // 保留(ADR-0021)。保留し続けている回は毎走査で数えるが、この行を書くのは取込・失敗があったときと、初めて保留したとき
+                // (保留通知を出した・出せなかった)だけ(同じ保留で毎走査 gui.log を埋めない)。
+                var heldNotify = report.HeldNotificationPublished ? "発行" : report.HeldNotificationError ?? "-";
                 _log.LogInformation(
-                    "{Trigger}スキャン: 取込 {Imported} / 失敗 {Failed} / Jellyfin更新 {Refresh} / 通知 {Notify} / 失敗通知 {FailNotify}",
-                    trigger, imported, failed, refresh, notify, failNotify);
+                    "{Trigger}スキャン: 取込 {Imported} / 失敗 {Failed} / 保留 {Held} / Jellyfin更新 {Refresh} / 通知 {Notify} / 失敗通知 {FailNotify} / 保留通知 {HeldNotify}",
+                    trigger, imported, failed, held, refresh, notify, failNotify, heldNotify);
             }
 
             LogRenamedImports(report.Items);
@@ -593,8 +600,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             // 停止要求で打ち切った走査。結果の行は最後まで終わったときにしか書かないので、それまでに取り込んだ分を 1 行残す
             // (残さないと、台帳と出力先を見ないと分からない。#218)。停止要求はそのまま呼び手へ伝える。
             _log.LogInformation(
-                "{Trigger}スキャン(停止のため中断): 取込 {Imported} / 失敗 {Failed}",
-                trigger, ex.Count(IngestOutcome.Imported), ex.Count(IngestOutcome.Failed));
+                "{Trigger}スキャン(停止のため中断): 取込 {Imported} / 失敗 {Failed} / 保留 {Held}",
+                trigger, ex.Count(IngestOutcome.Imported), ex.Count(IngestOutcome.Failed), ex.Count(IngestOutcome.Held));
             LogRenamedImports(ex.Items); // 打ち切るまでに別名で置いた取込も、最後まで終わった走査と同じく残す
             throw;
         }

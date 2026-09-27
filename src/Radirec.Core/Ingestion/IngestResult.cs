@@ -26,6 +26,15 @@ public enum IngestOutcome
 
     /// <summary>パース等に失敗。</summary>
     Failed,
+
+    /// <summary>
+    /// 差し替え放送の疑いがあり、取り込まずに保留した(ADR-0021)。ファイル名の番組名がフォルダ名を含まず、判断も無い。
+    /// 失敗ではない(終了コードに影響しない)。
+    /// </summary>
+    Held,
+
+    /// <summary>ファイル名の番組名に「取り込まない」と判断されていたので取り込まない(ADR-0021)。</summary>
+    SkippedByDecision,
 }
 
 /// <summary>1 ファイルの取り込み結果。</summary>
@@ -46,6 +55,12 @@ public sealed record IngestItemResult
     /// <summary>処理時に捉えたファイルのフィンガープリント(失敗通知の de-dup 用。ADR-0011)。
     /// <see cref="IngestService"/> の Result() が全 outcome で必ず設定する(欠落しない)。</summary>
     public required FileFingerprint Fingerprint { get; init; }
+
+    /// <summary>
+    /// 保留(<see cref="IngestOutcome.Held"/>)・取り込まない判断(<see cref="IngestOutcome.SkippedByDecision"/>)の回の
+    /// ファイル名の番組名(CONTEXT.md)。ほかは null。
+    /// </summary>
+    public string? FilenameProgram { get; init; }
 }
 
 /// <summary>取込後の Jellyfin ライブラリ更新の状態。</summary>
@@ -113,6 +128,15 @@ public sealed record IngestReport
 
     /// <summary>失敗シグナル発行に失敗したときのメッセージ(成功・未発行時は null)。</summary>
     public string? FailureNotificationError { get; init; }
+
+    /// <summary>
+    /// 保留シグナルを発行できたか(初めて保留した録音ファイルが 0 件・dry-run では false。ADR-0021)。失敗シグナルと同じく、
+    /// 新規取込のトーストの設定にも走査の実行にも左右されない。
+    /// </summary>
+    public bool HeldNotificationPublished { get; init; }
+
+    /// <summary>保留シグナルの発行(または保留のストアの読み書き)に失敗したときのメッセージ(成功・未発行時は null)。</summary>
+    public string? HeldNotificationError { get; init; }
 
     public int Count(IngestOutcome outcome) => Items.Count(i => i.Outcome == outcome);
 }

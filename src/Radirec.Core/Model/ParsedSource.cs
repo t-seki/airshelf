@@ -12,6 +12,12 @@ public sealed record ParsedSource
     /// <summary>生の番組名(ファイル名またはフォルダ由来)。</summary>
     public required string RawProgram { get; init; }
 
+    /// <summary>
+    /// ファイル名の番組名(CONTEXT.md)。らじれこのファイル名から放送局の <c>[...]</c>・録音種別・放送日時を除いた部分。
+    /// 番組の同一性には使わず、差し替え放送の疑いを見る手がかりにだけ使う(ADR-0021)。らじれこ以外は null。
+    /// </summary>
+    public string? FilenameProgram { get; init; }
+
     /// <summary>放送日(JST の日単位)。同一性キーの構成要素。</summary>
     public required DateOnly BroadcastDate { get; init; }
 

@@ -7,9 +7,10 @@ namespace Radirec.Core.Ledger;
 /// <summary>
 /// SQLite(WAL)によるローカルディスク台帳。SMB(出力先)には置かない前提。取込済み記録(import-once)に
 /// 加えて、取込失敗の de-dup ストア(<see cref="IIngestFailureStore"/>。ADR-0011)を同一 DB の別テーブルで
-/// 相乗りさせる(Windows の SQLite ファイルロックを増やさないため別ファイルにしない)。
+/// 相乗りさせる(Windows の SQLite ファイルロックを増やさないため別ファイルにしない)。保留のストア
+/// (<see cref="IHeldRecordingStore"/>。ADR-0021)も同じく別テーブルで相乗りさせる。
 /// </summary>
-public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
+public sealed class SqliteLedger : ILedger, IIngestFailureStore, IHeldRecordingStore, IDisposable
 {
     private const string DateFormat = "yyyy-MM-dd";
 
@@ -24,6 +25,19 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
             last_write  INTEGER NOT NULL,
             reason      TEXT NULL,
             failed_at   TEXT NULL
+        );
+        """;
+
+    // 保留のストア(ADR-0021)。鍵 = ソースパス。要対応に (局, フォルダ, ファイル名の番組名) の組でまとめて出すため、
+    // それぞれを列に持つ(表示のたびにファイル名を解析し直さない)。held_at は初めて保留した時刻(ISO 8601)。
+    private const string CreateHeldTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS held (
+            source_path      TEXT NOT NULL PRIMARY KEY,
+            station          TEXT NOT NULL,
+            folder           TEXT NOT NULL,
+            filename_program TEXT NOT NULL,
+            held_at          TEXT NOT NULL
         );
         """;
 
@@ -67,6 +81,9 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
     // 落ちないためのガード(無ければ理由・時刻を null で返す)。
     private readonly bool _failureDetailsUsable;
 
+    // held テーブル(ADR-0021)が使えるか。readOnly で未移行の台帳(テーブルが無い)を開いたとき、要対応が落ちないためのガード。
+    private readonly bool _heldUsable;
+
     // content ゲート(size_bytes/last_write 列)が使えるか。readOnly で列を持たない旧/現行スキーマを
     // 開いたときに ContainsContent が例外を出さず未取込扱いにするためのガード(#79 / ADR-0014)。
     private readonly bool _contentUsable;
@@ -107,7 +124,9 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
                 MigrateOrCreate();
                 Exec(CreateFailuresTableSql); // 冪等。失敗 de-dup テーブルを保証する。
                 EnsureFailureDetailColumns();
+                Exec(CreateHeldTableSql); // 冪等。保留のストアを保証する(ADR-0021)。
                 _usable = true;
+                _heldUsable = true;
                 _failuresUsable = true;
                 _failureDetailsUsable = true;
                 _contentUsable = true; // MigrateOrCreate が content 列を保証する。
@@ -120,6 +139,7 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
                 _failureDetailsUsable = _failuresUsable
                     && ColumnExists("failures", "reason") && ColumnExists("failures", "failed_at");
                 _contentUsable = _usable && ColumnExists("imports", "size_bytes");
+                _heldUsable = TableExists("held");
             }
         }
         catch
@@ -493,6 +513,72 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IDisposable
         cmd.CommandText = "DELETE FROM failures WHERE source_path = $p;";
         cmd.Parameters.AddWithValue("$p", sourcePath);
         cmd.ExecuteNonQuery();
+    }
+
+    // ---- IHeldRecordingStore(保留のストア。ADR-0021)----
+    // Clear / List は失敗のストアと名前が重なるので、保留の側を明示的な実装にする(SqliteLedger から呼ぶときは ListHeld)。
+
+    public bool IsHeld(string sourcePath)
+    {
+        if (!_heldUsable)
+            return false;
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM held WHERE source_path = $p LIMIT 1;";
+        cmd.Parameters.AddWithValue("$p", sourcePath);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    public void Record(HeldRecording held)
+    {
+        if (!_heldUsable)
+            return;
+
+        // パスが PK。同じパスを記録し直したら置き換える(呼び手は初めて保留したときだけ記録する)。
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            """
+            INSERT OR REPLACE INTO held (source_path, station, folder, filename_program, held_at)
+            VALUES ($p, $s, $f, $n, $at);
+            """;
+        cmd.Parameters.AddWithValue("$p", held.SourcePath);
+        cmd.Parameters.AddWithValue("$s", held.Station);
+        cmd.Parameters.AddWithValue("$f", held.Folder);
+        cmd.Parameters.AddWithValue("$n", held.FilenameProgram);
+        cmd.Parameters.AddWithValue("$at", held.HeldAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+        cmd.ExecuteNonQuery();
+    }
+
+    void IHeldRecordingStore.Clear(string sourcePath)
+    {
+        if (!_heldUsable)
+            return;
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM held WHERE source_path = $p;";
+        cmd.Parameters.AddWithValue("$p", sourcePath);
+        cmd.ExecuteNonQuery();
+    }
+
+    IReadOnlyList<HeldRecording> IHeldRecordingStore.List() => ListHeld();
+
+    /// <summary>保留のストアの全件(<see cref="IHeldRecordingStore.List"/>。順序は決めない)。</summary>
+    public IReadOnlyList<HeldRecording> ListHeld()
+    {
+        if (!_heldUsable)
+            return [];
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT source_path, station, folder, filename_program, held_at FROM held;";
+        using var reader = cmd.ExecuteReader();
+        var results = new List<HeldRecording>();
+        while (reader.Read())
+        {
+            results.Add(new HeldRecording(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
+        }
+        return results;
     }
 
     public void Dispose() => _connection.Dispose();

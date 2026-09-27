@@ -308,12 +308,12 @@ public sealed class IngestServiceTests
         // #79 の事故再現: 同一内容(同 size + 同 mtime・同ファイル名タイムスタンプ)を、番組フォルダ名だけ
         // 変えて再取込。identity(フォルダ由来 ADR-0001)も source パスも変わり Contains/ContainsSource は
         // 外れるが、content ゲート(フィンガープリント + 放送日時)が捕捉して重複コピーを作らない。
-        var first = Rec("[TBSラジオ]番組(TimeFree)_20241223083000.m4a",
+        var first = Rec("[TBSラジオ]パンサー向井のふらっと(1)(TimeFree)_20241223083000.m4a",
             station: "TBSラジオ", program: "パンサー向井のふらっと(1)", size: 5000);
         await Build([first]).RunOnceAsync(dryRun: false);
         Assert.Single(_target.Written);
 
-        var renamed = Rec("[TBSラジオ]別プレフィクス(TimeFree)_20241223083000.m4a",
+        var renamed = Rec("[TBSラジオ]パンサー向井のふらっと(2)(TimeFree)_20241223083000.m4a",
             station: "TBSラジオ", program: "パンサー向井のふらっと(2)", size: 5000);
         var second = await Build([renamed]).RunOnceAsync(dryRun: false);
 
@@ -426,7 +426,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task 失敗は整形した理由と記録した時刻を持つ()
     {
-        var file = Rec("[J-WAVE]番組(TimeFree)_20260612223000.m4a");
+        var file = Rec(StandardName);
 
         await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false);
 
@@ -559,7 +559,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task 失敗理由はフルパスを畳んでファイル名にする()
     {
-        var file = Rec("[J-WAVE]番組(TimeFree)_20260612223000.m4a");
+        var file = Rec(StandardName);
 
         await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false);
 
@@ -609,8 +609,8 @@ public sealed class IngestServiceTests
     {
         var files = new[]
         {
-            Rec("[J-WAVE]番組A(TimeFree)_20260612223000.m4a", program: "AAA"),
-            Rec("[J-WAVE]番組B(TimeFree)_20260613223000.m4a", program: "BBB"),
+            Rec("[J-WAVE]AAA(TimeFree)_20260612223000.m4a", program: "AAA"),
+            Rec("[J-WAVE]BBB(TimeFree)_20260613223000.m4a", program: "BBB"),
         };
 
         var report = await Build(files, target: new ThrowingOutputTarget()).RunOnceAsync(dryRun: false);

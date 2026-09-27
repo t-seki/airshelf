@@ -20,6 +20,10 @@ public sealed class ToastPresenter
     public void ShowFailure(IngestFailurePayload payload) =>
         Show(IngestToastFormatter.BuildFailureTexts(payload));
 
+    /// <summary>保留の通知(「判断待ち N件」)を表示する(ADR-0021)。</summary>
+    public void ShowHeld(IngestHeldPayload payload) =>
+        Show(IngestToastFormatter.BuildHeldTexts(payload));
+
     private static void Show(IReadOnlyList<string> texts)
     {
         // 要素数上限への切り詰めは formatter(テスト可能な純粋関数)に集約済み。ここは
