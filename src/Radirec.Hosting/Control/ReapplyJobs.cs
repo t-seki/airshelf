@@ -271,9 +271,9 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
         failure = null;
         if (!host.TryLoadConfig(out var newConfig, out var loadError))
         {
-            host.LogWarning($"統合設定の再適用: 設定の読み込みに失敗したため中止しました: {loadError}");
             // loadError は読み込みの戻り値(「設定の読み込みに失敗しました: …」「設定ファイルが見つかりません: …」)で、
-            // 前置きを含む。reload の拒否と同じくそのまま出す(もう一度前置きを付けると 2 回続く。#218)。
+            // 前置きを含む。gui.log の行も結果も、reload の拒否と同じくそのまま出す(もう一度前置きを付けると 2 回続く。#218)。
+            host.LogWarning($"統合設定の再適用を中止しました: {loadError}");
             failure = ReapplyResult.Failed($"{loadError}({KeepsRunning})");
             return false;
         }

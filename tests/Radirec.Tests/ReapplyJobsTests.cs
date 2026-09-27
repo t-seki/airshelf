@@ -171,6 +171,8 @@ public sealed class ReapplyJobsTests
         var applied = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: planId);
 
         Assert.Equal("設定の読み込みに失敗しました: JSON が壊れています(取り込みは前の設定のまま動いています)", applied.Error);
+        // gui.log の行も前置きを重ねない。
+        Assert.Equal(["統合設定の再適用を中止しました: 設定の読み込みに失敗しました: JSON が壊れています"], host.Warnings);
     }
 
     [Fact]
@@ -325,9 +327,9 @@ public sealed class ReapplyJobsTests
 
         public void LogReport(ReapplyReport report) => LoggedReports.Add(report.DryRun);
 
-        public void LogWarning(string message)
-        {
-        }
+        public List<string> Warnings { get; } = [];
+
+        public void LogWarning(string message) => Warnings.Add(message);
 
         public void LogError(Exception exception, string message)
         {
