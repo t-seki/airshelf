@@ -66,6 +66,7 @@ public interface IReapplyJobHost
 
     /// <summary>
     /// 読んだ設定を反映する(取り込みのグラフを組み直す)。組み直せなければ旧構成のまま、<see cref="LastReloadError"/> に理由を残す。
+    /// あわせて <see cref="LastReloadUnreachable"/> も更新する(台帳を開けなかったときだけ true。成功なら false)。
     /// </summary>
     void ApplyReload(RadirecConfig config);
 

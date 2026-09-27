@@ -76,6 +76,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     private string? _lastReloadError;
 
     // 直近の反映の失敗が、台帳を開けなかった(LedgerUnreachableException)ためか。再適用の終了コードを分ける(#228)。
+    // _lastReloadError と一緒に書き換える。書き手・読み手とも直列ループ。
     private bool _lastReloadUnreachable;
 
     // 再適用の確認・実行のジョブの中身(管理画面・トレイの「直前の確認」もここが持つ)。直列ループの上でだけ使う。
