@@ -49,10 +49,8 @@ public sealed class ReapplyService(
         var items = new List<ReapplyItem>();
         var knownFolders = new List<ProgramFolder>();
 
-        // この再適用の中で行き先になった場所と台帳の主キー。2 つの回が同じ場所・同じキーへ向かうのを防ぐ
-        // (dry-run でも実行と同じ判定になるよう、ファイルや台帳を見るだけでなくここでも覚える)。
-        var claimedPaths = new HashSet<string>(PathComparer);
-        var claimedKeys = new HashSet<(string Key, TimeOnly? Time, int Part)>();
+        // この再適用の中で行き先になった場所・消す回の場所と、台帳の主キー(dry-run でも実行と同じ判定になるよう覚える)。
+        var claims = new Claims();
         var vacatedDirectories = new HashSet<string>(PathComparer);
 
         var entries = ledger.ListAll()
@@ -86,11 +84,11 @@ public sealed class ReapplyService(
             // 放送局の変更を再適用しない理由が当てはまらない。要対応の「出力先から消す予定」と同じ回を扱う)。
             if (resolved.IsSkipDecided)
             {
-                // 消す回の場所と台帳のキーも、この再適用の中で使われたものとして覚える。実行は 1 回ずつその場で消すので、
-                // 覚えないと、後に処理する回が同じ場所・同じキーを目指したとき、確認では「移動先にある・台帳にある」で対象外や重複、
-                // 実行では消えた後なので移動、と予定と違うことをしてしまう(#213)。覚えればどちらも対象外に揃い、次の再適用で動く。
-                claimedPaths.Add(entry.OutputPath);
-                claimedKeys.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
+                // 消す回の場所と台帳のキーを覚える。実行は 1 回ずつその場で消すので、覚えないと、後に処理する回が同じ場所・
+                // 同じキーを目指したとき、確認では「移動先にある・台帳にある」で対象外や重複、実行では消えた後なので移動、と
+                // 予定と違うことをしてしまう(#213)。覚えればどちらも専用の理由の対象外に揃い、次の再適用で動く。
+                claims.RemovedPaths.Add(entry.OutputPath);
+                claims.RemovedKeys.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
                 var removal = PlanRemoval(entry);
                 if (!dryRun)
                     removal = ApplyRemoval(removal, entry, vacatedDirectories);
@@ -112,12 +110,12 @@ public sealed class ReapplyService(
                 OutputPath = newPath,
             };
 
-            var item = Plan(entry, episode, updated, tags, claimedPaths, claimedKeys);
+            var item = Plan(entry, episode, updated, tags, claims);
             if (item.Action is ReapplyAction.Move or ReapplyAction.LedgerAndTags or ReapplyAction.LedgerOnly
                 or ReapplyAction.DuplicateLeft)
             {
-                claimedPaths.Add(newPath);
-                claimedKeys.Add((updated.IdentityKey, updated.BroadcastTime, updated.PartIndex));
+                claims.Paths.Add(newPath);
+                claims.Keys.Add((updated.IdentityKey, updated.BroadcastTime, updated.PartIndex));
                 if (!dryRun)
                     item = await ApplyAsync(item, entry, updated, tags, vacatedDirectories, cancellationToken);
             }
@@ -147,9 +145,9 @@ public sealed class ReapplyService(
     // 1 回分をどう扱うかを、ファイルと台帳を見て決める(副作用なし。dry-run と実行で同じ)。
     private ReapplyItem Plan(
         LedgerEntry entry, Episode episode, LedgerEntry updated, NormalizedTags tags,
-        HashSet<string> claimedPaths, HashSet<(string Key, TimeOnly? Time, int Part)> claimedKeys)
+        Claims claims)
     {
-        var item = PlanPlacement(entry, episode, updated, claimedPaths, claimedKeys);
+        var item = PlanPlacement(entry, episode, updated, claims);
         return item.Action is ReapplyAction.LedgerOnly or ReapplyAction.DuplicateLeft
             ? CheckTags(item, entry, episode, tags)
             : item;
@@ -221,6 +219,18 @@ public sealed class ReapplyService(
 
     private const string RemoveLedgerOnlyReason = "出力ファイルが見つかりません。台帳の記録だけを消します";
 
+    private const string RemovedPlaceReason = "この再適用で出力先から消す回と同じ場所です。次の再適用で動きます";
+
+    // この再適用の中で使われた場所と台帳の主キー。移動などで行き先になったもの(Paths / Keys)と、消す回のもの
+    // (RemovedPaths / RemovedKeys)を分けて覚え、対象外の理由を言い分ける。
+    private sealed class Claims
+    {
+        public HashSet<string> Paths { get; } = new(PathComparer);
+        public HashSet<(string Key, TimeOnly? Time, int Part)> Keys { get; } = [];
+        public HashSet<string> RemovedPaths { get; } = new(PathComparer);
+        public HashSet<(string Key, TimeOnly? Time, int Part)> RemovedKeys { get; } = [];
+    }
+
     private const string DuplicateReason ="移動先に同じ内容のファイルがあるため、元の場所のファイルを残しています";
 
     private const string DuplicateReasonWithTags =
@@ -229,7 +239,7 @@ public sealed class ReapplyService(
     // 置き場所(移動・台帳だけ・重複・対象外)を決める。
     private ReapplyItem PlanPlacement(
         LedgerEntry entry, Episode episode, LedgerEntry updated,
-        HashSet<string> claimedPaths, HashSet<(string Key, TimeOnly? Time, int Part)> claimedKeys)
+        Claims claims)
     {
         var newPath = updated.OutputPath;
 
@@ -238,17 +248,23 @@ public sealed class ReapplyService(
             return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
                 $"放送局が変わっています({entry.Station} → {episode.Station})。放送局の変更は再適用しません");
 
-        // 新しい主キーが既に別の回で使われている(同じ放送が別のフォルダからも取り込まれている等)。
-        // 台帳を書き換えると記録が 1 つ消えるので動かさない。主キーが変わらない回(正規名の空白だけの変更等)は自分自身なので除く。
         var newKey = (updated.IdentityKey, updated.BroadcastTime, updated.PartIndex);
         var sameKey = newKey == (entry.IdentityKey, entry.BroadcastTime, entry.PartIndex);
+
+        // この再適用で消す回の場所・主キーと重なる。確認の時点ではまだ台帳とファイルがあり、実行では消えた後なので、
+        // ほかの判定より先に見て、確認と実行のどちらでも対象外にする(#213)。消えた後の次の再適用で動く。
+        if ((!sameKey && claims.RemovedKeys.Contains(newKey)) || claims.RemovedPaths.Contains(newPath))
+            return Item(entry, ReapplyAction.Excluded, episode.Program, newPath, RemovedPlaceReason);
+
+        // 新しい主キーが既に別の回で使われている(同じ放送が別のフォルダからも取り込まれている等)。
+        // 台帳を書き換えると記録が 1 つ消えるので動かさない。主キーが変わらない回(正規名の空白だけの変更等)は自分自身なので除く。
         if (!sameKey
-            && (claimedKeys.Contains(newKey)
+            && (claims.Keys.Contains(newKey)
                 || ledger.Contains(episode.Identity, updated.BroadcastTime, updated.PartIndex)))
             return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
                 "台帳に同じ放送回の記録が既にあります");
 
-        if (claimedPaths.Contains(newPath))
+        if (claims.Paths.Contains(newPath))
             return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
                 "この再適用で別の回が同じ場所へ移ります");
 

@@ -248,6 +248,7 @@ public sealed class ReapplyServiceTests : IDisposable
             var b = report.Items.Single(i => i.FromAlbum == Folder2);
             Assert.Equal(ReapplyAction.Excluded, b.Action);
             Assert.Equal(aPath, b.ToPath);
+            Assert.Equal(RemovedPlaceReason, b.Reason);
         }
         Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(applied)); // 見せた予定どおりに実行した
         Assert.True(plan.HasSamePlanAs(applied));
@@ -259,6 +260,65 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
         Assert.True(File.Exists(aPath));
         Assert.Equal(Folder1, Assert.Single(ledger.ListAll()).Program);
+    }
+
+    private const string RemovedPlaceReason = "この再適用で出力先から消す回と同じ場所です。次の再適用で動きます";
+
+    [Fact]
+    public async Task 消す回と台帳のキーが同じ回は_確認と実行で同じく対象外にし_次の再適用で動かす()
+    {
+        // 回 B の台帳のキー(同一性キー・放送時刻・パート)が、消す回 A と同じ。場所は重ならない(A は別の名前に置かれている。
+        // 取り込みで時刻付きの別名に逃がした回や、手で名前を変えた回)。確認の時点では A の記録が台帳にあるので「台帳にある」、
+        // 実行では A を消した後なので移動、と食い違わないよう、消す回のキーを覚える(#213)。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var bSource = Path.Combine(RadioRoot, Station, Folder2, $"[{Station}]{Folder2}(TimeFree)_{Dec23At0830}.m4a");
+        CopyWithDifferentAudio(bSource); // 内容の指紋で同じ回と見なされないよう、中身を変える(ADR-0014)
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        Assert.Equal(2, ledger.ListAll().Count);
+        var aPath = OutputOf(Folder1, "2024-12-23");
+
+        // A を別の名前へ置き直し、台帳もそちらへ向ける(B の移動先 = aPath とは重ならない)。
+        var aEntry = ledger.ListAll().Single(e => e.Program == Folder1);
+        var aRenamed = Path.Combine(Path.GetDirectoryName(aPath)!, $"{Folder1} 2024-12-23 0830.m4a");
+        File.Move(aPath, aRenamed);
+        Assert.True(ledger.Replace(aEntry, aEntry with { OutputPath = aRenamed }));
+
+        var settings = Decided(FilenameProgramTreatment.Skip);
+        settings.Programs =
+        [
+            new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Station, Folders = [Folder2] },
+                Canonical = new ProgramCanonical { Album = Folder1 },
+            },
+        ];
+
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+
+        var aEntryKey = plan.Items.Single(i => i.FromAlbum == Folder1);
+        foreach (var report in new[] { plan, applied })
+        {
+            Assert.Equal(ReapplyAction.Remove, report.Items.Single(i => i.FromAlbum == Folder1).Action);
+            var b = report.Items.Single(i => i.FromAlbum == Folder2);
+            Assert.Equal(ReapplyAction.Excluded, b.Action);
+            Assert.Equal(RemovedPlaceReason, b.Reason);
+            Assert.Equal(aEntryKey.BroadcastTime, b.BroadcastTime); // キー(放送時刻)が A と同じ
+            Assert.Equal(aPath, b.ToPath); // 移動先は A の今の場所(aRenamed)とは違う
+        }
+        Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(applied));
+        Assert.True(plan.HasSamePlanAs(applied));
+        Assert.False(File.Exists(aRenamed));
+        Assert.False(File.Exists(aPath)); // B はまだ動いていない
+
+        // 次の再適用で B が動き、A のキーで台帳に記録される。
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
+        Assert.True(File.Exists(aPath));
+        var moved = Assert.Single(ledger.ListAll());
+        Assert.Equal(Folder1, moved.Program);
+        Assert.Equal(new TimeOnly(8, 30), moved.BroadcastTime);
     }
 
     [Fact]
