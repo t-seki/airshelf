@@ -31,10 +31,10 @@ public sealed class SettingsPageTests : IDisposable
     {
         public int Calls { get; private set; }
 
-        public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
+        public Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
         {
             Calls++;
-            return Task.CompletedTask;
+            return Task.FromResult<string?>(null);
         }
     }
 

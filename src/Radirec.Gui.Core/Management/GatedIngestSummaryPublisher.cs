@@ -9,6 +9,9 @@ namespace Radirec.Gui.Core.Management;
 /// </summary>
 public sealed class GatedIngestSummaryPublisher(IIngestSummaryPublisher inner, Func<bool> enabled) : IIngestSummaryPublisher
 {
-    public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default) =>
-        enabled() ? inner.PublishAsync(summary, cancellationToken) : Task.CompletedTask;
+    /// <summary>止めたときに返す理由。gui.log の走査の行の「通知」の欄に出る(#215)。</summary>
+    public const string SuppressedReason = "設定でオフ";
+
+    public Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default) =>
+        enabled() ? inner.PublishAsync(summary, cancellationToken) : Task.FromResult<string?>(SuppressedReason);
 }

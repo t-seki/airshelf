@@ -13,10 +13,13 @@ namespace Radirec.Hosting.Control;
 /// </summary>
 public sealed class ScanRunSummaryGate(IIngestSummaryPublisher inner) : IIngestSummaryPublisher
 {
+    /// <summary>止めたときに返す理由。gui.log の走査の行の「通知」の欄に出る(#215)。</summary>
+    public const string SuppressedReason = "CLI の走査";
+
     private readonly AsyncLocal<bool> _suppressed = new();
 
-    public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default) =>
-        _suppressed.Value ? Task.CompletedTask : inner.PublishAsync(summary, cancellationToken);
+    public Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default) =>
+        _suppressed.Value ? Task.FromResult<string?>(SuppressedReason) : inner.PublishAsync(summary, cancellationToken);
 
     /// <summary>
     /// この中で始めた走査の取込要約を止める。止めるのは、これを呼んだ非同期メソッドの中(と、そこから呼んだ処理)だけで、

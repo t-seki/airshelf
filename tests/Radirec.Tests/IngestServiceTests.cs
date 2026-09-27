@@ -120,11 +120,11 @@ public sealed class IngestServiceTests
         public IngestSummary? Last { get; private set; }
         public Exception? Throws { get; set; }
 
-        public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
+        public Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
         {
             Calls++;
             Last = summary;
-            return Throws is null ? Task.CompletedTask : throw Throws;
+            return Throws is null ? Task.FromResult<string?>(null) : throw Throws;
         }
     }
 
@@ -234,6 +234,7 @@ public sealed class IngestServiceTests
         };
 
     private const string StandardName = "[J-WAVE]LOGISTEED RADIONOMICS(TimeFree)_20260612223000.m4a";
+    private static string OtherWeek(int day) => $"[J-WAVE]LOGISTEED RADIONOMICS(TimeFree)_202606{day:D2}223000.m4a";
 
     [Fact]
     public async Task DryRun_NewFile_IsPlanned_NoWriteNoLedger()
@@ -805,6 +806,87 @@ public sealed class IngestServiceTests
         Assert.Equal(1, result.Report!.Count(IngestOutcome.Imported));
         Assert.Equal(1, result.Report.Count(IngestOutcome.Failed));
         Assert.Null(result.Error);
+
+    }
+
+    [Fact]
+    public async Task 走査の実行で止めた通知は_発行したと報告せず理由を返す()
+    {
+        var gate = new ScanRunSummaryGate(_publisher);
+        var queue = new ScanRunQueue(gate);
+        var service = Build([Rec(StandardName)], publisher: gate);
+        IngestReport? report = null;
+
+        var pending = queue.Enqueue();
+        await queue.RunAsync(
+            queue.TakePending()!, async ct => report = await service.RunOnceAsync(dryRun: false, ct), CancellationToken.None);
+        await pending;
+
+        // 出していない通知を「発行」と報告しない(gui.log の「通知」の欄。#215)。
+        Assert.Equal(0, _publisher.Calls);
+        Assert.False(report!.NotificationPublished);
+        Assert.Equal(ScanRunSummaryGate.SuppressedReason, report.NotificationSuppressedReason);
+        Assert.Null(report.NotificationError);
+    }
+
+    [Fact]
+    public async Task 設定で新規取込のトーストを止めているときは_発行したと報告せず理由を返す()
+    {
+        var gate = new Radirec.Gui.Core.Management.GatedIngestSummaryPublisher(_publisher, () => false);
+
+        var report = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(0, _publisher.Calls);
+        Assert.Equal(1, report.Count(IngestOutcome.Imported));
+        Assert.False(report.NotificationPublished);
+        Assert.Equal(
+            Radirec.Gui.Core.Management.GatedIngestSummaryPublisher.SuppressedReason,
+            report.NotificationSuppressedReason);
+    }
+
+    [Fact]
+    public async Task トレイと同じ入れ子では_走査の実行が設定より先に理由になる()
+    {
+        // トレイの組み方:設定の門(GatedIngestSummaryPublisher。Program.BuildHost)を、走査の実行の門
+        // (ScanRunSummaryGate。RadioMonitorWorker のコンストラクタ)が外から包む。
+        var enabled = false;
+        var gate = new ScanRunSummaryGate(
+            new Radirec.Gui.Core.Management.GatedIngestSummaryPublisher(_publisher, () => enabled));
+        var queue = new ScanRunQueue(gate);
+
+        IngestReport? scanRun = null;
+        var pending = queue.Enqueue();
+        await queue.RunAsync(
+            queue.TakePending()!,
+            async ct => scanRun = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false, ct),
+            CancellationToken.None);
+        await pending;
+        // 走査ごとに別の放送回を置く(同じ回は台帳で取込済スキップになり、要約が作られない)。
+        var offOutside = await Build([Rec(OtherWeek(19), size: 2048)], publisher: gate).RunOnceAsync(dryRun: false);
+        enabled = true;
+        var shown = await Build([Rec(OtherWeek(26), size: 4096)], publisher: gate).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(ScanRunSummaryGate.SuppressedReason, scanRun!.NotificationSuppressedReason);   // CLI の走査中・設定でオフ
+        Assert.Equal(
+            Radirec.Gui.Core.Management.GatedIngestSummaryPublisher.SuppressedReason,
+            offOutside.NotificationSuppressedReason);                                               // 走査の外・設定でオフ
+        Assert.Null(shown.NotificationSuppressedReason);                                            // どちらでもない
+        Assert.Equal(1, scanRun.Count(IngestOutcome.Imported));
+        Assert.Equal(1, offOutside.Count(IngestOutcome.Imported));
+        Assert.True(shown.NotificationPublished);
+        Assert.Equal(1, _publisher.Calls);                                                          // 提示に届いたのは最後だけ
+    }
+
+    [Fact]
+    public async Task 走査の実行の外で門を通って出したときは_発行と報告し理由は無い()
+    {
+        var gate = new ScanRunSummaryGate(_publisher);
+
+        var report = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(1, _publisher.Calls);
+        Assert.True(report.NotificationPublished);
+        Assert.Null(report.NotificationSuppressedReason);
     }
 
     [Fact]

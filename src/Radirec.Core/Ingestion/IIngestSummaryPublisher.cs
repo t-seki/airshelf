@@ -6,16 +6,24 @@ namespace Radirec.Core.Ingestion;
 /// </summary>
 public interface IIngestSummaryPublisher
 {
-    /// <summary>要約を 1 件発行する。</summary>
-    Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 要約を 1 件発行する。
+    /// </summary>
+    /// <returns>
+    /// 出さなかったときはその理由(例:<c>CLI の走査</c>・<c>設定でオフ</c>)、出したときは null。gui.log の走査の行の
+    /// 「通知」の欄に残し、トーストが出ない理由を調べられるようにする(#215)。
+    /// </returns>
+    Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// 何もしない実装(dry-run / 手動 CLI などの非発行走査 / publisher を注入しない経路)。常駐で新規取込のトーストを
-/// 止めているときはこれを使わず、提示側(トレイ)が成功要約のトーストだけを出さない(#152・ADR-0019)。
+/// 何もしない実装(dry-run / publisher を注入しない経路)。常駐で新規取込のトーストを止めているときはこれを使わず、
+/// <c>GatedIngestSummaryPublisher</c> が成功要約のトーストだけを出さない(#152・ADR-0019)。走査の実行(CLI から頼んだ
+/// 走査。#180)も常駐の publisher を通り、<c>ScanRunSummaryGate</c> が止めた理由を返す。
+/// <see cref="NullIngestSummaryPublisher"/> は理由を返さない(提示の相手が居ない経路で、結果は gui.log に書かれない)。
 /// </summary>
 public sealed class NullIngestSummaryPublisher : IIngestSummaryPublisher
 {
-    public Task PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
-        => Task.CompletedTask;
+    public Task<string?> PublishAsync(IngestSummary summary, CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(null);
 }
