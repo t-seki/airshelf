@@ -76,6 +76,8 @@ public sealed class IngestServiceTests
         // 取込は書き換えない(再適用だけが使う。ADR-0016)。
         public bool Replace(LedgerEntry current, LedgerEntry updated) => throw new NotSupportedException();
 
+        public bool Remove(LedgerEntry entry) => throw new NotSupportedException();
+
         public IReadOnlyList<LedgerEntry> ListAll() => []; // 取込テストでは履歴列挙を使わない
     }
 

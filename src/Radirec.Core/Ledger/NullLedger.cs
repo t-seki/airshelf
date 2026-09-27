@@ -19,5 +19,8 @@ public sealed class NullLedger : ILedger
     public bool Replace(LedgerEntry current, LedgerEntry updated)
         => throw new InvalidOperationException("NullLedger は書き換えられません(dry-run 用)。");
 
+    public bool Remove(LedgerEntry entry)
+        => throw new InvalidOperationException("NullLedger からは消せません(dry-run 用)。");
+
     public IReadOnlyList<LedgerEntry> ListAll() => [];
 }

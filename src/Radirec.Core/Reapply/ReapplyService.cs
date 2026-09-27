@@ -22,6 +22,8 @@ namespace Radirec.Core.Reapply;
 /// 次の再適用で揃う(ADR-0003 と同じ考え方)。ファイルが既に今の設定の場所にある回は、タグ(<c>album</c> /
 /// <c>title</c> / <c>track</c>)が違えば同じ場所で書き換えてから台帳を直し、揃っていれば台帳だけを直す(#141)。
 /// 移動先に同じ内容のファイルがある回(重複)も、移動先のタグが違えば同じように書き換える。
+/// ファイル名の番組名に「取り込まない」と判断した回(ADR-0021)は、出力先のファイル → 台帳の行 → 空になったフォルダの順に消す
+/// (取込元は消さない)。「別の番組として取り込む」と判断した回は、解決したアルバムが変わるので、統合の変更と同じく動かす。
 /// </remarks>
 public sealed class ReapplyService(
     IFileSystem fileSystem,
@@ -47,10 +49,8 @@ public sealed class ReapplyService(
         var items = new List<ReapplyItem>();
         var knownFolders = new List<ProgramFolder>();
 
-        // この再適用の中で行き先になった場所と台帳の主キー。2 つの回が同じ場所・同じキーへ向かうのを防ぐ
-        // (dry-run でも実行と同じ判定になるよう、ファイルや台帳を見るだけでなくここでも覚える)。
-        var claimedPaths = new HashSet<string>(PathComparer);
-        var claimedKeys = new HashSet<(string Key, TimeOnly? Time, int Part)>();
+        // この再適用の中で行き先になった場所・消す回の場所と、台帳の主キー(dry-run でも実行と同じ判定になるよう覚える)。
+        var claims = new Claims();
         var vacatedDirectories = new HashSet<string>(PathComparer);
 
         var entries = ledger.ListAll()
@@ -78,13 +78,21 @@ public sealed class ReapplyService(
             var file = resolved.Source;
             knownFolders.Add(new ProgramFolder(episode.Station, file.ProgramFolder));
 
-            // ファイル名の番組名に「取り込まない」と判断した回(ADR-0021)は動かさない。アルバムはフォルダの番組のまま解決されるので、
-            // 「別の番組」から変えた回を記録どおりでないとして予約した番組のアルバムへ動かしてしまうため。記録どおりの回も同じく
-            // 対象外として出す(どちらも消す予定の回。放送局が変わる回と同じく、揃っているかの判定には数えず、予定 ID には含む)。
-            // 出力先から消すのは #234 で、この対象外を「消す」区分に差し替える。
+            // ファイル名の番組名に「取り込まない」と判断した回(ADR-0021)は、出力先から消す。記録どおりかの判定より前に見る
+            // (アルバムはフォルダの番組のまま解決されるので、先に見ないと「別の番組」から変えた回を予約した番組のアルバムへ
+            // 動かしてしまう。記録どおりの回も消す対象)。放送局が変わる回も消す(置き場所を決め直すわけではないので、
+            // 放送局の変更を再適用しない理由が当てはまらない。要対応の「出力先から消す予定」と同じ回を扱う)。
             if (resolved.IsSkipDecided)
             {
-                items.Add(Item(entry, ReapplyAction.Excluded, entry.Program, entry.OutputPath, SkipDecidedReason));
+                // 消す回の場所と台帳のキーを覚える。実行は 1 回ずつその場で消すので、覚えないと、後に処理する回が同じ場所・
+                // 同じキーを目指したとき、確認では「移動先にある・台帳にある」で対象外や重複、実行では消えた後なので移動、と
+                // 予定と違うことをしてしまう(#213)。覚えればどちらも専用の理由の対象外に揃い、次の再適用で動く。
+                claims.RemovedPaths.Add(entry.OutputPath);
+                claims.RemovedKeys.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
+                var removal = PlanRemoval(entry);
+                if (!dryRun)
+                    removal = ApplyRemoval(removal, entry, vacatedDirectories);
+                items.Add(removal);
                 continue;
             }
 
@@ -102,12 +110,12 @@ public sealed class ReapplyService(
                 OutputPath = newPath,
             };
 
-            var item = Plan(entry, episode, updated, tags, claimedPaths, claimedKeys);
+            var item = Plan(entry, episode, updated, tags, claims);
             if (item.Action is ReapplyAction.Move or ReapplyAction.LedgerAndTags or ReapplyAction.LedgerOnly
                 or ReapplyAction.DuplicateLeft)
             {
-                claimedPaths.Add(newPath);
-                claimedKeys.Add((updated.IdentityKey, updated.BroadcastTime, updated.PartIndex));
+                claims.Paths.Add(newPath);
+                claims.Keys.Add((updated.IdentityKey, updated.BroadcastTime, updated.PartIndex));
                 if (!dryRun)
                     item = await ApplyAsync(item, entry, updated, tags, vacatedDirectories, cancellationToken);
             }
@@ -126,8 +134,8 @@ public sealed class ReapplyService(
             UnintegratedSiblings = Reapply.UnintegratedSiblings.Find(knownFolders, programResolver, keepSeparate ?? []),
         };
 
-        // ファイル(置き場所かタグ)を書き換えた回があれば、Jellyfin の通常スキャンを起動する。
-        var (refreshStatus, refreshError) = dryRun || report.RewritesFiles == 0
+        // ファイル(置き場所かタグ)を書き換えた・消した回があれば、Jellyfin の通常スキャンを起動する。
+        var (refreshStatus, refreshError) = dryRun || !report.ChangesLibrary
             ? (LibraryRefreshStatus.NotNeeded, null)
             : await LibraryRefresh.RunAsync(refresher, cancellationToken);
 
@@ -137,9 +145,9 @@ public sealed class ReapplyService(
     // 1 回分をどう扱うかを、ファイルと台帳を見て決める(副作用なし。dry-run と実行で同じ)。
     private ReapplyItem Plan(
         LedgerEntry entry, Episode episode, LedgerEntry updated, NormalizedTags tags,
-        HashSet<string> claimedPaths, HashSet<(string Key, TimeOnly? Time, int Part)> claimedKeys)
+        Claims claims)
     {
-        var item = PlanPlacement(entry, episode, updated, claimedPaths, claimedKeys);
+        var item = PlanPlacement(entry, episode, updated, claims);
         return item.Action is ReapplyAction.LedgerOnly or ReapplyAction.DuplicateLeft
             ? CheckTags(item, entry, episode, tags)
             : item;
@@ -173,8 +181,55 @@ public sealed class ReapplyService(
             : item with { Action = ReapplyAction.LedgerAndTags, RewritesTags = true };
     }
 
-    private const string SkipDecidedReason =
-        "ファイル名の番組名に「取り込まない」と判断した回です。再適用はまだ出力先から消しません(#234)";
+    // 「取り込まない」と判断した回の予定(副作用なし。dry-run と実行で同じ)。移動先は無いので、変更後のアルバム・場所は今のまま。
+    // 出力ファイルが既に無ければ、台帳の行だけを消す(利用者が手で消した等)。
+    private ReapplyItem PlanRemoval(LedgerEntry entry) =>
+        fileSystem.File.Exists(entry.OutputPath)
+            ? Item(entry, ReapplyAction.Remove, entry.Program, entry.OutputPath)
+            : Item(entry, ReapplyAction.Remove, entry.Program, entry.OutputPath, RemoveLedgerOnlyReason);
+
+    // 出力先のファイルを消してから台帳の行を消す(逆の順だと、ファイルを消せなかったときに台帳から見えないファイルが残る)。
+    // ファイルを消した後・台帳の前に止まっても、次の再適用が「出力ファイルが無い回」として台帳の行だけを消す。取込元には触れない。
+    private ReapplyItem ApplyRemoval(ReapplyItem item, LedgerEntry entry, HashSet<string> vacatedDirectories)
+    {
+        try
+        {
+            if (fileSystem.File.Exists(entry.OutputPath))
+            {
+                fileSystem.File.Delete(entry.OutputPath);
+                vacatedDirectories.Add(fileSystem.Path.GetDirectoryName(entry.OutputPath)!);
+            }
+
+            if (!ledger.Remove(entry))
+                return item with
+                {
+                    Action = ReapplyAction.Failed,
+                    Reason = "台帳の記録を消せませんでした(記録が見つかりません)",
+                };
+
+            return item;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 消せなかった。ファイルを消せなかったとき(他のアプリが開いている等)はファイルも台帳も残り、次の再適用でもう一度消す。
+            // ファイルを消した後に台帳の削除で失敗したときは台帳の行だけが残り、次の再適用で「台帳の記録だけを消す」回として消える。
+            return item with { Action = ReapplyAction.Failed, Reason = ex.Message };
+        }
+    }
+
+    private const string RemoveLedgerOnlyReason = "出力ファイルが見つかりません。台帳の記録だけを消します";
+
+    private const string RemovedPlaceReason = "この再適用で出力先から消す回と同じ場所です。次の再適用で動きます";
+
+    // この再適用の中で使われた場所と台帳の主キー。移動などで行き先になったもの(Paths / Keys)と、消す回のもの
+    // (RemovedPaths / RemovedKeys)を分けて覚え、対象外の理由を言い分ける。
+    private sealed class Claims
+    {
+        public HashSet<string> Paths { get; } = new(PathComparer);
+        public HashSet<(string Key, TimeOnly? Time, int Part)> Keys { get; } = [];
+        public HashSet<string> RemovedPaths { get; } = new(PathComparer);
+        public HashSet<(string Key, TimeOnly? Time, int Part)> RemovedKeys { get; } = [];
+    }
 
     private const string DuplicateReason ="移動先に同じ内容のファイルがあるため、元の場所のファイルを残しています";
 
@@ -184,7 +239,7 @@ public sealed class ReapplyService(
     // 置き場所(移動・台帳だけ・重複・対象外)を決める。
     private ReapplyItem PlanPlacement(
         LedgerEntry entry, Episode episode, LedgerEntry updated,
-        HashSet<string> claimedPaths, HashSet<(string Key, TimeOnly? Time, int Part)> claimedKeys)
+        Claims claims)
     {
         var newPath = updated.OutputPath;
 
@@ -193,17 +248,23 @@ public sealed class ReapplyService(
             return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
                 $"放送局が変わっています({entry.Station} → {episode.Station})。放送局の変更は再適用しません");
 
-        // 新しい主キーが既に別の回で使われている(同じ放送が別のフォルダからも取り込まれている等)。
-        // 台帳を書き換えると記録が 1 つ消えるので動かさない。主キーが変わらない回(正規名の空白だけの変更等)は自分自身なので除く。
         var newKey = (updated.IdentityKey, updated.BroadcastTime, updated.PartIndex);
         var sameKey = newKey == (entry.IdentityKey, entry.BroadcastTime, entry.PartIndex);
+
+        // この再適用で消す回の場所・主キーと重なる。確認の時点ではまだ台帳とファイルがあり、実行では消えた後なので、
+        // ほかの判定より先に見て、確認と実行のどちらでも対象外にする(#213)。消えた後の次の再適用で動く。
+        if ((!sameKey && claims.RemovedKeys.Contains(newKey)) || claims.RemovedPaths.Contains(newPath))
+            return Item(entry, ReapplyAction.Excluded, episode.Program, newPath, RemovedPlaceReason);
+
+        // 新しい主キーが既に別の回で使われている(同じ放送が別のフォルダからも取り込まれている等)。
+        // 台帳を書き換えると記録が 1 つ消えるので動かさない。主キーが変わらない回(正規名の空白だけの変更等)は自分自身なので除く。
         if (!sameKey
-            && (claimedKeys.Contains(newKey)
+            && (claims.Keys.Contains(newKey)
                 || ledger.Contains(episode.Identity, updated.BroadcastTime, updated.PartIndex)))
             return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
                 "台帳に同じ放送回の記録が既にあります");
 
-        if (claimedPaths.Contains(newPath))
+        if (claims.Paths.Contains(newPath))
             return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
                 "この再適用で別の回が同じ場所へ移ります");
 

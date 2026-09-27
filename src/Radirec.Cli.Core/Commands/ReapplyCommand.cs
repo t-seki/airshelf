@@ -122,8 +122,11 @@ public sealed class ReapplyCommand(
             if (outputRoot is not null)
                 console.MarkupLineInterpolated($"[grey]明細のパスは出力先({outputRoot})からの相対パスです[/]");
             RenderItems(report, outputRoot);
+            // 出力先から消す回は、あるときだけ出す(差し替え放送の判断が無い利用者の表示を変えないため。トレイの確認と同じ)。
+            var removals = report.Count(ReapplyAction.Remove) is var r and > 0 ? $"出力先から消す {r} / " : string.Empty;
             console.MarkupLine(
                 $"移動・リネーム {report.Count(ReapplyAction.Move)} / 台帳とタグを直す {report.Count(ReapplyAction.LedgerAndTags)} / " +
+                removals +
                 $"台帳だけ直す {report.Count(ReapplyAction.LedgerOnly)} / " +
                 $"重複が残っている {report.Count(ReapplyAction.DuplicateLeft)} / 対象外 {report.Count(ReapplyAction.Excluded)} / " +
                 $"失敗 {report.Count(ReapplyAction.Failed)}{mode}");
@@ -131,6 +134,11 @@ public sealed class ReapplyCommand(
                 console.MarkupLine(
                     $"[grey]重複が残っている回のうち {report.DuplicatesRewritingTags} 回は、移動先のファイルのタグ(album / title / track)も" +
                     (report.DryRun ? "書き換えます。[/]" : "書き換えました。[/]"));
+            if (report.Count(ReapplyAction.Remove) > 0)
+                console.MarkupLine(report.DryRun
+                    ? "[grey]出力先から消す回は、ファイル名の番組名に「取り込まない」と判断した回です。出力先のファイルと台帳の記録を消します" +
+                      "(取込元の録音は消しません。判断を戻せば取り込み直されます)。[/]"
+                    : "[grey]出力先から消した回の録音は、取込元に残っています(判断を戻すと、次の取り込みで取り込み直されます)。[/]");
         }
 
         RenderSiblings(report);
@@ -164,6 +172,9 @@ public sealed class ReapplyCommand(
         table.AddColumn("変更前 → 変更後");
         table.AddColumn(new TableColumn("移動").RightAligned());
         table.AddColumn(new TableColumn("台帳とタグ").RightAligned());
+        var hasRemovals = report.Count(ReapplyAction.Remove) > 0;
+        if (hasRemovals)
+            table.AddColumn(new TableColumn("消す").RightAligned());
         table.AddColumn(new TableColumn("台帳のみ").RightAligned());
         table.AddColumn(new TableColumn("重複").RightAligned());
         table.AddColumn(new TableColumn("対象外").RightAligned());
@@ -171,15 +182,23 @@ public sealed class ReapplyCommand(
 
         foreach (var album in report.Albums)
         {
-            table.AddRow(
+            var cells = new List<string>
+            {
                 Markup.Escape(album.Station),
                 Markup.Escape($"{album.FromAlbum} → {album.ToAlbum}"),
                 album.Moves.ToString(),
                 album.LedgerAndTags.ToString(),
+            };
+            if (hasRemovals)
+                cells.Add(album.Removals.ToString());
+            cells.AddRange(
+            [
                 album.LedgerOnly.ToString(),
                 album.DuplicatesLeft.ToString(),
                 album.Excluded.ToString(),
-                album.Failed.ToString());
+                album.Failed.ToString(),
+            ]);
+            table.AddRow(cells.ToArray());
         }
 
         console.Write(table);
@@ -242,6 +261,7 @@ public sealed class ReapplyCommand(
         ReapplyAction.DuplicateLeft => ("重複", "yellow"),
         ReapplyAction.Excluded => ("対象外", "grey"),
         ReapplyAction.Failed => ("失敗", "red"),
+        ReapplyAction.Remove => (dryRun ? "消す予定" : "消した", dryRun ? "cyan" : "green"),
         _ => (action.ToString(), "white"),
     };
 }

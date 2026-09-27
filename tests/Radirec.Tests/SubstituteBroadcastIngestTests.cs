@@ -40,6 +40,7 @@ public sealed class SubstituteBroadcastIngestTests
         public bool ContainsContent(FileFingerprint fingerprint, DateOnly broadcastDate, TimeOnly? broadcastTime) => false;
         public void Record(LedgerEntry entry) => Entries.Add(entry);
         public bool Replace(LedgerEntry current, LedgerEntry updated) => throw new NotSupportedException();
+        public bool Remove(LedgerEntry entry) => throw new NotSupportedException();
         public IReadOnlyList<LedgerEntry> ListAll() => Entries;
     }
 

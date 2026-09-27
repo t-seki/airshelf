@@ -142,7 +142,7 @@ public sealed class ReapplyServiceTests : IDisposable
             programs.KeepSeparate);
     }
 
-    // ---- 差し替え放送の「取り込まない」(ADR-0021)。消すのは #234 で、それまでは動かさず対象外にする ----
+    // ---- 差し替え放送の判断(ADR-0021)。「取り込まない」の回は出力先から消し、「別の番組」の回は判断のアルバムへ動かす(#234) ----
 
     private const string SubstituteName = "試験の特番";
 
@@ -200,9 +200,41 @@ public sealed class ReapplyServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task 別の番組から取り込まないに変えた回は_予約した番組へ動かさず対象外にする()
+    public async Task 取り込まないと判断した回は_出力先のファイルと台帳の行を消し_取込元は残す()
     {
-        // rc1 の実機確認で見つかった不具合:Skip の回はアルバムがフォルダの番組のまま解決されるので、「別の番組」で取り込んだ回が
+        var source = PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        var imported = OutputOf(Folder1, "2024-12-23");
+        Assert.True(File.Exists(imported));
+        var refresher = new CountingRefresher();
+
+        var plan = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true);
+        var planned = Assert.Single(plan.Items);
+        Assert.Equal(ReapplyAction.Remove, planned.Action);
+        Assert.Equal(imported, planned.FromPath);
+        Assert.Null(planned.Reason);
+        Assert.False(plan.IsAligned); // 消す回があれば「揃っていない」
+        Assert.True(File.Exists(imported)); // dry-run は何も変えない
+        Assert.Single(ledger.ListAll());
+
+        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip), refresher: refresher).RunAsync(dryRun: false);
+
+        Assert.Equal(ReapplyAction.Remove, Assert.Single(applied.Items).Action);
+        Assert.False(File.Exists(imported));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(imported))); // 空になったフォルダも消す
+        Assert.Empty(ledger.ListAll());
+        Assert.True(File.Exists(source)); // 取込元は消さない
+        Assert.Equal(1, refresher.Calls); // ライブラリから消えるよう、通常スキャンを起動する
+
+        // 2 回目は何もしない。
+        Assert.True((await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true)).IsAligned);
+    }
+
+    [Fact]
+    public async Task 別の番組から取り込まないに変えた回は_予約した番組へ動かさず消す()
+    {
+        // v0.13.0-rc1 の実機確認で見つかった不具合:Skip の回はアルバムがフォルダの番組のまま解決されるので、「別の番組」で取り込んだ回が
         // 記録どおりでないとされ、予約した番組のアルバムへ移動しようとしていた。
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
@@ -216,34 +248,215 @@ public sealed class ReapplyServiceTests : IDisposable
         foreach (var report in new[] { plan, applied })
         {
             var item = Assert.Single(report.Items);
-            Assert.Equal(ReapplyAction.Excluded, item.Action);
-            Assert.Equal(imported, item.ToPath);
-            Assert.Contains("取り込まない", item.Reason);
-            Assert.True(report.IsAligned); // 放送局が変わる回と同じく、揃っているかの判定には数えない
+            Assert.Equal(ReapplyAction.Remove, item.Action);
+            Assert.Equal("試験の別番組", item.ToAlbum); // 予約した番組のアルバムを行き先にしない
         }
-        Assert.True(File.Exists(imported));
+        Assert.False(File.Exists(imported));
         Assert.False(Directory.Exists(Path.Combine(OutputRoot, Station, Folder1)));
-        Assert.Equal("試験の別番組", Assert.Single(ledger.ListAll()).Program);
+        Assert.Empty(ledger.ListAll());
     }
 
     [Fact]
-    public async Task フォルダの番組のまま取り込まれた回を取り込まないにしても_動かさず対象外にする()
+    public async Task 消す回の場所へ別の回が動くときは_確認と実行で同じく対象外にし_次の再適用で動かす()
     {
-        // 記録どおり(アルバムはフォルダの番組)の Skip の回も、消す予定の回として同じく対象外に出す(予定 ID に含む)。
+        // 回 A(フォルダ (1)・「取り込まない」)を消し、回 B(フォルダ (2))を (1) の名前のアルバムへ動かす設定。B の移動先は A の出力先と同じ。
+        // 実行は A をその場で消すので、A の場所を覚えないと、確認では「移動先にある」(重複)、実行では移動、と食い違う(#213)。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        PlaceSource(Folder2, Dec23At1000);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        var aPath = OutputOf(Folder1, "2024-12-23");
+        Assert.True(File.Exists(aPath));
+
+        var settings = Decided(FilenameProgramTreatment.Skip);
+        settings.Programs =
+        [
+            new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Station, Folders = [Folder2] },
+                Canonical = new ProgramCanonical { Album = Folder1 },
+            },
+        ];
+
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+
+        foreach (var report in new[] { plan, applied })
+        {
+            Assert.Equal(2, report.Items.Count);
+            Assert.Equal(ReapplyAction.Remove, report.Items.Single(i => i.FromAlbum == Folder1).Action);
+            var b = report.Items.Single(i => i.FromAlbum == Folder2);
+            Assert.Equal(ReapplyAction.Excluded, b.Action);
+            Assert.Equal(aPath, b.ToPath);
+            Assert.Equal(RemovedPlaceReason, b.Reason);
+        }
+        Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(applied)); // 見せた予定どおりに実行した
+        Assert.True(plan.HasSamePlanAs(applied));
+        Assert.False(File.Exists(aPath)); // A は消えた。B はまだ動いていない
+        Assert.True(File.Exists(OutputOf(Folder2, "2024-12-23")));
+
+        // 次の再適用で B が動く。
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
+        Assert.True(File.Exists(aPath));
+        Assert.Equal(Folder1, Assert.Single(ledger.ListAll()).Program);
+    }
+
+    private const string RemovedPlaceReason = "この再適用で出力先から消す回と同じ場所です。次の再適用で動きます";
+
+    [Fact]
+    public async Task 消す回と台帳のキーが同じ回は_確認と実行で同じく対象外にし_次の再適用で動かす()
+    {
+        // 回 B の台帳のキー(同一性キー・放送時刻・パート)が、消す回 A と同じ。場所は重ならない(A は別の名前に置かれている。
+        // 取り込みで時刻付きの別名に逃がした回や、手で名前を変えた回)。確認の時点では A の記録が台帳にあるので「台帳にある」、
+        // 実行では A を消した後なので移動、と食い違わないよう、消す回のキーを覚える(#213)。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var bSource = Path.Combine(RadioRoot, Station, Folder2, $"[{Station}]{Folder2}(TimeFree)_{Dec23At0830}.m4a");
+        CopyWithDifferentAudio(bSource); // 内容の指紋で同じ回と見なされないよう、中身を変える(ADR-0014)
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        Assert.Equal(2, ledger.ListAll().Count);
+        var aPath = OutputOf(Folder1, "2024-12-23");
+
+        // A を別の名前へ置き直し、台帳もそちらへ向ける(B の移動先 = aPath とは重ならない)。
+        var aEntry = ledger.ListAll().Single(e => e.Program == Folder1);
+        var aRenamed = Path.Combine(Path.GetDirectoryName(aPath)!, $"{Folder1} 2024-12-23 0830.m4a");
+        File.Move(aPath, aRenamed);
+        Assert.True(ledger.Replace(aEntry, aEntry with { OutputPath = aRenamed }));
+
+        var settings = Decided(FilenameProgramTreatment.Skip);
+        settings.Programs =
+        [
+            new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Station, Folders = [Folder2] },
+                Canonical = new ProgramCanonical { Album = Folder1 },
+            },
+        ];
+
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+
+        var aEntryKey = plan.Items.Single(i => i.FromAlbum == Folder1);
+        foreach (var report in new[] { plan, applied })
+        {
+            Assert.Equal(ReapplyAction.Remove, report.Items.Single(i => i.FromAlbum == Folder1).Action);
+            var b = report.Items.Single(i => i.FromAlbum == Folder2);
+            Assert.Equal(ReapplyAction.Excluded, b.Action);
+            Assert.Equal(RemovedPlaceReason, b.Reason);
+            Assert.Equal(aEntryKey.BroadcastTime, b.BroadcastTime); // キー(放送時刻)が A と同じ
+            Assert.Equal(aPath, b.ToPath); // 移動先は A の今の場所(aRenamed)とは違う
+        }
+        Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(applied));
+        Assert.True(plan.HasSamePlanAs(applied));
+        Assert.False(File.Exists(aRenamed));
+        Assert.False(File.Exists(aPath)); // B はまだ動いていない
+
+        // 次の再適用で B が動き、A のキーで台帳に記録される。
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
+        Assert.True(File.Exists(aPath));
+        var moved = Assert.Single(ledger.ListAll());
+        Assert.Equal(Folder1, moved.Program);
+        Assert.Equal(new TimeOnly(8, 30), moved.BroadcastTime);
+    }
+
+    [Fact]
+    public async Task 出力ファイルが既に無い回は_台帳の行だけを消す()
+    {
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        File.Delete(OutputOf(Folder1, "2024-12-23"));
+
+        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false);
+
+        var item = Assert.Single(applied.Items);
+        Assert.Equal(ReapplyAction.Remove, item.Action);
+        Assert.Contains("台帳の記録だけ", item.Reason);
+        Assert.Empty(ledger.ListAll());
+    }
+
+    [Fact]
+    public async Task 消す回は予定IDに含まれ_確認の後に判断が変わると予定が変わる()
+    {
+        // 確認と実行の間に判断が変わったら(「取り込まない」→「この番組の回」)、見せた予定と違うので実行しない。
+        // 実行側(CLI の --apply・常駐)は、この予定 ID / HasSamePlanAs の不一致で止める。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+
+        var confirmed = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true);
+        var nowSame = await Reapply(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunAsync(dryRun: true);
+        var nowOther = await Reapply(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunAsync(dryRun: true);
+
+        Assert.Empty(nowSame.Items);
+        Assert.Equal(ReapplyAction.Move, Assert.Single(nowOther.Items).Action);
+        Assert.NotEqual(ReapplyPlanId.Of(confirmed), ReapplyPlanId.Of(nowSame));
+        Assert.NotEqual(ReapplyPlanId.Of(confirmed), ReapplyPlanId.Of(nowOther));
+        Assert.False(confirmed.HasSamePlanAs(nowSame));
+        Assert.False(confirmed.HasSamePlanAs(nowOther));
+        Assert.True(File.Exists(OutputOf(Folder1, "2024-12-23"))); // dry-run だけなので何も消えていない
+    }
+
+    [Fact]
+    public async Task 消した回は_判断をこの番組の回に戻すと次の取り込みで取り込み直される()
+    {
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
         await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
         var imported = OutputOf(Folder1, "2024-12-23");
+        await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false);
+        Assert.False(File.Exists(imported));
 
-        var same = await Reapply(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunAsync(dryRun: true);
-        var skip = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false);
+        // 「取り込まない」のままなら取り込まない。
+        var skipped = await Ingest(ledger, Decided(FilenameProgramTreatment.Skip)).RunOnceAsync(dryRun: false);
+        Assert.Equal(IngestOutcome.SkippedByDecision, Assert.Single(skipped.Items).Outcome);
+        Assert.False(File.Exists(imported));
 
-        Assert.Empty(same.Items);
-        var item = Assert.Single(skip.Items);
-        Assert.Equal(ReapplyAction.Excluded, item.Action);
-        Assert.True(skip.IsAligned);
-        Assert.NotEqual(ReapplyPlanId.Of(same), ReapplyPlanId.Of(skip));
+        // 判断を戻すと、台帳に無い回として取り込み直される。
+        var reingested = await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        Assert.Equal(IngestOutcome.Imported, Assert.Single(reingested.Items).Outcome);
         Assert.True(File.Exists(imported));
+        Assert.Single(ledger.ListAll());
+    }
+
+    [Fact]
+    public async Task 取り込み済みの回を別の番組と判断すると_判断のアルバムへ動く()
+    {
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+
+        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunAsync(dryRun: false);
+
+        Assert.Equal(ReapplyAction.Move, Assert.Single(applied.Items).Action);
+        var moved = OutputOf("試験の別番組", "2024-12-23");
+        Assert.True(File.Exists(moved));
+        Assert.False(File.Exists(OutputOf(Folder1, "2024-12-23")));
+        Assert.Equal("試験の別番組", TagsOf(moved).Album);
+        Assert.Equal("試験の別番組", Assert.Single(ledger.ListAll()).Program);
+    }
+
+    [Fact]
+    public async Task 放送局が変わる回でも_取り込まないと判断した回は消す()
+    {
+        // 置き場所を決め直すわけではないので、放送局の変更を再適用しない理由(ADR-0016)が当てはまらない。要対応の
+        // 「出力先から消す予定」(局が変わる回も含む)と同じ回を扱う。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        var stations = new StationMasterConfig
+        {
+            Stations = [new StationAlias { Canonical = "TBS", Aliases = [Station] }],
+        };
+        var decided = Decided(FilenameProgramTreatment.Skip);
+        decided.FilenamePrograms[0].Match.Station = "TBS";
+
+        var applied = await Reapply(ledger, decided, stations).RunAsync(dryRun: false);
+
+        Assert.Equal(ReapplyAction.Remove, Assert.Single(applied.Items).Action);
+        Assert.Empty(ledger.ListAll());
     }
 
     // (1) の 1 回だけを統合設定の無いまま取り込み、統合先の名前へファイルを mv しただけ(タグは (1) のまま)の状態を作る。
