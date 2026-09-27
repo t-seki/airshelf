@@ -159,6 +159,46 @@ public sealed class ReapplyServiceTests : IDisposable
         ],
     };
 
+    // 統合番組(ふらっと (1)・(2))の両方のフォルダの SubstituteName に、同じ判断を書いた設定。
+    private static ProgramMasterConfig MergedWithBothDecided(FilenameProgramTreatment treat, string? album = null)
+    {
+        var programs = Merged();
+        programs.FilenamePrograms = [.. new[] { Folder1, Folder2 }.Select(folder => new FilenameProgramDecision
+        {
+            Match = new FilenameProgramMatch { Station = Station, Folder = folder, FilenameProgram = SubstituteName },
+            Treat = treat,
+            Album = album,
+        })];
+        return programs;
+    }
+
+    [Fact]
+    public async Task 統合番組の2つのパートを同じ別の番組へまとめると_パートを引き継いで両方とも移る()
+    {
+        // #239:本番の再適用で、2 つの枠にまたがった特番(ニューイヤー駅伝など)を 1 つのアルバムにまとめると、同じ日の 2 回が
+        // 同じ名前を目指し、後の方が「この再適用で別の回が同じ場所へ移ります」で対象外になっていた。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        PlaceSource(Folder2, Dec23At1000, program: SubstituteName);
+        var ledger = Ledger();
+        await Ingest(ledger, MergedWithBothDecided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        Assert.True(File.Exists(OutputOf(Album, "2024-12-23", 1)));
+        Assert.True(File.Exists(OutputOf(Album, "2024-12-23", 2)));
+
+        var decided = MergedWithBothDecided(FilenameProgramTreatment.OtherProgram, "試験の別番組");
+        var plan = await Reapply(ledger, decided).RunAsync(dryRun: true);
+        var applied = await Reapply(ledger, decided).RunAsync(dryRun: false);
+
+        Assert.True(plan.HasSamePlanAs(applied));
+        Assert.Equal(2, applied.Items.Count);
+        Assert.All(applied.Items, i => Assert.Equal(ReapplyAction.Move, i.Action));
+        Assert.True(File.Exists(OutputOf("試験の別番組", "2024-12-23", 1)));
+        Assert.True(File.Exists(OutputOf("試験の別番組", "2024-12-23", 2)));
+        Assert.False(Directory.Exists(Path.Combine(OutputRoot, Station, Album)));
+        Assert.Equal([1, 2], ledger.ListAll().Select(e => e.PartIndex).Order());
+        Assert.All(ledger.ListAll(), e => Assert.Equal("試験の別番組", e.Program));
+        Assert.True((await Reapply(ledger, decided).RunAsync(dryRun: true)).IsAligned);
+    }
+
     [Fact]
     public async Task 別の番組から取り込まないに変えた回は_予約した番組へ動かさず対象外にする()
     {

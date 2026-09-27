@@ -14,10 +14,11 @@ public sealed class EpisodeAssembler(IStationResolver stationResolver, IProgramR
         var program = programResolver.Resolve(station.Canonical, source.RawProgram);
 
         // 差し替え放送(ADR-0021)。「別の番組として取り込む」回は、フォルダの番組ではなく判断のアルバムにする
-        // (局はそのまま。統合番組のパートにはならない)。ほかの扱いはアルバムを変えない(保留・取り込まないは呼び手が見る)。
+        // (局はそのまま)。統合番組のフォルダから来た回は、そのフォルダのパートを引き継ぐ(#239。2 つの枠にまたがった特番を
+        // 1 つのアルバムにまとめても、同じ日の 2 回が -1 / -2 で並ぶ)。ほかの扱いはアルバムを変えない(保留・取り込まないは呼び手が見る)。
         var judgement = programResolver.JudgeFilenameProgram(station.Canonical, source.RawProgram, source.FilenameProgram);
         if (judgement is { Verdict: FilenameProgramVerdict.OtherProgram, Album: { } otherAlbum })
-            program = new ProgramResolution(otherAlbum, UsedFallback: false);
+            program = new ProgramResolution(otherAlbum, UsedFallback: false, PartIndex: program.PartIndex);
 
         var identity = new IdentityKey(station.Canonical, program.Canonical, source.BroadcastDate);
 

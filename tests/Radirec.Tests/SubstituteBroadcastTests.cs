@@ -97,27 +97,51 @@ public sealed class SubstituteBroadcastTests : IDisposable
     }
 
     [Fact]
-    public void 別の番組の回は判断のアルバムで組み_パートを持たない()
+    public void 別の番組の回は判断のアルバムで組み_統合番組のフォルダのパートを引き継ぐ()
     {
+        // #239:2 つの枠(統合番組のパート)にまたがった特番を 1 つのアルバムにまとめても、同じ日の 2 回が -1 / -2 で並ぶように、
+        // フォルダのパートを引き継ぐ。
+        const string part2 = Folder + "Part2";
         var programs = new ProgramMasterConfig
         {
-            // フォルダが統合番組に入っていても、別の番組の回はパートにならない。
             Programs = [new ProgramAlias
             {
-                Match = new ProgramMatch { Station = Lf, Folders = [Folder, Folder + "Part2"] },
+                Match = new ProgramMatch { Station = Lf, Folders = [Folder, part2] },
                 Canonical = new ProgramCanonical { Album = "チャリ" },
             }],
-            FilenamePrograms = [Decision(FilenameProgramTreatment.OtherProgram, "辛坊治郎 ズーム")],
+            FilenamePrograms =
+            [
+                Decision(FilenameProgramTreatment.OtherProgram, "辛坊治郎 ズーム"),
+                Decision(FilenameProgramTreatment.OtherProgram, "辛坊治郎 ズーム", folder: part2),
+            ],
         };
         var assembler = new EpisodeAssembler(new StationResolver(new StationMasterConfig()), new ProgramResolver(programs));
-        var source = new RajirekoImporter().Parse(Rec(Substitute));
 
-        var episode = assembler.Assemble(source);
+        var first = assembler.Assemble(new RajirekoImporter().Parse(Rec(Substitute)));
+        var second = assembler.Assemble(new RajirekoImporter().Parse(Rec(Substitute, folder: part2)));
+
+        Assert.Equal("辛坊治郎 ズーム", first.Program);
+        Assert.Equal(1, first.PartIndex);
+        Assert.Equal(FilenameProgramVerdict.OtherProgram, first.FilenameVerdict);
+        Assert.Equal(Substitute, first.FilenameProgram);
+        Assert.Equal("辛坊治郎 ズーム", second.Program);
+        Assert.Equal(2, second.PartIndex);
+    }
+
+    [Fact]
+    public void 統合番組でないフォルダの別の番組の回はパートを持たない()
+    {
+        var assembler = new EpisodeAssembler(
+            new StationResolver(new StationMasterConfig()),
+            new ProgramResolver(new ProgramMasterConfig
+            {
+                FilenamePrograms = [Decision(FilenameProgramTreatment.OtherProgram, "辛坊治郎 ズーム")],
+            }));
+
+        var episode = assembler.Assemble(new RajirekoImporter().Parse(Rec(Substitute)));
 
         Assert.Equal("辛坊治郎 ズーム", episode.Program);
         Assert.Null(episode.PartIndex);
-        Assert.Equal(FilenameProgramVerdict.OtherProgram, episode.FilenameVerdict);
-        Assert.Equal(Substitute, episode.FilenameProgram);
     }
 
     [Fact]
