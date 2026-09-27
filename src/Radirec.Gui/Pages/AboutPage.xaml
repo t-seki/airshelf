@@ -16,7 +16,7 @@
         <TextBlock Style="{DynamicResource PageHeading}" Text="バージョン情報" />
 
         <Border Padding="14,10" CornerRadius="4" BorderThickness="1"
-                BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+                BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
             <StackPanel>
                 <!-- W-501 -->
                 <TextBlock Text="{Binding VersionText}" FontSize="16" Margin="0,0,0,10" />
@@ -47,7 +47,7 @@
                         <Style TargetType="TextBlock">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding MessageIsWarning}" Value="True">
-                                    <Setter Property="Foreground" Value="Firebrick" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>

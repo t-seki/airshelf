@@ -29,11 +29,27 @@ public partial class ManagementWindow : Window
         _viewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        FollowWindowsAppMode();
 
         // Tick の例外は ViewModel の中で握る(gui.log に書く)。ここから漏れたら UI スレッドの最後の網が
         // 管理画面を閉じる(Program.cs)。
         _timer = new DispatcherTimer(RefreshInterval, DispatcherPriority.Background, (_, _) => _viewModel.Tick(), Dispatcher);
         Closed += (_, _) => _timer.Stop();
+    }
+
+    // Windows のアプリのモード(ライト / ダーク)に追従する(#171)。WPF の Fluent テーマをこのウィンドウにだけ入れる。
+    // トレイは WinForms の Application.Run の上でこのウィンドウを開くので、WPF の Application のインスタンスが無い。
+    // Application.ThemeMode は使えないが、Window.ThemeMode はウィンドウの Resources に Fluent の辞書を入れ、Windows の
+    // 設定の変更(WM_SETTINGCHANGE)でも、Application を通らずにこのウィンドウの色を当て直す(dotnet/wpf release/10.0 の
+    // ThemeManager.OnSystemThemeChanged の else の枝と SystemResources の WM_SETTINGCHANGE)。
+    // Window.ThemeMode は実験的 API(WPF0001)なので、警告はここだけで抑える。
+    // XAML の色は Fluent の辞書のキー(TextFillColorSecondaryBrush など)を DynamicResource で引く。
+    // SystemColors のキーは Fluent が上書きしないので、ダークでもクラシックの色のままになるため使わない。
+    private void FollowWindowsAppMode()
+    {
+#pragma warning disable WPF0001
+        ThemeMode = ThemeMode.System;
+#pragma warning restore WPF0001
     }
 
     // 行のダブルクリック・Enter で出力先を開く(旧取込履歴ウィンドウと同じ。#87)。

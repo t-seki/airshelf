@@ -21,14 +21,14 @@
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style x:Key="Sub" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Padding" Value="14,10" />
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SurfaceStrokeColorDefaultBrush}" />
         </Style>
         <Style x:Key="SmallButton" TargetType="Button">
             <Setter Property="Padding" Value="12,3" />
@@ -42,7 +42,7 @@
             <Setter Property="Margin" Value="0,10,0,3" />
         </Style>
         <Style x:Key="Error" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="Firebrick" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="Margin" Value="0,8,0,0" />
         </Style>
@@ -290,7 +290,7 @@
 
                 <!-- W-260〜W-262(コメントが消える確認)。確認の画面の上に出す -->
                 <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}" Margin="0,12,0,0"
-                        BorderBrush="DarkOrange" BorderThickness="2"
+                        BorderBrush="{DynamicResource SystemFillColorCautionBrush}" BorderThickness="2"
                         Visibility="{Binding IsCommentsPromptVisible, Converter={StaticResource Visible}}">
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionHeading}" Text="{Binding CommentsHeading}" />
@@ -334,7 +334,7 @@
                                            Text="{Binding ConfirmHeading}" />
                                 <TextBox Style="{StaticResource Body}" Text="{Binding ConfirmBody, Mode=OneWay}" />
                                 <!-- W-250 -->
-                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" Foreground="DarkOrange"
+                                <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource SystemFillColorCautionBrush}"
                                            Text="{Binding SaveOnlyNote}" />
                             </StackPanel>
                         </Border>
@@ -378,7 +378,7 @@
                                         <Style TargetType="TextBlock">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding ResultIsError}" Value="True">
-                                                    <Setter Property="Foreground" Value="Firebrick" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
