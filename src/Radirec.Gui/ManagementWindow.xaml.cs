@@ -52,9 +52,13 @@ public partial class ManagementWindow : Window
 #pragma warning restore WPF0001
     }
 
-    // 行のダブルクリック・Enter で出力先を開く(旧取込履歴ウィンドウと同じ。#87)。
-    private void OnHistoryRowDoubleClick(object sender, MouseButtonEventArgs e)
+    // 行のダブルクリック・Enter で出力先を開く(旧取込履歴ウィンドウと同じ。#87)。DataGrid の MouseDoubleClick は見出し
+    // (列幅の自動調整)でも起きるので、行の上のときだけ開く(DataGridRowHit)。
+    private void OnHistoryGridDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (DataGridRowHit.RowOf(e.OriginalSource) is null)
+            return;
+
         RevealSelectedOutput();
         e.Handled = true;
     }
@@ -68,12 +72,12 @@ public partial class ManagementWindow : Window
         e.Handled = true; // DataGrid 既定の「次の行へ移動」を抑える
     }
 
-    private void OnHistoryRowRightButtonDown(object sender, MouseButtonEventArgs e)
+    private void OnHistoryGridRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         // 右クリックのメニューは「選んでいる行」に対して働くので、開く前にクリックされた行を選ぶ
         // (右クリックで選択が動くかは DataGrid の既定に依るため、ここで確定させる)。
         // e.Handled は立てない。メニューは通常どおり開く必要がある。
-        if (sender is DataGridRow row)
+        if (DataGridRowHit.RowOf(e.OriginalSource) is { } row)
             row.IsSelected = true;
     }
 

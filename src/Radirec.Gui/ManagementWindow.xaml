@@ -37,16 +37,12 @@
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
 
-        <!-- 選択・コピーできる読み取り専用のパス(詳細欄 W-145)。長いので折り返して全文を見せる。 -->
-        <Style x:Key="PathBox" TargetType="TextBox">
-            <Setter Property="IsReadOnly" Value="True" />
-            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,2" />
-        </Style>
+        <!--
+          Button / TextBox / DataGridRow にはキー付きのスタイルを置かない(#171)。WPF のスタイルは 1 つしか効かないので、
+          キー付きのスタイルを当てると Fluent テーマの暗黙のスタイルを受け取らず、ダークでもクラシックの見た目になる。
+          BasedOn で Fluent を受け継ぐ手も取れない:ページ(UserControl)の XAML はウィンドウの木に入る前に読み込まれ、
+          その時点の StaticResource はクラシックのスタイルを引く。見た目の値は各要素の属性に書く。
+        -->
     </Window.Resources>
 
     <DockPanel>
@@ -322,10 +318,13 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="出力先" Margin="0,2,12,2" />
-                        <TextBox Grid.Row="0" Grid.Column="1" Style="{StaticResource PathBox}"
+                        <!-- 選択・コピーできる読み取り専用のパス(W-145)。長いので折り返して全文を見せる -->
+                        <TextBox Grid.Row="0" Grid.Column="1" IsReadOnly="True" IsReadOnlyCaretVisible="False"
+                                 BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Padding="0" Margin="0,2"
                                  Text="{Binding SelectedOutputPath, Mode=OneWay}" />
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="取込元" Margin="0,2,12,2" />
-                        <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource PathBox}"
+                        <TextBox Grid.Row="1" Grid.Column="1" IsReadOnly="True" IsReadOnlyCaretVisible="False"
+                                 BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Padding="0" Margin="0,2"
                                  Text="{Binding SelectedSourcePath, Mode=OneWay}" />
                     </Grid>
                 </Border>
@@ -338,14 +337,11 @@
                           CanUserAddRows="False" CanUserDeleteRows="False"
                           HeadersVisibility="Column" SelectionMode="Single"
                           GridLinesVisibility="Horizontal"
-                          PreviewKeyDown="OnHistoryGridPreviewKeyDown">
-                    <DataGrid.RowStyle>
-                        <Style TargetType="DataGridRow">
-                            <!-- DataGrid 自体の MouseDoubleClick は見出し(列幅の自動調整)でも起きるので、行で拾う -->
-                            <EventSetter Event="MouseDoubleClick" Handler="OnHistoryRowDoubleClick" />
-                            <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnHistoryRowRightButtonDown" />
-                        </Style>
-                    </DataGrid.RowStyle>
+                          PreviewKeyDown="OnHistoryGridPreviewKeyDown"
+                          MouseDoubleClick="OnHistoryGridDoubleClick"
+                          PreviewMouseRightButtonDown="OnHistoryGridRightButtonDown">
+                    <!-- RowStyle は置かない(Fluent の行のスタイルを上書きするため。#171)。行の操作は DataGrid で受けて行を探す -->
+
                     <!-- W-144 -->
                     <DataGrid.ContextMenu>
                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">

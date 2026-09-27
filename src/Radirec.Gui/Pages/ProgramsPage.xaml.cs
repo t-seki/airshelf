@@ -21,10 +21,11 @@ public partial class ProgramsPage : UserControl
 
     private ProgramsPageViewModel? ViewModel => DataContext as ProgramsPageViewModel;
 
-    // DataGrid 自体の MouseDoubleClick は見出し(列幅の自動調整)でも起きるので、行で拾う(取込履歴と同じ)。
-    private void OnProgramRowDoubleClick(object sender, MouseButtonEventArgs e)
+    // DataGrid の MouseDoubleClick は見出し(列幅の自動調整)でも起きるので、行の上のときだけ編集を開く(取込履歴と同じ)。
+    // 行は RowStyle の EventSetter ではなく DataGridRowHit で探す(RowStyle は Fluent の行のスタイルを上書きするため。#171)。
+    private void OnProgramGridDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (sender is DataGridRow { Item: ProgramEntryRow row } && ViewModel is { } vm)
+        if (DataGridRowHit.RowOf(e.OriginalSource) is { Item: ProgramEntryRow row } && ViewModel is { } vm)
         {
             vm.SelectedProgram = row;
             if (vm.EditProgramCommand.CanExecute(null))
@@ -33,9 +34,9 @@ public partial class ProgramsPage : UserControl
         }
     }
 
-    private void OnKeepRowDoubleClick(object sender, MouseButtonEventArgs e)
+    private void OnKeepGridDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (sender is DataGridRow { Item: KeepSeparateRow row } && ViewModel is { } vm)
+        if (DataGridRowHit.RowOf(e.OriginalSource) is { Item: KeepSeparateRow row } && ViewModel is { } vm)
         {
             vm.SelectedKeep = row;
             if (vm.EditKeepCommand.CanExecute(null))
