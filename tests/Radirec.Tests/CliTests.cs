@@ -245,6 +245,53 @@ public sealed class CliTests
             Directory.Delete(dir, recursive: true);
         }
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task dry_runで別の番組の判断にアルバム名が無ければ_設定の誤りとして1(bool json)
+    {
+        // ADR-0021。JSON として読めても中身が使えない programs.json は、壊れた JSON と同じ「設定の読み込みに失敗しました」で 1。
+        var dir = Directory.CreateTempSubdirectory("radirec-dryrun-programs-").FullName;
+        try
+        {
+            var config = new RadirecConfig
+            {
+                RadioRoot = Path.Combine(dir, "radio"),
+                OutputRoot = Path.Combine(dir, "out"),
+                LedgerPath = Path.Combine(dir, "ledger.db"),
+                StationsFile = Path.Combine(dir, "stations.json"),
+                ProgramsFile = Path.Combine(dir, "programs.json"),
+            };
+            Directory.CreateDirectory(config.RadioRoot);
+            File.WriteAllText(config.ProgramsFile, """
+                { "FilenamePrograms": [ { "Match": { "Station": "TBSラジオ", "Folder": "Z", "FilenameProgram": "特番" },
+                                          "Treat": "OtherProgram" } ] }
+                """);
+            string[] args = json ? ["ingest", "--dry-run", "--json"] : ["ingest", "--dry-run"];
+
+            var (exitCode, output) = await Run(args, new StubConfigSource(config));
+
+            Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
+            if (json)
+            {
+                using var doc = JsonDocument.Parse(output);
+                var error = doc.RootElement.GetProperty("error").GetString();
+                Assert.StartsWith("設定の読み込みに失敗しました: ", error);
+                Assert.Contains("Album", error);
+                Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("result").ValueKind);
+            }
+            else
+            {
+                Assert.Contains("設定の読み込みに失敗しました", output);
+                Assert.Contains("Album", output);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task コマンドの実行中の想定外の例外は1でjsonにコマンド名と理由が出る()
     {

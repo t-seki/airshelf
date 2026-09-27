@@ -41,7 +41,7 @@ public sealed class ProgramResolver : IProgramResolver
 
     private readonly Dictionary<(string Station, string Folder, string FilenameProgram), FilenameProgramJudgement> _decisions = new();
 
-    /// <exception cref="InvalidOperationException">
+    /// <exception cref="ProgramsConfigException">
     /// 「別の番組として取り込む」の判断にアルバム名が無い(設定の誤り。取り込みの起動・設定リロードを拒む)。
     /// </exception>
     public ProgramResolver(ProgramMasterConfig config)
@@ -78,10 +78,10 @@ public sealed class ProgramResolver : IProgramResolver
                 FilenameProgramTreatment.Skip => new FilenameProgramJudgement(FilenameProgramVerdict.Skip),
                 FilenameProgramTreatment.OtherProgram when !string.IsNullOrWhiteSpace(decision.Album)
                     => new FilenameProgramJudgement(FilenameProgramVerdict.OtherProgram, decision.Album.Trim()),
-                FilenameProgramTreatment.OtherProgram => throw new InvalidOperationException(
+                FilenameProgramTreatment.OtherProgram => throw new ProgramsConfigException(
                     $"programs.json の FilenamePrograms: {match.Station}「{match.Folder}」の「{match.FilenameProgram}」は " +
                     "OtherProgram ですが、Album(アルバム名)がありません"),
-                _ => throw new InvalidOperationException(
+                _ => throw new ProgramsConfigException(
                     $"programs.json の FilenamePrograms: {match.Station}「{match.Folder}」の「{match.FilenameProgram}」の " +
                     $"Treat({decision.Treat})を解釈できません"),
             };

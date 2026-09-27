@@ -118,7 +118,8 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
         {
             console.WriteLine();
             console.MarkupLine(
-                "[bold]差し替え放送の疑い[/] [grey](programs.json の FilenamePrograms に判断を書き、radirec reload で反映すると消えます)[/]");
+                "[bold]差し替え放送の疑い[/] [grey](programs.json の FilenamePrograms に判断を書くと消えます。" +
+                "保留した回を取り込ませるには radirec reload で常駐に反映します)[/]");
             foreach (var suspect in items.SubstituteSuspects)
             {
                 console.MarkupLineInterpolated($"  {SuspectLine(suspect)}");

@@ -67,7 +67,8 @@ public sealed class ReapplyServiceTests : IDisposable
             ],
         };
 
-    // 無音フィクスチャを らじれこ風の {局}/{番組}/ に置く(ファイル名の番組部は識別に使わないので表示用)。
+    // 無音フィクスチャを らじれこ風の {局}/{番組}/ に置く。ファイル名の番組部は既定でフォルダ名にする
+    // (フォルダ名を含まないと、差し替え放送の疑いとして保留になり取り込まれない。ADR-0021)。
     private string PlaceSource(string folder, string stamp, string station = Station, string? program = null)
     {
         var dir = Path.Combine(RadioRoot, station, folder);

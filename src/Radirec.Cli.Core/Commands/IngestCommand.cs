@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Radirec.Cli.Core.Output;
+using Radirec.Core.Configuration;
 using Radirec.Core.Ingestion;
 using Radirec.Hosting;
 using Radirec.Hosting.Control;
@@ -65,10 +66,11 @@ public sealed class IngestCommand(
         {
             (service, disposable) = CompositionRoot.Build(config, dryRun: true);
         }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException and not LedgerUnreachableException)
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or ProgramsConfigException
+                                   or IOException and not LedgerUnreachableException)
         {
-            // 台帳オープンや stations/programs の読み込みで失敗した場合(radirec.json 本体の
-            // 解析失敗は LoadConfig 側で処理済み)。台帳のフォルダに届かないときは外へ出して、ほかのコマンドと同じく
+            // 台帳オープンや stations/programs の読み込みで失敗した場合、programs.json の中身が使えない場合
+            // (「別の番組として取り込む」にアルバム名が無い等。ADR-0021)。radirec.json 本体の解析失敗は LoadConfig 側で処理済み。台帳のフォルダに届かないときは外へ出して、ほかのコマンドと同じく
             // 5 にする(RadirecCli.HandleException。#216)。
             CommandSupport.Fail(
                 console, Name, settings.Json, ExitCodes.UsageOrConfig, $"設定の読み込みに失敗しました: {ex.Message}");

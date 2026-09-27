@@ -1,7 +1,7 @@
 namespace Radirec.Core.Ingestion;
 
 /// <summary>
-/// 保留シグナル(CONTEXT.md。ADR-0021)のペイロード。1 走査で**初めて保留した**録音ファイルを、(フォルダ, ファイル名の番組名)
+/// 保留シグナル(CONTEXT.md。ADR-0021)のペイロード。1 走査で**初めて保留した**録音ファイルを、(局, フォルダ, ファイル名の番組名)
 /// ごとにまとめて運ぶ。取込要約シグナル・取込失敗シグナルとは別種の独立シグナル。提示の手段に依存しない。
 /// </summary>
 public sealed record IngestHeldSignal

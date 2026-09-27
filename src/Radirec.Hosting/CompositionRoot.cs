@@ -32,7 +32,7 @@ public static class CompositionRoot
     /// 発行に使う(null なら記録だけして発行しない)。
     /// </param>
     /// <returns>サービスと、破棄すべきリソース(台帳。NullLedger 時は null)。</returns>
-    /// <exception cref="InvalidOperationException">programs.json の判断(<c>FilenamePrograms</c>)が不正(<see cref="ProgramResolver"/>)。</exception>
+    /// <exception cref="ProgramsConfigException">programs.json の判断(<c>FilenamePrograms</c>)が不正(<see cref="ProgramResolver"/>)。</exception>
     public static (IngestService Service, IDisposable? Disposable) Build(
         RadirecConfig config, bool dryRun, bool notify = false,
         IIngestSummaryPublisher? summaryPublisher = null, IIngestFailurePublisher? failurePublisher = null,

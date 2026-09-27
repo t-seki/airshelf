@@ -495,7 +495,8 @@ stations:
 ```
 - `Treat` は `SameProgram`(この番組の回 = フォルダのとおり)/ `Skip`(取り込まない)/ `OtherProgram`(別の番組として取り込む。
   `Album` が要る。局はそのまま)の 3 択で、**省略できない**(書き忘れを「この番組の回」と読まないため)。`OtherProgram` に
-  `Album` が無い設定は取り込みの起動・設定リロードで拒まれる。
+  `Album` が無い設定は壊れた `programs.json` と同じ扱いで、取り込みの起動に失敗し、設定リロードでは新しい設定に切り替わらない
+  (`ProgramsConfigException`。CLI の `ingest --dry-run` は「設定の読み込みに失敗しました」で 1)。
 - 照合は `Station`・`Folder`・`FilenameProgram` のどれも照合キーで行う。判断は組ごとなので、同じフォルダでもファイル名の
   番組名が違えば別の判断が要る。ファイル名の番組名は `radirec ingest --json`(`filenameProgram`)と `radirec attention --json`
   (`substituteSuspects`)が出す値をそのまま書けばよい。

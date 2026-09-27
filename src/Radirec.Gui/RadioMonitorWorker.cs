@@ -600,8 +600,8 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             // 停止要求で打ち切った走査。結果の行は最後まで終わったときにしか書かないので、それまでに取り込んだ分を 1 行残す
             // (残さないと、台帳と出力先を見ないと分からない。#218)。停止要求はそのまま呼び手へ伝える。
             _log.LogInformation(
-                "{Trigger}スキャン(停止のため中断): 取込 {Imported} / 失敗 {Failed}",
-                trigger, ex.Count(IngestOutcome.Imported), ex.Count(IngestOutcome.Failed));
+                "{Trigger}スキャン(停止のため中断): 取込 {Imported} / 失敗 {Failed} / 保留 {Held}",
+                trigger, ex.Count(IngestOutcome.Imported), ex.Count(IngestOutcome.Failed), ex.Count(IngestOutcome.Held));
             LogRenamedImports(ex.Items); // 打ち切るまでに別名で置いた取込も、最後まで終わった走査と同じく残す
             throw;
         }

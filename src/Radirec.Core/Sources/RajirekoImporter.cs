@@ -20,9 +20,11 @@ namespace Radirec.Core.Sources;
 /// これは radikool 由来 or 8桁日付が <c>_…000000</c> の 14桁へ変換された「裸の MP3」を Rajireko
 /// semantics(番組=フォルダ・局=フォルダ・時刻=00:00)で無音のまま誤取込しないための保険。radikool の
 /// 実ファイルは <c>[局]</c> を持たないため、このブラケット判定で radikool と らじれこ MP3 を実務上分離できる。
-/// <b>番組の同一性(アルバム)は常にフォルダ名を拠り所にする</b>(ADR-0001)。ファイル名の
+/// <b>番組の同一性(アルバム)はフォルダ名を拠り所にする</b>(ADR-0001)。ファイル名の
 /// 番組部は週替わりゲスト等で変動するため識別には使わない(差し替え放送の疑いを見る手がかりとして
-/// <see cref="ParsedSource.FilenameProgram"/> に載せるだけ。ADR-0021)。録音種別マーカーは既知許可リストに
+/// <see cref="ParsedSource.FilenameProgram"/> に載せるだけ)。例外は差し替え放送で、利用者が
+/// 「別の番組として取り込む」と判断したファイル名の番組名の回は、アルバムを判断のアルバム名にする
+/// (この importer ではなく <c>EpisodeAssembler</c> が決める。ADR-0021)。録音種別マーカーは既知許可リストに
 /// 一致する末尾のものだけ剥がす(番組名やフォルダ名が含む括弧を誤って切り落とさないため)。
 /// </summary>
 public sealed class RajirekoImporter : ISourceImporter

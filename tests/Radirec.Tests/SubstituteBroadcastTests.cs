@@ -90,7 +90,7 @@ public sealed class SubstituteBroadcastTests : IDisposable
     [Fact]
     public void 別の番組なのにアルバム名が無ければ設定の誤り()
     {
-        var ex = Assert.Throws<InvalidOperationException>(() => Resolver(Decision(FilenameProgramTreatment.OtherProgram, album: " ")));
+        var ex = Assert.Throws<ProgramsConfigException>(() => Resolver(Decision(FilenameProgramTreatment.OtherProgram, album: " ")));
 
         Assert.Contains("Album", ex.Message);
         Assert.Contains(Substitute, ex.Message);

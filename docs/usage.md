@@ -205,8 +205,9 @@ radirec attention --json    # エージェント・スクリプト向け(result 
   あるときも終了コードは 0 です(要対応は失敗ではないため)。件数は `count` か表の見出しで見ます
 - 要対応を CLI から解決する操作(「統合する」「分けておく」)はありません。`programs.json` を直してから
   `radirec reapply` で確かめます(§5)。再適用が要る番組は、`radirec reapply --apply <予定 ID>` で揃えると消えます
-- 差し替え放送の疑いは、`programs.json` の `FilenamePrograms` に判断を書くと消えます(§5「差し替え放送」)。取り込み済みの回を
-  「取り込まない」と判断すると、「再適用が要る番組」に「出力先から消す予定」として出ます
+- 差し替え放送の疑いは、`programs.json` の `FilenamePrograms` に判断を書くと消えます(`attention` は毎回 `programs.json` を
+  読み直すので、書いた時点で消えます。§5「差し替え放送」)。保留していた回を常駐に取り込ませるには、`radirec reload` で反映します。
+  取り込み済みの回を「取り込まない」と判断すると、「再適用が要る番組」に「出力先から消す予定」として出ます
 - 台帳・`programs.json` / `stations.json` を読めない(壊れた JSON など)ときは 1 です
 - 台帳のあるフォルダ(NAS など)に届かないときは、「要対応はありません」とは答えず 5 で終わります。以前は 0 で空(`count` 0)を返していました(#216)
 
@@ -426,7 +427,9 @@ radikool 固有の扱い:
 - `Station` は正規名(`stations.json` で寄せた後の名前)、`Folder` はらじれこの番組フォルダ名 1 つ、`FilenameProgram` は
   ファイル名の番組名です。`radirec attention --json` の `substituteSuspects[]` の `station`・`folder`・`filenameProgram` を
   そのまま写せば足ります(`radirec ingest --json` の `items[].filenameProgram` にも出ます)。
-- `Treat` は省略できません。`OtherProgram` に `Album` が無いと、設定リロードが拒まれます(トレイは前の設定のまま動きます)。
+- `Treat` は省略できません(省略すると JSON の誤りとして読めません)。`OtherProgram` に `Album` が無い設定は、壊れた `programs.json`
+  と同じ扱いです:トレイは起動しても取り込みを始めず、動いているトレイで設定リロードをしても新しい設定には切り替わらず、前の設定のまま
+  動き続けます(理由は `gui.log`)。`radirec ingest --dry-run` は「設定の読み込みに失敗しました: …」で 1 を返します。
 - 書いたら `radirec reload` で反映します。保留していた回は、反映の後の走査で判断どおりに取り込まれます(または取り込まれません。
   結果を見たいときは `radirec ingest` で走査を頼みます)。要対応からは、書いた時点で消えます。
 - **取り込み済みの回**(この仕組みを入れる前に取り込んだ回)も、判断待ちなら要対応に「取り込み済み N 回」と出ます。
