@@ -46,8 +46,12 @@
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="Margin" Value="0,8,0,0" />
         </Style>
-        <!-- 一覧のセル。保存していない行(追加・編集)を太字で目立たせる(行のスタイルは置けないので、セルで見る) -->
-        <Style x:Key="Cell" TargetType="TextBlock">
+        <!--
+          一覧のセル。保存していない行(追加・編集)を太字で目立たせる(行のスタイルは置けないので、セルで見る)。
+          ElementStyle を置くと DataGridTextColumn の既定(左右 2px の余白)が外れるので、既定を受け継ぐ。既定はコードで作る
+          静的なスタイル(リソースを引かない)なので、Fluent の辞書が入る時機に左右されない。
+        -->
+        <Style x:Key="Cell" TargetType="TextBlock" BasedOn="{x:Static DataGridTextColumn.DefaultElementStyle}">
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsChanged}" Value="True">
                     <Setter Property="FontWeight" Value="SemiBold" />
