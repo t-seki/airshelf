@@ -26,8 +26,8 @@ public sealed record ResolvedLedgerEntry(LedgerEntry Entry, RecordingFile Source
         && (episode.PartIndex ?? 0) == Entry.PartIndex;
 
     /// <summary>
-    /// ファイル名の番組名に「取り込まない」と判断された回か(ADR-0021)。再適用が出力先から消す回で、それまでは要対応の
-    /// 「出力先から消す予定」に出す。アルバムは変えない(<see cref="IsAsRecorded"/> には関わらない)。
+    /// ファイル名の番組名に「取り込まない」と判断された回か(ADR-0021)。再適用すれば出力先から消える回で、消すまでは要対応の
+    /// 「出力先から消す予定」に出る。アルバムは変えない(<see cref="IsAsRecorded"/> には関わらない。再適用はこれを先に見る)。
     /// </summary>
     public bool IsSkipDecided => Episode?.FilenameVerdict == FilenameProgramVerdict.Skip;
 
