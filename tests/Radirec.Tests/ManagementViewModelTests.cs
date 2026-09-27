@@ -573,4 +573,56 @@ public sealed class ManagementViewModelTests
         Assert.Equal("2 件", history.CountText);
         Assert.True(history.RefreshCommand.CanExecute(null));
     }
+
+    [Fact]
+    public async Task Selection_and_action_made_while_loading_survive_the_load()
+    {
+        var actions = new FakeActions();
+        var ledger = LedgerWith(2);
+        var history = (await CreateLoadedAsync(new FakeControl(), ledger, actions)).History;
+        var loadsBefore = ledger.Loads;
+
+        using var gate = new ManualResetEventSlim(false);
+        ledger.Gate = gate;
+        ledger.Rows.Insert(0, Row(3));
+        history.RefreshCommand.Execute(null); // 読み始める(止まる)
+        Assert.True(SpinWait.SpinUntil(() => ledger.Loads == loadsBefore + 1, TimeSpan.FromSeconds(5)));
+
+        // 読み込みの途中に、前の一覧の行を選んでコピーする
+        history.SelectedRow = history.Rows[1]; // 番組2
+        history.CopyOutputCommand.Execute(null);
+        Assert.Equal("パスをコピーしました", history.ActionMessage);
+
+        gate.Set();
+        await history.Reloaded;
+
+        // 読み終えても消さない。選択は新しい一覧の同じ行に付け直す
+        Assert.Equal(3, history.Rows.Count);
+        Assert.NotNull(history.SelectedRow);
+        Assert.Same(history.Rows[2], history.SelectedRow);
+        Assert.Equal("番組2", history.SelectedRow!.Program);
+        Assert.Equal("パスをコピーしました", history.ActionMessage);
+        Assert.True(history.CopyOutputCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Selection_made_while_loading_is_cleared_if_row_is_gone()
+    {
+        var ledger = LedgerWith(2);
+        var history = (await CreateLoadedAsync(new FakeControl(), ledger)).History;
+        var loadsBefore = ledger.Loads;
+
+        using var gate = new ManualResetEventSlim(false);
+        ledger.Gate = gate;
+        ledger.Rows.RemoveAt(1); // 番組2 が無くなる
+        history.RefreshCommand.Execute(null);
+        Assert.True(SpinWait.SpinUntil(() => ledger.Loads == loadsBefore + 1, TimeSpan.FromSeconds(5)));
+        history.SelectedRow = history.Rows[1];
+
+        gate.Set();
+        await history.Reloaded;
+
+        Assert.Null(history.SelectedRow);
+        Assert.Equal("", history.SelectedOutputPath);
+    }
 }

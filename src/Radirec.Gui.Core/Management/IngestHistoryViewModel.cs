@@ -157,6 +157,10 @@ public sealed class IngestHistoryViewModel : ObservableObject
         if (_loading)
             return;
 
+        // 「更新」を押した時点の選択と結果の 1 行は消す。読み込みの途中に選んだ行・開いた / コピーした結果は、
+        // 読み終えても消さない(#222 のレビュー。#185 / #212 と同じ「読んでいる間に始めた作業が、読み終わると消える」を作らない)。
+        SelectedRow = null;
+        ActionMessage = "";
         SetLoading(true);
         Reloaded = ReloadAsync(_load);
     }
@@ -166,21 +170,25 @@ public sealed class IngestHistoryViewModel : ObservableObject
     {
         try
         {
+            IReadOnlyList<IngestHistoryRow> rows;
             try
             {
-                Rows = await Task.Run(load);
+                rows = await Task.Run(load);
                 State = HistoryLoadState.Loaded;
             }
             catch (Exception ex)
             {
                 // 旧ウィンドウはメッセージボックスを出していたが、画面の中(件数の位置)に出す。理由は gui.log。
                 _logWarn($"管理画面: 取込履歴を読めませんでした: {ex}");
-                Rows = [];
+                rows = [];
                 State = HistoryLoadState.Failed;
             }
 
-            SelectedRow = null;
-            ActionMessage = "";
+            // 読み込みの途中に選んだ行は、新しい一覧にも同じ行(record の値が等しい)があれば選び直す。
+            // 一覧を差し替えると DataGrid が選択を外しうるので、差し替える前に覚えておく。
+            var selected = SelectedRow;
+            Rows = rows;
+            SelectedRow = selected is null ? null : rows.FirstOrDefault(r => r == selected);
             OnPropertyChanged(nameof(CountText));
         }
         finally
