@@ -168,24 +168,68 @@ public sealed class AttentionCommandTests : IDisposable
     }
 
     [Fact]
-    public void 窓より長い取込元のパスも_失敗の塊の中に下げて出す()
+    public void 窓より長いファイル名_理由_取込元も_それぞれの失敗の塊の中に見分けられる()
     {
-        // 空白の無い長いパス。Spectre.Console に任せると、下げた分だけの行を作ってからパスを行頭から折り返していた(#218)。
-        const string path = @"C:\Users\Public\radirec-rc4-test\RADIO\TBSラジオ\とても長い番組名のフォルダ\[TBSラジオ]とても長い番組名(TimeFree)_20240923083000.m4a";
-        var items = new AttentionItems { UnresolvedFailures = [new IngestFailureRecord(path, "読めません", FailedAt)] };
-        const int width = 50;
+        // 空白の無い長い塊。Spectre.Console に任せると、下げた分だけの行を作ってから行頭から折り返していた(#218)。
+        const string dir = @"C:\Users\Public\radirec-rc4-test\RADIO\TBSラジオ\とても長い番組名のフォルダ\";
+        const string first = "[TBSラジオ]とても長い番組名その一(TimeFree)_20240923083000.m4a";
+        const string second = "[TBSラジオ]とても長い番組名その二(TimeFree)_20240930083000.m4a";
+        var failures = new[]
+        {
+            new IngestFailureRecord(dir + first, $"{first}を読めません(タグが壊れています)", FailedAt),
+            new IngestFailureRecord(dir + second, $"{second}を読めません", FailedAtUtc: null),
+        };
+        const int width = 40;
 
-        var lines = RenderToString(items, width).Split('\n').Select(l => l.TrimEnd('\r')).ToList();
+        var output = RenderToString(new AttentionItems { UnresolvedFailures = failures }, width);
+        var lines = output.Split('\n').Select(l => l.TrimEnd('\r')).ToList();
+        // 種類の見出し(と説明。説明は Spectre.Console が折り返す)の後の、最初の失敗の見出しから、次の空行まで。
+        var body = lines.Skip(lines.FindIndex(l => l.StartsWith(AttentionText.FailuresHeading, StringComparison.Ordinal)) + 1)
+            .SkipWhile(l => !(l.StartsWith("  ", StringComparison.Ordinal) && l[2] != ' '))
+            .TakeWhile(l => l.Length > 0)
+            .ToList();
 
-        var first = lines.FindIndex(l => l.StartsWith("    取込元: ", StringComparison.Ordinal));
-        Assert.True(first >= 0, string.Join('\n', lines));
-        // 1 行目の後ろから、下げた続きの行が空行を挟まずに並び、つなげると元のパスになる。
-        var continued = lines.Skip(first + 1).TakeWhile(l => l.StartsWith("            ", StringComparison.Ordinal)).ToList();
-        Assert.NotEmpty(continued);
-        Assert.Equal(path, lines[first]["    取込元: ".Length..] + string.Concat(continued.Select(l => l.TrimStart(' '))));
-        Assert.All(lines.Skip(first).Take(continued.Count + 1), l => Assert.True(l.GetCellWidth() <= width, l));
-        // 下げた分だけの空行(issue の症状)を作らない。
+        // 下げた分だけの空行(issue の症状)を作らず、どの行も窓に収まる。
         Assert.DoesNotContain(lines, l => l.Length > 0 && string.IsNullOrWhiteSpace(l));
+        Assert.All(body, l => Assert.True(l.GetCellWidth() <= width, output));
+
+        // 下げの深さだけで、失敗の見出し(2)・中身(4)・続き(6 / 取込元は 12)を見分けて組み直すと、元の値に戻る。
+        var parsed = Parse(body);
+        Assert.Equal(2, parsed.Count);
+        Assert.Equal([first, second], parsed.Select(p => p.FileName));
+        Assert.Equal(failures.Select(f => f.Reason), parsed.Select(p => p.Reason));
+        Assert.Equal(failures.Select(f => f.SourcePath), parsed.Select(p => p.Source));
+        Assert.Equal([true, false], parsed.Select(p => p.HasFailedAt));
+    }
+
+    private static List<(string FileName, string Reason, string Source, bool HasFailedAt)> Parse(List<string> body)
+    {
+        var result = new List<(string, string, string, bool)>();
+        var i = 0;
+        while (i < body.Count)
+        {
+            Assert.Equal(2, Indent(body[i]));
+            var fileName = body[i++][2..] + Continued(6);
+            Assert.Equal(4, Indent(body[i]));
+            var reason = body[i++][4..] + Continued(6);
+            var hasFailedAt = body[i].StartsWith("    失敗: ", StringComparison.Ordinal);
+            if (hasFailedAt)
+                i++;
+            Assert.StartsWith("    取込元: ", body[i]);
+            var source = body[i++]["    取込元: ".Length..] + Continued(12);
+            result.Add((fileName, reason, source, hasFailedAt));
+        }
+        return result;
+
+        string Continued(int indent)
+        {
+            var text = "";
+            while (i < body.Count && Indent(body[i]) == indent)
+                text += body[i++][indent..];
+            return text;
+        }
+
+        static int Indent(string line) => line.Length - line.TrimStart(' ').Length;
     }
 
     [Fact]

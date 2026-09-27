@@ -568,10 +568,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                     trigger, imported, failed, refresh, notify, failNotify);
             }
 
-            // 出力先の同名衝突を別名で避けた取込は Warning で残す。同日・別時刻の正当なケースでも起きるので
-            // トーストにはせず、near-dup を疑うときに gui.log から辿れるようにする(ADR-0015)。
-            foreach (var item in report.Items.Where(i => i.Outcome == IngestOutcome.Imported && i.Message is not null))
-                _log.LogWarning("{Message}: {Output}", item.Message, item.OutputPath);
+            LogRenamedImports(report.Items);
 
             // 走査ごとに status スナップショットを更新(in-process 制御)。0 件走査でも
             // 「最後にいつ走ったか」を反映する。書き手はこの直列コンシューマ 1 つだけ。
@@ -591,6 +588,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             _log.LogInformation(
                 "{Trigger}スキャン(停止のため中断): 取込 {Imported} / 失敗 {Failed}",
                 trigger, ex.Count(IngestOutcome.Imported), ex.Count(IngestOutcome.Failed));
+            LogRenamedImports(ex.Items); // 打ち切るまでに別名で置いた取込も、最後まで終わった走査と同じく残す
             throw;
         }
         catch (Exception ex) when (
@@ -601,6 +599,14 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             _log.LogError(ex, "{Trigger}スキャンで想定外の例外", trigger);
             throw;
         }
+    }
+
+    // 出力先の同名衝突を別名で避けた取込は Warning で残す。同日・別時刻の正当なケースでも起きるので
+    // トーストにはせず、near-dup を疑うときに gui.log から辿れるようにする(ADR-0015)。
+    private void LogRenamedImports(IEnumerable<IngestItemResult> items)
+    {
+        foreach (var item in items.Where(i => i.Outcome == IngestOutcome.Imported && i.Message is not null))
+            _log.LogWarning("{Message}: {Output}", item.Message, item.OutputPath);
     }
 
     private int _disposed;
