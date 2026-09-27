@@ -381,8 +381,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         catch (Exception ex)
         {
             _log.LogError(ex, "統合設定の再適用: 組み立てに失敗しました");
-            var error = $"再適用の準備に失敗しました: {ex.Message}";
-            return (null, ex is LedgerUnreachableException ? ReapplyResult.Unreachable(error) : ReapplyResult.Failed(error));
+            return (null, ReapplyResult.BuildFailed(ex));
         }
 
         using (disposable)

@@ -289,6 +289,58 @@ public sealed class ReapplyJobsTests
         Assert.False(applied.IsStale);
         Assert.Equal(0, unreachable.Executions);
     }
+    // 読み直した設定の台帳の場所。親フォルダが無い = 届かない(LedgerFile.Exists)。
+    private static string UnreachableLedgerPath() =>
+        Path.Combine(Path.GetTempPath(), $"radirec-unreachable-{Guid.NewGuid():N}", "ledger.db");
+    [Fact]
+    public async Task CLIの実行で反映が台帳に届かず失敗したら_届かない印を返す()
+    {
+        var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
+        var jobs = new ReapplyJobs(host);
+        var planId = (await Run(jobs, ReapplyJobKind.PlanForCli)).PlanId!;
+        // 反映は書き込み用に台帳を開き、届かない NAS では素の IOException の文字列になる(RadioMonitorWorker.ApplyReload)。
+        host.ApplyReloadError = @"The network path was not found. : '\\192.0.2.1\x'";
+        host.NewLedgerPath = UnreachableLedgerPath();
+        var applied = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: planId);
+        Assert.True(applied.IsUnreachable);
+        Assert.StartsWith("設定の反映に失敗しました: ", applied.Error);
+        Assert.EndsWith("(取り込みは前の設定のまま動いています)", applied.Error);
+        Assert.Equal(0, host.Executions);
+    }
+    [Fact]
+    public async Task 保存して適用で反映が台帳に届かず失敗したら_届かない印を返す()
+    {
+        var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
+        var jobs = new ReapplyJobs(host);
+        var plan = (await jobs.RunAsync(
+            new ReapplyJob(ReapplyJobKind.PlanDraft, Draft: new ProgramMasterConfig()), CancellationToken.None)).Report!;
+        host.ApplyReloadError = @"The network path was not found. : '\\192.0.2.1\x'";
+        host.NewLedgerPath = UnreachableLedgerPath();
+        var applied = await Run(jobs, ReapplyJobKind.ReloadAndApply, plan: plan);
+        Assert.True(applied.IsUnreachable);
+        Assert.Equal(0, host.Executions);
+    }
+    [Fact]
+    public async Task 反映の失敗でも台帳に届くなら_届かない印を付けない()
+    {
+        var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
+        var jobs = new ReapplyJobs(host);
+        var planId = (await Run(jobs, ReapplyJobKind.PlanForCli)).PlanId!;
+        host.ApplyReloadError = "stations.json を読めません";
+        var applied = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: planId);
+        Assert.False(applied.IsUnreachable);
+        Assert.Contains("stations.json を読めません", applied.Error);
+    }
+    [Fact]
+    public void 組み立ての例外は_台帳に届かないときだけ届かない印にする()
+    {
+        var unreachable = ReapplyResult.BuildFailed(new LedgerUnreachableException(@"\\192.0.2.1\x"));
+        var other = ReapplyResult.BuildFailed(new IOException("台帳を開けません"));
+        Assert.True(unreachable.IsUnreachable);
+        Assert.Equal(@"再適用の準備に失敗しました: 台帳のあるフォルダに届きません: \\192.0.2.1\x", unreachable.Error);
+        Assert.False(other.IsUnreachable);
+        Assert.Equal("再適用の準備に失敗しました: 台帳を開けません", other.Error);
+    }
     [Fact]
     public async Task 組み立てのほかの失敗は_届かない印を付けない()
     {
@@ -308,6 +360,8 @@ public sealed class ReapplyJobsTests
 
         public string? ConfigError { get; set; }
         public string? ApplyReloadError { get; set; }
+        /// <summary>読み直した設定の台帳の場所(既定は今のフォルダの ledger.db = 届く)。</summary>
+        public string NewLedgerPath { get; set; } = "ledger.db";
         public string? SettingsError { get; init; }
         /// <summary>再適用の組み立て(台帳オープン等)の失敗。あれば常駐はこれを返す。</summary>
         public ReapplyResult? ServiceFailure { get; init; }
@@ -323,7 +377,7 @@ public sealed class ReapplyJobsTests
         {
             ConfigLoads++;
             error = ConfigError;
-            config = ConfigError is null ? new RadirecConfig { OutputRoot = @"Z:\out" } : null;
+            config = ConfigError is null ? new RadirecConfig { OutputRoot = @"Z:\out", LedgerPath = NewLedgerPath } : null;
             return ConfigError is null;
         }
 

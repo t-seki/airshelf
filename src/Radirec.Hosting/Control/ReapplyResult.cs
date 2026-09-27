@@ -45,6 +45,16 @@ public sealed record ReapplyResult
     public static ReapplyResult Stopped(string error) => new() { Error = error, IsStopped = true };
     public static ReapplyResult Unreachable(string error) => new() { Error = error, IsUnreachable = true };
 
+    /// <summary>
+    /// 再適用の組み立て(台帳オープン等)が例外で失敗したときの結果。台帳のある場所に届かない
+    /// (<see cref="LedgerUnreachableException"/>)なら <see cref="Unreachable"/>、ほかは <see cref="Failed"/>。文言はどちらも同じ(#223)。
+    /// </summary>
+    public static ReapplyResult BuildFailed(Exception exception)
+    {
+        var error = $"再適用の準備に失敗しました: {exception.Message}";
+        return exception is LedgerUnreachableException ? Unreachable(error) : Failed(error);
+    }
+
     /// <summary>CLI の確認の結果(予定と、その予定 ID)。</summary>
     public static ReapplyResult Planned(ReapplyReport plan) => new() { Report = plan, PlanId = ReapplyPlanId.Of(plan) };
 

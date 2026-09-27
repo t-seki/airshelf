@@ -285,7 +285,11 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
         {
             var reason = host.LastReloadError ?? "設定を差し替えられませんでした";
             host.LogWarning($"統合設定の再適用: 設定の反映に失敗したため中止しました: {reason}");
-            failure = ReapplyResult.Failed($"設定の反映に失敗しました: {reason}({KeepsRunning})");
+            var error = $"設定の反映に失敗しました: {reason}({KeepsRunning})";
+            // 反映(取り込みのグラフの組み直し)は書き込み用に台帳を開き、フォルダが無ければ作る(初めて使うとき)。届かない NAS では
+            // そこで素の IOException になり、理由の文字列からは見分けられない。失敗したときだけ台帳の場所を確かめ、届かなければ
+            // ほかのコマンドと同じく「届かない」にする(#223)。反映の前に確かめると、まだ無いフォルダを作るふるまいを止めてしまう。
+            failure = LedgerUnreachable(newConfig!) ? ReapplyResult.Unreachable(error) : ReapplyResult.Failed(error);
             return false;
         }
         try
@@ -301,6 +305,20 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
         config = host.Config;
         return true;
     }
+    // 設定の台帳のある場所(親フォルダ)に届かないか(LedgerFile.Exists。#216)。
+    private static bool LedgerUnreachable(RadirecConfig config)
+    {
+        try
+        {
+            LedgerFile.Exists(config.LedgerPath);
+            return false;
+        }
+        catch (LedgerUnreachableException)
+        {
+            return true;
+        }
+    }
+
     // 予定を確かめ終えた後の実行。
     private async Task<ReapplyResult> RunAsync(RadirecConfig config, ReapplySettings settings, CancellationToken cancellationToken)
     {
