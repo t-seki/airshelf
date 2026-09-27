@@ -55,7 +55,7 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
     /// </summary>
     public static void Render(IAnsiConsole console, AttentionItems items)
     {
-        var count = AttentionJson.From(items).Count;
+        var count = items.Count;
         if (count == 0)
         {
             console.MarkupLine("[grey]要対応はありません[/]");
@@ -100,13 +100,28 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
             }
         }
 
-        if (items.SettingsDrift.Count > 0)
+        if (items.SettingsDrift.Count > 0 || items.PendingRemovals.Count > 0)
         {
             console.WriteLine();
             console.MarkupLine("[bold]再適用が要る番組[/] [grey](radirec reapply --dry-run で確かめる)[/]");
             foreach (var drift in items.SettingsDrift)
             {
                 console.MarkupLineInterpolated($"  {DriftLine(drift)}");
+            }
+            foreach (var removal in items.PendingRemovals)
+            {
+                console.MarkupLineInterpolated($"  {RemovalLine(removal)}");
+            }
+        }
+
+        if (items.SubstituteSuspects.Count > 0)
+        {
+            console.WriteLine();
+            console.MarkupLine(
+                "[bold]差し替え放送の疑い[/] [grey](programs.json の FilenamePrograms に判断を書き、radirec reload で反映すると消えます)[/]");
+            foreach (var suspect in items.SubstituteSuspects)
+            {
+                console.MarkupLineInterpolated($"  {SuspectLine(suspect)}");
             }
         }
     }
@@ -116,6 +131,21 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
         => group.ToAlbum == group.FromAlbum
             ? $"{group.Station}「{group.FromAlbum}」 パートの番号が変わる {group.Count} 回"
             : $"{group.Station}「{group.FromAlbum}」→「{group.ToAlbum}」 {group.Count} 回";
+
+    /// <summary>出力先から消す予定の 1 行(管理画面の W-158 と同じ。ADR-0021)。</summary>
+    public static string RemovalLine(PendingRemovalGroup group)
+        => $"{group.Station}「{group.Album}」 出力先から消す予定 {group.Count} 回(ファイル名の番組名「{group.FilenameProgram}」)";
+
+    /// <summary>差し替え放送の疑いの 1 行(管理画面の W-156 と同じ。ADR-0021)。数が 0 の側は出さない。</summary>
+    public static string SuspectLine(SubstituteSuspectGroup group)
+    {
+        var counts = new List<string>();
+        if (group.HeldCount > 0)
+            counts.Add($"保留 {group.HeldCount} 回");
+        if (group.ImportedCount > 0)
+            counts.Add($"取り込み済み {group.ImportedCount} 回");
+        return $"{group.Station}「{group.Folder}」に「{group.FilenameProgram}」 {string.Join(" / ", counts)}";
+    }
 
     // 取込失敗の 1 件の行の下げ(#218)。塊の見出し(ファイル名)は 2 桁、中身(理由・日時・取込元)は 4 桁。
     // 折り返した続きの行は、どちらとも違う 6 桁に下げる(続きの行が次の失敗の見出しや次の中身の行に見えないように)。

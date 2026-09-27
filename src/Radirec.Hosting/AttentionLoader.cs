@@ -35,13 +35,15 @@ public static class AttentionLoader
 
         IReadOnlyList<LedgerEntry> entries = [];
         IReadOnlyList<IngestFailureRecord> failures = [];
+        IReadOnlyList<HeldRecording> held = [];
         if (LedgerFile.Exists(ledgerPath))
         {
             // 取り込みワーカーの書込接続とは別の読み取り専用の接続(取込履歴と同じ。SQLite の WAL は並行に読める)。
-            // 失敗のストアも同じ台帳の別テーブル(ADR-0011)。
+            // 失敗のストア(ADR-0011)・保留のストア(ADR-0021)も同じ台帳の別テーブル。
             using var ledger = new SqliteLedger(ledgerPath, readOnly: true);
             entries = ledger.ListAll();
             failures = ledger.List();
+            held = ledger.ListHeld();
         }
 
         var resolver = new LedgerEpisodeResolver(
@@ -49,6 +51,6 @@ public static class AttentionLoader
             new RajirekoImporter(knownRecordingKinds),
             new StationResolver(stations),
             new ProgramResolver(programs ?? new ProgramMasterConfig()));
-        return AttentionCalculator.Compute(entries, resolver, new AttentionPrograms(programs), failures);
+        return AttentionCalculator.Compute(entries, resolver, new AttentionPrograms(programs), failures, held);
     }
 }

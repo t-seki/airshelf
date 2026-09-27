@@ -72,7 +72,7 @@ public sealed class ReapplyServiceTests : IDisposable
     {
         var dir = Path.Combine(RadioRoot, station, folder);
         Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, $"[{station}]{program ?? Album}(TimeFree)_{stamp}.m4a");
+        var path = Path.Combine(dir, $"[{station}]{program ?? folder}(TimeFree)_{stamp}.m4a");
         File.Copy(Fixture, path);
         return path;
     }
@@ -788,7 +788,7 @@ public sealed class ReapplyServiceTests : IDisposable
         const string main = "垣花正あなたとハッピー！";
         const string part2 = "垣花正あなたとハッピー！Part2";
         PlaceSource(main, Dec23At0830, station, main);
-        PlaceSource(part2, Dec23At1000, station, main);
+        PlaceSource(part2, Dec23At1000, station, part2);
         var ledger = Ledger();
         await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
 

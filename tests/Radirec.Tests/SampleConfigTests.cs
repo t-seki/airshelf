@@ -36,5 +36,8 @@ public class SampleConfigTests
     {
         var programs = ConfigLoader.LoadRequired<ProgramMasterConfig>(SamplePath("programs.sample.json"));
         Assert.NotNull(programs);
+        // ファイル名の番組名の判断(ADR-0021)の書き方の例。取り込みの解決器が受け付ける形であること。
+        Assert.Equal(FilenameProgramTreatment.SameProgram, Assert.Single(programs.FilenamePrograms).Treat);
+        _ = new Radirec.Core.Normalization.ProgramResolver(programs);
     }
 }

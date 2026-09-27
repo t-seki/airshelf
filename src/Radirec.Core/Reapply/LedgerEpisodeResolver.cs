@@ -25,6 +25,18 @@ public sealed record ResolvedLedgerEntry(LedgerEntry Entry, RecordingFile Source
         && episode.Program == Entry.Program
         && (episode.PartIndex ?? 0) == Entry.PartIndex;
 
+    /// <summary>
+    /// ファイル名の番組名に「取り込まない」と判断された回か(ADR-0021)。再適用が出力先から消す回で、それまでは要対応の
+    /// 「出力先から消す予定」に出す。アルバムは変えない(<see cref="IsAsRecorded"/> には関わらない)。
+    /// </summary>
+    public bool IsSkipDecided => Episode?.FilenameVerdict == FilenameProgramVerdict.Skip;
+
+    /// <summary>
+    /// ファイル名の番組名がフォルダ名を含まず、判断も無い回か(差し替え放送の疑い。ADR-0021)。取り込み済みの判断待ちの回として
+    /// 要対応に出す。アルバムはフォルダのまま解決する。
+    /// </summary>
+    public bool IsUnjudged => Episode?.FilenameVerdict == FilenameProgramVerdict.Unjudged;
+
     /// <summary>この回の番組フォルダ(今の設定で解決した放送局 + らじれこの番組フォルダ名)。解析できなかったら null。</summary>
     public ProgramFolder? Folder => Episode is { } episode ? new ProgramFolder(episode.Station, Source.ProgramFolder) : null;
 }

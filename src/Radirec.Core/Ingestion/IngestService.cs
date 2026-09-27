@@ -11,7 +11,11 @@ namespace Radirec.Core.Ingestion;
 /// 取り込みの制御フロー本体。列挙 → 安定判定 → パース → 正規化 → 同一性キー →
 /// 冪等判定 → 配置先の算出(同名衝突は音声部分で同じ内容か判定。ADR-0015)→ dry-run 境界 →
 /// アトミック非破壊コピー → タグ付与 → 台帳記録(最後)。
+/// 差し替え放送の疑いがある回(ファイル名の番組名がフォルダ名を含まず、判断も無い)は取り込まずに保留し、
+/// 「取り込まない」と判断された回は取り込まない(ADR-0021)。
 /// </summary>
+/// <param name="heldStore">保留のストア(ADR-0021)。省略すると記録しない(取込失敗のストアと同じく、発行する経路でだけ実体を渡す)。</param>
+/// <param name="heldPublisher">保留シグナルの publisher。省略すると発行しない。</param>
 public sealed class IngestService(
     IRecordingSource source,
     ISourceImporter importer,
@@ -26,8 +30,13 @@ public sealed class IngestService(
     ILibraryRefresher refresher,
     IIngestSummaryPublisher summaryPublisher,
     IIngestFailureStore failureStore,
-    IIngestFailurePublisher failurePublisher)
+    IIngestFailurePublisher failurePublisher,
+    IHeldRecordingStore? heldStore = null,
+    IIngestHeldPublisher? heldPublisher = null)
 {
+    private readonly IHeldRecordingStore _heldStore = heldStore ?? new NullHeldRecordingStore();
+    private readonly IIngestHeldPublisher _heldPublisher = heldPublisher ?? new NullIngestHeldPublisher();
+
     /// <summary>中断で残った孤児テンポラリを掃除する(常駐の起動時に呼ぶ。ADR-0003)。</summary>
     public int CleanupOrphans() => target.CleanupOrphans();
 
@@ -51,15 +60,20 @@ public sealed class IngestService(
     private async Task<IngestReport> RunOnceCoreAsync(
         List<IngestItemResult> items, bool dryRun, CancellationToken cancellationToken)
     {
+        var held = new List<NewHeldRecording>();
         foreach (var file in source.Enumerate())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            items.Add(await ProcessAsync(file, dryRun, cancellationToken));
+            var item = await ProcessAsync(file, dryRun, cancellationToken);
+            items.Add(item);
+            if (item is { Outcome: IngestOutcome.Held, Episode: { } episode })
+                held.Add(new NewHeldRecording(file.FilePath, episode.Station, file.ProgramFolder, item.FilenameProgram ?? string.Empty));
         }
 
         var (refreshStatus, refreshError) = await MaybeRefreshLibraryAsync(items, dryRun, cancellationToken);
         var (notified, notifyError, notifySuppressed) = await MaybePublishSummaryAsync(items, dryRun, cancellationToken);
         var (failNotified, failNotifyError) = await MaybePublishFailuresAsync(items, dryRun, cancellationToken);
+        var (heldNotified, heldNotifyError) = await MaybeRecordHeldAsync(items, held, dryRun, cancellationToken);
         return new IngestReport
         {
             Items = items,
@@ -71,7 +85,65 @@ public sealed class IngestService(
             NotificationSuppressedReason = notifySuppressed,
             FailureNotificationPublished = failNotified,
             FailureNotificationError = failNotifyError,
+            HeldNotificationPublished = heldNotified,
+            HeldNotificationError = heldNotifyError,
         };
+    }
+
+    // 保留のストアを走査の結果に合わせ、初めて保留した録音ファイルがあれば保留シグナルを発行する(ADR-0021)。dry-run は何もしない。
+    // 取込失敗のストアと違い、**記録してから発行する**。保留のストアは通知の de-dup だけでなく要対応の元でもあるので、発行に失敗しても
+    // 記録は残す(要対応には出る。その代わり、そのトーストは出直さない)。
+    private async Task<(bool Published, string? Error)> MaybeRecordHeldAsync(
+        IReadOnlyList<IngestItemResult> items, IReadOnlyList<NewHeldRecording> held, bool dryRun,
+        CancellationToken cancellationToken)
+    {
+        if (dryRun)
+            return (false, null);
+
+        List<NewHeldRecording> newHeld;
+        try
+        {
+            ClearResolvedHeld(items);
+
+            newHeld = held.Where(h => !_heldStore.IsHeld(h.SourcePath)).ToList();
+            var heldAt = clock.GetUtcNow();
+            foreach (var h in newHeld)
+                _heldStore.Record(new HeldRecording(h.SourcePath, h.Station, h.Folder, h.FilenameProgram, heldAt));
+
+            if (newHeld.Count == 0)
+                return (false, null);
+
+            await _heldPublisher.PublishAsync(IngestHeldSignal.From(newHeld), cancellationToken);
+        }
+        // ストアの読み書き・発行のどの失敗でも取り込みは巻き戻さない。握って報告する(失敗シグナルと同じ)。
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            return (false, ex.Message);
+        }
+
+        return (true, null);
+    }
+
+    // もう保留していない録音ファイルの記録を消す。この走査で保留した(Held)・まだ安定していない(SkippedUnstable。判断は
+    // 変わっていない)もの以外は、取り込んだ・取り込まないと判断された・既に台帳にあるなどで保留が解けている。列挙に無いものは
+    // 取込元から消えた(#172 の取込失敗と同じ。列挙が 0 件の走査では、取込元が一時的に見えないだけかもしれないので消さない)。
+    private void ClearResolvedHeld(IReadOnlyList<IngestItemResult> items)
+    {
+        if (items.Count == 0)
+            return;
+
+        // 失敗のストアと同じく、大文字小文字を区別して比べる(ClearFailuresMissingFromSource)。
+        var outcomes = new Dictionary<string, IngestOutcome>(StringComparer.Ordinal);
+        foreach (var item in items)
+            outcomes[item.SourcePath] = item.Outcome;
+
+        foreach (var record in _heldStore.List())
+        {
+            var stillHeld = outcomes.TryGetValue(record.SourcePath, out var outcome)
+                && outcome is IngestOutcome.Held or IngestOutcome.SkippedUnstable;
+            if (!stillHeld)
+                _heldStore.Clear(record.SourcePath);
+        }
     }
 
     // 取込失敗シグナルの発行(ADR-0011)。成功要約とは独立に、その走査で**新しく現れた**失敗
@@ -237,6 +309,16 @@ public sealed class IngestService(
             || ledger.ContainsSource(file.FilePath)
             || ledger.ContainsContent(FileFingerprint.Of(file), episode.BroadcastDate, episode.BroadcastTime))
             return Result(IngestOutcome.SkippedAlreadyImported, file, episode);
+
+        // 差し替え放送(ADR-0021)。取り込み済みの回は上で「済」になる(判断待ちの取り込み済みの回は要対応が台帳から見つける)。
+        // 未取込の回で、判断の無いものは保留し、「取り込まない」と判断されたものは取り込まない。
+        switch (episode.FilenameVerdict)
+        {
+            case FilenameProgramVerdict.Unjudged:
+                return Result(IngestOutcome.Held, file, episode) with { FilenameProgram = episode.FilenameProgram };
+            case FilenameProgramVerdict.Skip:
+                return Result(IngestOutcome.SkippedByDecision, file, episode) with { FilenameProgram = episode.FilenameProgram };
+        }
 
         // 未取込のときだけ出演者タグを読む。radikool は識別時に取得済み(episode.Artist)なので再読しない。
         episode = episode with { Artist = episode.Artist ?? SafeReadArtist(file.FilePath) };

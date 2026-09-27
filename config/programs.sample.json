@@ -13,5 +13,11 @@
       "Match": { "Station": "TBSラジオ", "Folders": ["パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)"] },
       "Canonical": { "Album": "パンサー向井のふらっと" }
     }
+  ],
+  "FilenamePrograms": [
+    {
+      "Match": { "Station": "TBSラジオ", "Folder": "パンサー向井のふらっと(1)", "FilenameProgram": "パンサー向井の#ふらっと (1)" },
+      "Treat": "SameProgram"
+    }
   ]
 }

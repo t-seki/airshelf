@@ -61,7 +61,7 @@ public sealed record ScanRunReport
     {
         DryRun = report.DryRun,
         Items = report.Items
-            .Select(i => new ScanRunItem(i.Outcome, i.SourcePath, i.OutputPath, i.Message, i.UsedFallback))
+            .Select(i => new ScanRunItem(i.Outcome, i.SourcePath, i.OutputPath, i.Message, i.UsedFallback, i.FilenameProgram))
             .ToList(),
         LibraryRefresh = report.LibraryRefresh,
         RefreshError = report.RefreshError,
@@ -74,5 +74,9 @@ public sealed record ScanRunReport
 /// <param name="OutputPath">出力先(取込・予定。出力先に同じ内容が既にあった回はそのファイル)。無ければ null。</param>
 /// <param name="Message">失敗の理由、または取込・予定の警告(出力先の同名衝突を別名で避けた等)。無ければ null。</param>
 /// <param name="UsedFallback">放送局・番組を解決できず、フォルダ名などから仮に決めたか。</param>
+/// <param name="FilenameProgram">
+/// 保留・取り込まない判断の回のファイル名の番組名(ADR-0021)。ほかは null。古いトレイの応答には無い(null で読む)。
+/// </param>
 public sealed record ScanRunItem(
-    IngestOutcome Outcome, string SourcePath, string? OutputPath, string? Message, bool UsedFallback);
+    IngestOutcome Outcome, string SourcePath, string? OutputPath, string? Message, bool UsedFallback,
+    string? FilenameProgram = null);

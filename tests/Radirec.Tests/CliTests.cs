@@ -27,6 +27,34 @@ public sealed class CliTests
     }
 
     [Fact]
+    public void 保留と取り込まない判断は失敗ではないので0()
+    {
+        // ADR-0021。保留は判断を待っているだけで、録音ファイルにも処理にも誤りは無い。
+        var report = Ingest(IngestOutcome.Imported, IngestOutcome.Held, IngestOutcome.SkippedByDecision);
+
+        Assert.Equal(ExitCodes.Success, ExitCodeRules.For(report));
+        Assert.Equal(ExitCodes.Success, ExitCodeRules.For(ScanRunReport.From(report)));
+    }
+
+    [Fact]
+    public void ingestのjsonは保留の件数とファイル名の番組名を出す()
+    {
+        var report = Ingest(IngestOutcome.Held, IngestOutcome.Held, IngestOutcome.SkippedByDecision);
+        report = report with
+        {
+            Items = report.Items.Select(i => i with { FilenameProgram = "特番" }).ToList(),
+        };
+
+        var json = JsonSerializer.SerializeToElement(IngestJson.From(report), CliJson.Options);
+
+        Assert.Equal(2, json.GetProperty("counts").GetProperty("held").GetInt32());
+        Assert.Equal(1, json.GetProperty("counts").GetProperty("skippedByDecision").GetInt32());
+        var item = json.GetProperty("items")[0];
+        Assert.Equal("held", item.GetProperty("outcome").GetString());
+        Assert.Equal("特番", item.GetProperty("filenameProgram").GetString());
+    }
+
+    [Fact]
     public void 取り込みで一部の回が失敗したら4()
     {
         Assert.Equal(ExitCodes.PartialFailure, ExitCodeRules.For(Ingest(IngestOutcome.Imported, IngestOutcome.Failed)));

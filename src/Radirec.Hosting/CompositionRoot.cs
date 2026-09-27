@@ -27,10 +27,16 @@ public static class CompositionRoot
     /// null なら発行しない(<see cref="SelectPublishers"/> が Null publisher を返す)。
     /// </param>
     /// <param name="failurePublisher">取込失敗**シグナル**の publisher。<paramref name="summaryPublisher"/> と同様。</param>
+    /// <param name="heldPublisher">
+    /// 保留**シグナル**の publisher(ADR-0021)。保留のストアは取込失敗のストアと同じく発行する経路でだけ使い、そのときこれを
+    /// 発行に使う(null なら記録だけして発行しない)。
+    /// </param>
     /// <returns>サービスと、破棄すべきリソース(台帳。NullLedger 時は null)。</returns>
+    /// <exception cref="InvalidOperationException">programs.json の判断(<c>FilenamePrograms</c>)が不正(<see cref="ProgramResolver"/>)。</exception>
     public static (IngestService Service, IDisposable? Disposable) Build(
         RadirecConfig config, bool dryRun, bool notify = false,
-        IIngestSummaryPublisher? summaryPublisher = null, IIngestFailurePublisher? failurePublisher = null)
+        IIngestSummaryPublisher? summaryPublisher = null, IIngestFailurePublisher? failurePublisher = null,
+        IIngestHeldPublisher? heldPublisher = null)
     {
         var fileSystem = new FileSystem();
 
@@ -42,7 +48,7 @@ public static class CompositionRoot
             new StationResolver(stations),
             programResolver);
 
-        var (ledger, failureStoreFacet, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
+        var (ledger, failureStoreFacet, heldStoreFacet, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
 
         // dry-run はリフレッシュしないので Jellyfin 接続を作らない。
         ILibraryRefresher refresher = new NullLibraryRefresher();
@@ -57,6 +63,9 @@ public static class CompositionRoot
         var (summaryPub, failurePub, useFailureStore) = SelectPublishers(
             notify, dryRun, summaryPublisher, failurePublisher);
         IIngestFailureStore failureStore = useFailureStore ? failureStoreFacet : new NullIngestFailureStore();
+        // 保留のストアも同じゲート(ADR-0021)。発行しない走査が保留を記録して、初めて保留したときのトーストを潰さないため。
+        IHeldRecordingStore heldStore = useFailureStore ? heldStoreFacet : new NullHeldRecordingStore();
+        IIngestHeldPublisher heldPub = useFailureStore && heldPublisher is not null ? heldPublisher : new NullIngestHeldPublisher();
 
         // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> radirec.json の Genre > 既定。
         var genre = string.IsNullOrWhiteSpace(programs.Defaults.Genre)
@@ -90,7 +99,9 @@ public static class CompositionRoot
             refresher,
             summaryPub,
             failureStore,
-            failurePub);
+            failurePub,
+            heldStore,
+            heldPub);
 
         return (service, Combine(ledgerDisposable, refresherDisposable));
     }
@@ -148,7 +159,7 @@ public static class CompositionRoot
         var fileSystem = new FileSystem();
         var (stations, programs) = settings;
 
-        var (ledger, _, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
+        var (ledger, _, _, ledgerDisposable) = BuildLedger(config.LedgerPath, dryRun);
 
         ILibraryRefresher refresher = new NullLibraryRefresher();
         IDisposable? refresherDisposable = null;
@@ -209,14 +220,15 @@ public static class CompositionRoot
         }
     }
 
-    private static (ILedger Ledger, IIngestFailureStore FailureStore, IDisposable? Disposable) BuildLedger(
-        string ledgerPath, bool dryRun)
+    private static (ILedger Ledger, IIngestFailureStore FailureStore, IHeldRecordingStore HeldStore, IDisposable? Disposable)
+        BuildLedger(string ledgerPath, bool dryRun)
     {
         if (!dryRun)
         {
             // 開けなければ LedgerUnreachableException(#228)。設定の反映の失敗を台帳のせいと見分けられるようにする。
             var writable = LedgerFile.OpenWritable(ledgerPath);
-            return (writable, writable, writable); // 同一インスタンスが台帳 + 失敗 de-dup ストアを兼ねる。
+            // 同一インスタンスが台帳 + 失敗 de-dup ストア + 保留のストア(ADR-0021)を兼ねる。
+            return (writable, writable, writable, writable);
         }
 
         // dry-run: 副作用を避ける。既存台帳は読み取り専用、無ければ NullLedger。失敗 de-dup は notify 経路
@@ -225,9 +237,9 @@ public static class CompositionRoot
         if (LedgerFile.Exists(ledgerPath))
         {
             var readOnly = new SqliteLedger(ledgerPath, readOnly: true);
-            return (readOnly, new NullIngestFailureStore(), readOnly);
+            return (readOnly, new NullIngestFailureStore(), new NullHeldRecordingStore(), readOnly);
         }
 
-        return (new NullLedger(), new NullIngestFailureStore(), null);
+        return (new NullLedger(), new NullIngestFailureStore(), new NullHeldRecordingStore(), null);
     }
 }

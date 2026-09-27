@@ -63,6 +63,7 @@ public sealed class HomeViewModel : ObservableObject
     private IReadOnlyList<SiblingAttentionRow> _siblingRows = [];
     private IReadOnlyList<FailureAttentionRow> _failureRows = [];
     private IReadOnlyList<DriftAttentionRow> _driftRows = [];
+    private IReadOnlyList<SubstituteAttentionRow> _substituteRows = [];
     private readonly IHistoryPathActions? _pathActions;
     private string? _failureNote;
     private readonly ISavedReapplyEntry? _savedReapply;
@@ -268,15 +269,16 @@ public sealed class HomeViewModel : ObservableObject
     public bool HasFailures => FailureRows.Count > 0;
 
     /// <summary>
-    /// W-134 の各まとまり(W-135)。計算し直して中身が変わったら、「再適用の確認へ」を前に押した結果(W-254 / W-255)を消す
-    /// (押していない食い違いに、前の結果が出ないように)。中身が同じなら残す(スキャンが終わっただけでは消さない)。
+    /// W-134 の各まとまり(W-135。出力先から消す予定の W-158 も含む。ADR-0021)。計算し直して中身が変わったら、「再適用の確認へ」を
+    /// 前に押した結果(W-254 / W-255)を消す(押していない食い違いに、前の結果が出ないように)。中身が同じなら残す(スキャンが
+    /// 終わっただけでは消さない)。
     /// </summary>
     public IReadOnlyList<DriftAttentionRow> DriftRows
     {
         get => _driftRows;
         private set
         {
-            if (!_driftRows.Select(r => r.Drift).SequenceEqual(value.Select(r => r.Drift)))
+            if (!_driftRows.Select(r => r.Key).SequenceEqual(value.Select(r => r.Key)))
                 _reapplyResult = null;
             if (!SetProperty(ref _driftRows, value))
                 return;
@@ -288,11 +290,29 @@ public sealed class HomeViewModel : ObservableObject
 
     public bool HasDrift => DriftRows.Count > 0;
 
-    /// <summary>3 種のどれかがある(要対応の欄を出す)。</summary>
-    public bool HasAnyAttention => HasSiblings || HasFailures || HasDrift;
+    /// <summary>W-155 の各組(W-156。ADR-0021)。</summary>
+    public IReadOnlyList<SubstituteAttentionRow> SubstituteRows
+    {
+        get => _substituteRows;
+        private set
+        {
+            if (!SetProperty(ref _substituteRows, value))
+                return;
+            OnPropertyChanged(nameof(HasSubstitutes));
+            NotifyAttentionCount();
+        }
+    }
 
-    /// <summary>要対応の件数(種類をまたいだ合計。兄弟フォルダの組・失敗・食い違いのまとまりを 1 件ずつ数える)。</summary>
-    public int AttentionCount => SiblingRows.Count + FailureRows.Count + DriftRows.Count;
+    public bool HasSubstitutes => SubstituteRows.Count > 0;
+
+    /// <summary>4 種のどれかがある(要対応の欄を出す)。</summary>
+    public bool HasAnyAttention => HasSiblings || HasFailures || HasDrift || HasSubstitutes;
+
+    /// <summary>
+    /// 要対応の件数(種類をまたいだ合計。兄弟フォルダの組・失敗・食い違いのまとまり〈消す予定を含む〉・差し替え放送の疑いの組を
+    /// 1 件ずつ数える。<see cref="AttentionItems.Count"/> と同じ)。
+    /// </summary>
+    public int AttentionCount => SiblingRows.Count + FailureRows.Count + DriftRows.Count + SubstituteRows.Count;
 
     /// <summary>W-120 の <c>要対応 {N} 件</c>。1 件以上のときだけ。</summary>
     public string? AttentionCountText => IsAttentionLoaded && AttentionCount > 0 ? AttentionText.Count(AttentionCount) : null;
@@ -407,6 +427,7 @@ public sealed class HomeViewModel : ObservableObject
             SiblingRows = [];
             FailureRows = [];
             DriftRows = [];
+            SubstituteRows = [];
             AttentionState = HistoryLoadState.Unavailable;
             AttentionError = AttentionText.Unavailable; // W-137
             OnPropertyChanged(nameof(AttentionCountText));
@@ -442,7 +463,10 @@ public sealed class HomeViewModel : ObservableObject
                     FailureRows = items.UnresolvedFailures
                         .Select(f => new FailureAttentionRow(f, _zone, RevealFailureAsync))
                         .ToList();
-                    DriftRows = items.SettingsDrift.Select(d => new DriftAttentionRow(d)).ToList();
+                    DriftRows = items.SettingsDrift.Select(d => new DriftAttentionRow(d))
+                        .Concat(items.PendingRemovals.Select(r => new DriftAttentionRow(r)))
+                        .ToList();
+                    SubstituteRows = items.SubstituteSuspects.Select(s => new SubstituteAttentionRow(s)).ToList();
                 }
                 catch (Exception ex)
                 {
@@ -450,6 +474,7 @@ public sealed class HomeViewModel : ObservableObject
                     SiblingRows = [];
                     FailureRows = [];
                     DriftRows = [];
+                    SubstituteRows = [];
                     AttentionState = HistoryLoadState.Failed;
                     AttentionError = AttentionText.ComputeFailed(ex.Message);
                 }

@@ -337,6 +337,54 @@ public sealed class AttentionCommandTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task 差し替え放送の疑いと消す予定の回を出す()
+    {
+        // ADR-0021。Z(ゲストの回)は正規、Z に入った「特番A」は取り込み済みの判断待ち + 保留 1 回、「特番B」は取り込まないと判断済み。
+        using (var ledger = new SqliteLedger(LedgerPath))
+        {
+            foreach (var (name, stamp) in new[] { ("Z ゲスト", "20240923083000"), ("特番A", "20240930083000"), ("特番B", "20241007083000") })
+            {
+                ledger.Record(new LedgerEntry
+                {
+                    IdentityKey = $"TBSラジオ|Z|{stamp}",
+                    Station = "TBSラジオ",
+                    Program = "Z",
+                    BroadcastDate = new DateOnly(2024, 9, 23),
+                    BroadcastTime = TimeOnly.ParseExact(stamp[8..], "HHmmss"),
+                    SourcePath = Path.Combine(_dir, "radio", "TBSラジオ", "Z", $"[TBSラジオ]{name}(TimeFree)_{stamp}.m4a"),
+                    OutputPath = Path.Combine(_dir, "out", stamp + ".m4a"),
+                    RuleVersion = "1",
+                    UsedFallback = true,
+                    ImportedAtUtc = DateTimeOffset.UnixEpoch,
+                });
+            }
+            ledger.Record(new HeldRecording(Path.Combine(_dir, "radio", "held.m4a"), "TBSラジオ", "Z", "特番A", FailedAt));
+        }
+        File.WriteAllText(ProgramsPath, """
+            { "FilenamePrograms": [ { "Match": { "Station": "TBSラジオ", "Folder": "Z", "FilenameProgram": "特番B" }, "Treat": "Skip" } ] }
+            """);
+
+        var (exitCode, output) = await Run(["attention", "--json"]);
+
+        Assert.Equal(ExitCodes.Success, exitCode);
+        using var json = JsonDocument.Parse(output);
+        var result = json.RootElement.GetProperty("result");
+        Assert.Equal(2, result.GetProperty("count").GetInt32());
+        var suspect = Assert.Single(result.GetProperty("substituteSuspects").EnumerateArray());
+        Assert.Equal("特番A", suspect.GetProperty("filenameProgram").GetString());
+        Assert.Equal(1, suspect.GetProperty("heldCount").GetInt32());
+        Assert.Equal(1, suspect.GetProperty("importedCount").GetInt32());
+        var removal = Assert.Single(result.GetProperty("pendingRemovals").EnumerateArray());
+        Assert.Equal("特番B", removal.GetProperty("filenameProgram").GetString());
+        Assert.Equal(1, removal.GetProperty("count").GetInt32());
+
+        var (_, text) = await Run(["attention"]);
+        Assert.Contains("TBSラジオ「Z」 出力先から消す予定 1 回(ファイル名の番組名「特番B」)", text);
+        Assert.Contains("差し替え放送の疑い", text);
+        Assert.Contains("TBSラジオ「Z」に「特番A」 保留 1 回 / 取り込み済み 1 回", text);
+    }
+
     private Task<(int ExitCode, string Output)> Run(string[] args) => Run(args, new StubConfigSource(Config()));
 
     private static async Task<(int ExitCode, string Output)> Run(string[] args, ICliConfigSource source)

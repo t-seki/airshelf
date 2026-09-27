@@ -138,7 +138,15 @@ public sealed class IngestCommand(
             $"取込 {report.Count(IngestOutcome.Imported)} / 予定 {report.Count(IngestOutcome.Planned)} / " +
             $"済 {report.Count(IngestOutcome.SkippedAlreadyImported)} / 未安定 {report.Count(IngestOutcome.SkippedUnstable)} / " +
             $"ジャンク {report.Count(IngestOutcome.SkippedJunk)} / 対象外 {report.Count(IngestOutcome.SkippedUnsupported)} / " +
-            $"失敗 {report.Count(IngestOutcome.Failed)} {mode}");
+            $"失敗 {report.Count(IngestOutcome.Failed)} / 保留 {report.Count(IngestOutcome.Held)} / " +
+            $"取り込まない {report.Count(IngestOutcome.SkippedByDecision)} {mode}");
+
+        // 保留は失敗ではない(終了コードは変えない)が、判断するまで取り込まれないので、判断のしかたを添える(ADR-0021)。
+        if (report.Count(IngestOutcome.Held) > 0)
+            console.MarkupLine(
+                $"[yellow]差し替え放送の疑いがある回を{(report.DryRun ? "保留します" : "保留しました")}。[/]" +
+                "[grey]programs.json の FilenamePrograms に判断を書いて radirec reload で反映すると、次の走査で判断どおりに扱います" +
+                "(radirec attention にも出ます)[/]");
 
         // 不要(取込0件・dry-run)のときは何も出さない。
         switch (report.LibraryRefresh)
@@ -167,6 +175,10 @@ public sealed class IngestCommand(
         // 出力先に同じ内容が既にあって書かなかった回は、その既存ファイルを示す(台帳ヒットの回は null)。
         IngestOutcome.SkippedAlreadyImported => item.OutputPath ?? string.Empty,
         IngestOutcome.Failed => item.Message ?? string.Empty,
+        // 保留・取り込まない判断は、判断の照合に使うファイル名の番組名を示す(ADR-0021)。
+        IngestOutcome.Held or IngestOutcome.SkippedByDecision => item.FilenameProgram is { } name
+            ? $"ファイル名の番組名: {name}"
+            : string.Empty,
         _ => string.Empty,
     };
 
@@ -179,6 +191,8 @@ public sealed class IngestCommand(
         IngestOutcome.SkippedJunk => ("ジャンク", "grey"),
         IngestOutcome.SkippedUnsupported => ("対象外", "grey"),
         IngestOutcome.Failed => ("失敗", "red"),
+        IngestOutcome.Held => ("保留", "yellow"),
+        IngestOutcome.SkippedByDecision => ("取り込まない", "grey"),
         _ => (outcome.ToString(), "white"),
     };
 }
