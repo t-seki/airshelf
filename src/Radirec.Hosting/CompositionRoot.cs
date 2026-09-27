@@ -15,7 +15,8 @@ public static class CompositionRoot
 {
     /// <param name="dryRun">
     /// true なら台帳を副作用なく扱う(既存 DB は読み取り専用で開き、無ければ NullLedger)。台帳のフォルダに届かなければ
-    /// 「無い」とは扱わず <see cref="LedgerUnreachableException"/> を投げる(#216)。
+    /// 「無い」とは扱わず <see cref="LedgerUnreachableException"/> を投げる(#216)。false なら書き込み用に開き、フォルダが無ければ
+    /// 作る。開けなければ(作れない・届かない)同じく <see cref="LedgerUnreachableException"/>(<see cref="LedgerFile.OpenWritable"/>。#228)。
     /// </param>
     /// <param name="notify">
     /// 取込通知を発行するか。**常駐経路のみ true**。CLI がここを直接組むのは <c>ingest --dry-run</c> だけで
@@ -121,7 +122,8 @@ public static class CompositionRoot
     /// config から統合設定の再適用(ADR-0016)を組み立てる。取り込みと同じ放送局・番組の解決、出力先の規則
     /// (<see cref="LocalFolderTarget"/>)、台帳を使う。dry-run は取り込みと同じく台帳を読み取り専用で開き
     /// (無ければ空)、Jellyfin 接続を作らない。台帳のフォルダに届かなければ空とは扱わず
-    /// <see cref="LedgerUnreachableException"/> を投げる(#216)。
+    /// <see cref="LedgerUnreachableException"/> を投げる(#216)。実行(dry-run でない)は台帳を書き込み用に開き、開けなければ
+    /// 同じく <see cref="LedgerUnreachableException"/>(<see cref="LedgerFile.OpenWritable"/>。#228)。
     /// </summary>
     /// <returns>再適用と、破棄すべきリソース(台帳・Jellyfin 接続)。</returns>
     public static (ReapplyService Service, IDisposable? Disposable) BuildReapply(RadirecConfig config, bool dryRun)
@@ -212,7 +214,8 @@ public static class CompositionRoot
     {
         if (!dryRun)
         {
-            var writable = new SqliteLedger(ledgerPath);
+            // 開けなければ LedgerUnreachableException(#228)。設定の反映の失敗を台帳のせいと見分けられるようにする。
+            var writable = LedgerFile.OpenWritable(ledgerPath);
             return (writable, writable, writable); // 同一インスタンスが台帳 + 失敗 de-dup ストアを兼ねる。
         }
 
