@@ -143,7 +143,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <summary>W-234。</summary>
     public const string OtherAlbumRequired = "「別の番組」にはアルバム名を入れてください";
 
-    /// <summary>W-234。同じ組(照合キーで同じ)の判断が、ほかの行にある。</summary>
+    /// <summary>W-234。同じ組(照合の種類が同じで、照合キーで同じ)の判断が、ほかの行にある。</summary>
     public const string DuplicateDecision = "同じ組(放送局・フォルダ・照合・ファイル名の番組名)の判断がすでにあります";
 
     /// <summary>W-236。「照合」欄の説明(#240)。</summary>
@@ -1333,13 +1333,17 @@ public sealed class ProgramsPageViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 要対応の 1 組に、保存していない判断が積まれていれば、その扱いの呼び名(W-160。「別の番組」はアルバム名付き)。無ければ null。
+    /// 要対応の 1 組に当たる保存していない判断があれば、その扱いの呼び名(W-160。「別の番組」はアルバム名付き)。無ければ null。
+    /// 前方一致・部分一致の行も、取り込みと同じ照合と優先で当てる(#240)。
     /// 保存済みの判断は数えない(保存して設定リロードすれば、その組は要対応から消える)。
     /// </summary>
     public string? StagedDecisionLabel(string station, string folder, string filenameProgram)
     {
-        if (FindDecision(ProgramsDraft.DecisionKey(station, folder, FilenameProgramMatchMode.Exact, filenameProgram))
-            is not { IsChanged: true } row)
+        // 保存していない行のうち、その組に当たるものを、取り込みと同じ照合と優先で探す(積んだ完全一致の行を番組ページで
+        // 前方一致・部分一致に直しても、ホームの W-160 が消えないように。#240)。
+        var key = ProgramsDraft.DecisionKey(station, folder, FilenameProgramMatchMode.Exact, filenameProgram);
+        var changed = FilenamePrograms.Where(r => r.IsChanged && r.Key.Station == key.Station && r.Key.Folder == key.Folder);
+        if (FilenameProgramMatcher.FindBest(changed, r => r.Key.Mode, r => r.Key.FilenameProgram, key.FilenameProgram) is not { } row)
             return null;
         return row.Current.Treat == FilenameProgramTreatment.OtherProgram
             ? $"{row.Treat}「{row.Album}」"

@@ -175,6 +175,17 @@ public sealed class SubstituteBroadcastTests : IDisposable
     }
 
     [Fact]
+    public void 同じ種類で照合キーの長さも同じ別々の判断が両方当たれば_後に書いた方()
+    {
+        // 部分一致の AB と CD が ABCD に当たる(前方一致は、両方当たる同じ長さの照合キーが同じ文字列しかないので起きない)。
+        var ab = Decision(FilenameProgramTreatment.Skip, name: "AB", mode: FilenameProgramMatchMode.Contains);
+        var cd = Decision(FilenameProgramTreatment.SameProgram, name: "CD", mode: FilenameProgramMatchMode.Contains);
+
+        Assert.Equal(FilenameProgramVerdict.SameProgram, Judge("ABCD", ab, cd).Verdict);
+        Assert.Equal(FilenameProgramVerdict.Skip, Judge("ABCD", cd, ab).Verdict);
+    }
+
+    [Fact]
     public void 完全一致と前方一致に同じ文字列を書いても別の判断()
     {
         var exact = Decision(FilenameProgramTreatment.Skip, name: "辛坊治郎");

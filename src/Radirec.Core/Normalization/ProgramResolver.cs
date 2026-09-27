@@ -25,7 +25,7 @@ public interface IProgramResolver
     /// <summary>
     /// ファイル名の番組名から、その回の扱いを決める(ADR-0021)。①フォルダ名を含む → <see cref="FilenameProgramVerdict.ContainsFolder"/>、
     /// ②判断の登録がある → その判断、③どちらでもない → <see cref="FilenameProgramVerdict.Unjudged"/>(保留)。
-    /// ② で複数の判断が当たったら、完全一致 → 前方一致の照合キーが長い方 → 部分一致の照合キーが長い方(#240)。
+    /// ② で複数の判断が当たったら、完全一致 → 前方一致の照合キーが長い方 → 部分一致の照合キーが長い方、同着は後に書いた方(#240)。
     /// </summary>
     /// <param name="filenameProgram">ファイル名の番組名。null・空なら疑う手がかりが無いので ①。</param>
     FilenameProgramJudgement JudgeFilenameProgram(string canonicalStation, string programFolder, string? filenameProgram);
@@ -40,14 +40,15 @@ public sealed class ProgramResolver : IProgramResolver
 {
     private readonly Dictionary<(string Station, string Folder), (string Album, int? PartIndex)> _map = new();
 
-    // 照合の種類ごとの判断(#240)。前方一致・部分一致は (局, フォルダ) ごとに、照合キーの長い順に並べる。
-    private readonly Dictionary<(string Station, string Folder, string FilenameProgram), FilenameProgramJudgement> _exact = new();
-    private readonly Dictionary<(string Station, string Folder), List<(string Key, FilenameProgramJudgement Judgement)>> _prefix = new();
-    private readonly Dictionary<(string Station, string Folder), List<(string Key, FilenameProgramJudgement Judgement)>> _contains = new();
+    // ファイル名の番組名の判断を (局, フォルダ) ごとに、programs.json に書いた順で持つ(照合と優先は FilenameProgramMatcher。#240)。
+    private readonly Dictionary<(string Station, string Folder), List<Decided>> _decisions = new();
+
+    private sealed record Decided(FilenameProgramMatchMode Mode, string Key, FilenameProgramJudgement Judgement);
 
     /// <exception cref="ProgramsConfigException">
-    /// 「別の番組として取り込む」の判断にアルバム名が無い(設定の誤り。壊れた programs.json と同じく、取り込みの起動は縮退し、
-    /// 設定リロードでは新しい設定に切り替わらない〈前の設定のまま動く〉)。
+    /// 判断の設定の誤り(壊れた programs.json と同じく、取り込みの起動は縮退し、設定リロードでは新しい設定に切り替わらない
+    /// 〈前の設定のまま動く〉):「別の番組として取り込む」の判断にアルバム名が無い / 照合の種類(<c>Mode</c>)を解釈できない /
+    /// 前方一致・部分一致の判断の照合キーが空(フォルダのすべての回に当たってしまう。#240)。
     /// </exception>
     public ProgramResolver(ProgramMasterConfig config)
     {
@@ -71,31 +72,23 @@ public sealed class ProgramResolver : IProgramResolver
             }
         }
 
-        // 同じ組(種類・照合キーも同じ)を 2 度書いたら、後に書いた方(Programs の統合と同じ)。
-        var prefix = new Dictionary<(string Station, string Folder, string FilenameProgram), FilenameProgramJudgement>();
-        var contains = new Dictionary<(string Station, string Folder, string FilenameProgram), FilenameProgramJudgement>();
+        // 同じ組(種類・照合キーも同じ)を 2 度書いたら、後に書いた方(Programs の統合と同じ。優先の同着は後に書いた方)。
         foreach (var decision in config.FilenamePrograms)
         {
             var match = decision.Match;
-            var key = (TextNormalizer.ToMatchKey(match.Station), TextNormalizer.ToMatchKey(match.Folder),
-                TextNormalizer.ToMatchKey(match.FilenameProgram));
-            var target = match.Mode switch
-            {
-                FilenameProgramMatchMode.Exact => _exact,
-                FilenameProgramMatchMode.Prefix => prefix,
-                FilenameProgramMatchMode.Contains => contains,
-                _ => throw new ProgramsConfigException(
+            if (match.Mode is not (FilenameProgramMatchMode.Exact or FilenameProgramMatchMode.Prefix or FilenameProgramMatchMode.Contains))
+                throw new ProgramsConfigException(
                     $"programs.json の FilenamePrograms: {match.Station}「{match.Folder}」の「{match.FilenameProgram}」の " +
-                    $"Mode({match.Mode})を解釈できません"),
-            };
+                    $"Mode({match.Mode})を解釈できません");
 
             // 照合キーが空の前方一致・部分一致は、フォルダのすべての回に当たってしまう(#240)。
-            if (match.Mode != FilenameProgramMatchMode.Exact && key.Item3.Length == 0)
+            var key = TextNormalizer.ToMatchKey(match.FilenameProgram);
+            if (match.Mode != FilenameProgramMatchMode.Exact && key.Length == 0)
                 throw new ProgramsConfigException(
                     $"programs.json の FilenamePrograms: {match.Station}「{match.Folder}」の {match.Mode} の判断に、" +
                     "照合する FilenameProgram がありません");
 
-            target[key] = decision.Treat switch
+            var judgement = decision.Treat switch
             {
                 FilenameProgramTreatment.SameProgram => new FilenameProgramJudgement(FilenameProgramVerdict.SameProgram),
                 FilenameProgramTreatment.Skip => new FilenameProgramJudgement(FilenameProgramVerdict.Skip),
@@ -108,23 +101,11 @@ public sealed class ProgramResolver : IProgramResolver
                     $"programs.json の FilenamePrograms: {match.Station}「{match.Folder}」の「{match.FilenameProgram}」の " +
                     $"Treat({decision.Treat})を解釈できません"),
             };
-        }
 
-        Group(prefix, _prefix);
-        Group(contains, _contains);
-    }
-
-    // (局, フォルダ) ごとに、照合キーの長い順に並べる(長い方を優先。#240)。
-    private static void Group(
-        Dictionary<(string Station, string Folder, string FilenameProgram), FilenameProgramJudgement> decisions,
-        Dictionary<(string Station, string Folder), List<(string Key, FilenameProgramJudgement Judgement)>> grouped)
-    {
-        foreach (var group in decisions.GroupBy(d => (d.Key.Station, d.Key.Folder)))
-        {
-            grouped[group.Key] = group
-                .Select(d => (d.Key.FilenameProgram, d.Value))
-                .OrderByDescending(d => d.FilenameProgram.Length)
-                .ToList();
+            var place = (TextNormalizer.ToMatchKey(match.Station), TextNormalizer.ToMatchKey(match.Folder));
+            if (!_decisions.TryGetValue(place, out var list))
+                _decisions[place] = list = [];
+            list.Add(new Decided(match.Mode, key, judgement));
         }
     }
 
@@ -143,19 +124,10 @@ public sealed class ProgramResolver : IProgramResolver
         if (nameKey.Length == 0 || nameKey.Contains(folderKey, StringComparison.Ordinal))
             return FilenameProgramJudgement.ContainsFolder;
 
-        // 優先は 完全一致 → 前方一致の長い方 → 部分一致の長い方(#240)。種類をまたいで長さは比べない。
-        var stationKey = TextNormalizer.ToMatchKey(canonicalStation);
-        if (_exact.TryGetValue((stationKey, folderKey, nameKey), out var decided))
-            return decided;
-
-        if (_prefix.TryGetValue((stationKey, folderKey), out var prefixes)
-            && prefixes.FirstOrDefault(p => nameKey.StartsWith(p.Key, StringComparison.Ordinal)) is { Judgement: { } byPrefix })
-            return byPrefix;
-
-        if (_contains.TryGetValue((stationKey, folderKey), out var parts)
-            && parts.FirstOrDefault(p => nameKey.Contains(p.Key, StringComparison.Ordinal)) is { Judgement: { } byContains })
-            return byContains;
-
-        return new FilenameProgramJudgement(FilenameProgramVerdict.Unjudged);
+        // 優先は 完全一致 → 前方一致の長い方 → 部分一致の長い方、同着は後に書いた方(#240。FilenameProgramMatcher)。
+        return _decisions.TryGetValue((TextNormalizer.ToMatchKey(canonicalStation), folderKey), out var decisions)
+               && FilenameProgramMatcher.FindBest(decisions, d => d.Mode, d => d.Key, nameKey) is { } decided
+            ? decided.Judgement
+            : new FilenameProgramJudgement(FilenameProgramVerdict.Unjudged);
     }
 }

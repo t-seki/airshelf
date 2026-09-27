@@ -16,19 +16,20 @@ public sealed class ProgramMasterConfig
     public List<KeptApartSiblings> KeepSeparate { get; set; } = [];
 
     /// <summary>
-    /// ファイル名の番組名の判断(CONTEXT.md「差し替え放送」。ADR-0021)。(局, フォルダ, ファイル名の番組名) の組ごとに、
-    /// 利用者が決めた扱い。ファイル名の番組名がフォルダ名を含まない回は、ここに判断が無ければ取り込まずに保留する。
-    /// 空なら programs.json に書かない。
+    /// ファイル名の番組名の判断(CONTEXT.md「差し替え放送」。ADR-0021)。(局, フォルダ) の中で、ファイル名の番組名を完全一致・
+    /// 前方一致・部分一致(#240)で照合して当てる、利用者が決めた扱い。ファイル名の番組名がフォルダ名を含まない回は、ここに当たる
+    /// 判断が無ければ取り込まずに保留する。空なら programs.json に書かない。
     /// </summary>
     public List<FilenameProgramDecision> FilenamePrograms { get; set; } = [];
 }
 
 /// <summary>
-/// ファイル名の番組名の判断 1 件。<c>{ "Match": { "Station", "Folder", "FilenameProgram" }, "Treat", "Album", "Note" }</c>(ADR-0021)。
+/// ファイル名の番組名の判断 1 件。<c>{ "Match": { "Station", "Folder", "FilenameProgram", "Mode" }, "Treat", "Album", "Note" }</c>
+/// (ADR-0021。<c>Mode</c> は #240 で足した。省略したら完全一致)。
 /// </summary>
 public sealed class FilenameProgramDecision
 {
-    /// <summary>判断する組(局・番組フォルダ・ファイル名の番組名)。</summary>
+    /// <summary>判断を当てる回(局・番組フォルダ・照合に使う文字列・照合の種類)。</summary>
     public FilenameProgramMatch Match { get; set; } = new();
 
     /// <summary>扱い。書き忘れを「この番組の回」と読まないよう、省略できない。</summary>
