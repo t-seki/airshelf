@@ -31,9 +31,26 @@ public sealed class IngestService(
     /// <summary>中断で残った孤児テンポラリを掃除する(常駐の起動時に呼ぶ。ADR-0003)。</summary>
     public int CleanupOrphans() => target.CleanupOrphans();
 
+    /// <exception cref="IngestCanceledException">
+    /// <paramref name="cancellationToken"/> の取り消しで打ち切った。それまでに処理した明細を持つ(呼び手が件数を残せるように。#218)。
+    /// </exception>
     public async Task<IngestReport> RunOnceAsync(bool dryRun, CancellationToken cancellationToken = default)
     {
         var items = new List<IngestItemResult>();
+        try
+        {
+            return await RunOnceCoreAsync(items, dryRun, cancellationToken);
+        }
+        catch (OperationCanceledException ex) when (ex is not IngestCanceledException && cancellationToken.IsCancellationRequested)
+        {
+            throw new IngestCanceledException(items.ToList(), ex, cancellationToken);
+        }
+    }
+
+    // items には処理し終えたファイルの明細を足していく(打ち切られたときに、呼び手の RunOnceAsync がそれまでの分を返せるように)。
+    private async Task<IngestReport> RunOnceCoreAsync(
+        List<IngestItemResult> items, bool dryRun, CancellationToken cancellationToken)
+    {
         foreach (var file in source.Enumerate())
         {
             cancellationToken.ThrowIfCancellationRequested();

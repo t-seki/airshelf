@@ -168,6 +168,33 @@ public sealed class AttentionCommandTests : IDisposable
     }
 
     [Fact]
+    public void 窓より長い取込元のパスも_失敗の塊の中に下げて出す()
+    {
+        // 空白の無い長いパス。Spectre.Console に任せると、下げた分だけの行を作ってからパスを行頭から折り返していた(#218)。
+        const string path = @"C:\Users\Public\radirec-rc4-test\RADIO\TBSラジオ\とても長い番組名のフォルダ\[TBSラジオ]とても長い番組名(TimeFree)_20240923083000.m4a";
+        var items = new AttentionItems { UnresolvedFailures = [new IngestFailureRecord(path, "読めません", FailedAt)] };
+        const int width = 50;
+
+        var lines = RenderToString(items, width).Split('\n').Select(l => l.TrimEnd('\r')).ToList();
+
+        var first = lines.FindIndex(l => l.StartsWith("    取込元: ", StringComparison.Ordinal));
+        Assert.True(first >= 0, string.Join('\n', lines));
+        // 1 行目の後ろから、下げた続きの行が空行を挟まずに並び、つなげると元のパスになる。
+        var continued = lines.Skip(first + 1).TakeWhile(l => l.StartsWith("            ", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(continued);
+        Assert.Equal(path, lines[first]["    取込元: ".Length..] + string.Concat(continued.Select(l => l.TrimStart(' '))));
+        Assert.All(lines.Skip(first).Take(continued.Count + 1), l => Assert.True(l.GetCellWidth() <= width, l));
+        // 下げた分だけの空行(issue の症状)を作らない。
+        Assert.DoesNotContain(lines, l => l.Length > 0 && string.IsNullOrWhiteSpace(l));
+    }
+
+    [Fact]
+    public void 短い取込元のパスは_ラベルと同じ1行()
+    {
+        Assert.Equal([@"    取込元: I:\radio\a.m4a"], AttentionCommand.SourceLines(@"I:\radio\a.m4a", 80));
+    }
+
+    [Fact]
     public void 再適用が要る番組の行は管理画面と同じ表記()
     {
         var renamed = new SettingsDriftGroup("TBSラジオ", "X(1)", "X", 3);
@@ -275,9 +302,10 @@ public sealed class AttentionCommandTests : IDisposable
         return (exitCode, writer.ToString());
     }
 
-    private static string RenderToString(AttentionItems items)
+    private static string RenderToString(AttentionItems items, int width = 200)
     {
         var (console, writer) = PlainConsole();
+        console.Profile.Width = width;
         AttentionCommand.Render(console, items);
         return writer.ToString();
     }

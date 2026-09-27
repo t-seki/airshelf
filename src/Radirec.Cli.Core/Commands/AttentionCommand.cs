@@ -86,13 +86,16 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
             console.MarkupLine("[bold]解決していない取込失敗[/] [grey](録音ファイルを直すか置き直して、取り込みに成功すると消えます)[/]");
             foreach (var failure in items.UnresolvedFailures)
             {
-                console.MarkupLineInterpolated($"  {FileNameOf(failure.SourcePath)}");
+                // ファイル名も空白が無く長いことがあるので、取込元と同じく自分で切る(#218)。
+                foreach (var line in Wrap("  ", FileNameOf(failure.SourcePath), console.Profile.Width))
+                    console.MarkupLineInterpolated($"{line}");
                 console.MarkupLineInterpolated(
                     $"    {(string.IsNullOrWhiteSpace(failure.Reason) ? "(理由の記録なし)" : failure.Reason)}");
                 if (failure.FailedAtUtc is { } at)
                     console.MarkupLineInterpolated(
                         $"    [grey]失敗: {at.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}[/]");
-                console.MarkupLineInterpolated($"    [grey]{failure.SourcePath}[/]");
+                foreach (var line in SourceLines(failure.SourcePath, console.Profile.Width))
+                    console.MarkupLineInterpolated($"[grey]{line}[/]");
             }
         }
 
@@ -112,6 +115,47 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
         => group.ToAlbum == group.FromAlbum
             ? $"{group.Station}「{group.FromAlbum}」 パートの番号が変わる {group.Count} 回"
             : $"{group.Station}「{group.FromAlbum}」→「{group.ToAlbum}」 {group.Count} 回";
+
+    /// <summary>
+    /// 取込失敗の取込元のパスを、<paramref name="width"/> の幅に収まる行に切る。1 行目は <c>取込元: </c> の後にパスを続け、
+    /// 続きの行はパスの頭にそろえて下げる(#218)。
+    /// </summary>
+    public static IReadOnlyList<string> SourceLines(string path, int width) => Wrap("    取込元: ", path, width);
+
+    /// <summary>
+    /// <paramref name="text"/> を <paramref name="lead"/> の後に続け、<paramref name="width"/> の幅に収まる行に切る。続きの行は
+    /// <paramref name="lead"/> と同じ幅だけ下げる。
+    /// <para>
+    /// パスやファイル名には空白が無いことが多く、Spectre.Console に任せると、下げた分(とラベル)だけの行を作ってから、
+    /// 本体を行頭から始めて折り返す(失敗の塊から離れて見える。#218)。そこで語の切れ目ではなく文字の幅で自分で切る。
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<string> Wrap(string lead, string text, int width)
+    {
+        var rest = new string(' ', lead.GetCellWidth());
+        // 幅が極端に狭くても、1 行に最低これだけは載せる(無限に行を増やさない)。
+        var room = Math.Max(width - lead.GetCellWidth(), 10);
+
+        var lines = new List<string>();
+        var chunk = new System.Text.StringBuilder();
+        var chunkWidth = 0;
+        var elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
+        {
+            var element = (string)elements.Current;
+            var cells = element.GetCellWidth();
+            if (chunkWidth + cells > room && chunk.Length > 0)
+            {
+                lines.Add((lines.Count == 0 ? lead : rest) + chunk);
+                chunk.Clear();
+                chunkWidth = 0;
+            }
+            chunk.Append(element);
+            chunkWidth += cells;
+        }
+        lines.Add((lines.Count == 0 ? lead : rest) + chunk);
+        return lines;
+    }
 
     private static string Quoted(IReadOnlyList<string> folders) => string.Concat(folders.Select(f => $"『{f}』"));
 

@@ -52,7 +52,10 @@ public interface IReapplyJobHost
     /// <summary>直近の設定リロードの反映に失敗した理由(成功なら null)。</summary>
     string? LastReloadError { get; }
 
-    /// <summary>設定ファイル(radirec.json)を読んで検証する(反映はしない)。</summary>
+    /// <summary>
+    /// 設定ファイル(radirec.json)を読んで検証する(反映はしない)。<paramref name="error"/> は前置き
+    /// (「設定の読み込みに失敗しました: 」など)を含んだ、そのまま出せる理由。
+    /// </summary>
     bool TryLoadConfig(out RadirecConfig? config, out string? error);
 
     /// <summary>
@@ -269,7 +272,9 @@ public sealed class ReapplyJobs(IReapplyJobHost host)
         if (!host.TryLoadConfig(out var newConfig, out var loadError))
         {
             host.LogWarning($"統合設定の再適用: 設定の読み込みに失敗したため中止しました: {loadError}");
-            failure = ReapplyResult.Failed($"設定の読み込みに失敗しました: {loadError}({KeepsRunning})");
+            // loadError は読み込みの戻り値(「設定の読み込みに失敗しました: …」「設定ファイルが見つかりません: …」)で、
+            // 前置きを含む。reload の拒否と同じくそのまま出す(もう一度前置きを付けると 2 回続く。#218)。
+            failure = ReapplyResult.Failed($"{loadError}({KeepsRunning})");
             return false;
         }
         host.ApplyReload(newConfig!);
