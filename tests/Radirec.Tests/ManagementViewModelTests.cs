@@ -55,6 +55,9 @@ public sealed class ManagementViewModelTests
         /// </summary>
         public ManualResetEventSlim? Gate { get; set; }
 
+        /// <summary>立っていれば、値は同じで別の実体の行を返す(本物の台帳は読むたびに行を作り直す)。</summary>
+        public bool FreshRows { get; set; }
+
         public IReadOnlyList<IngestHistoryRow> Load()
         {
             Interlocked.Increment(ref _loads);
@@ -62,7 +65,7 @@ public sealed class ManagementViewModelTests
                 throw new TimeoutException("テストの Gate が開かなかった");
             if (Throw is { } ex)
                 throw ex;
-            return Rows.ToList();
+            return FreshRows ? Rows.Select(r => r with { }).ToList() : Rows.ToList();
         }
     }
 
@@ -584,22 +587,26 @@ public sealed class ManagementViewModelTests
 
         using var gate = new ManualResetEventSlim(false);
         ledger.Gate = gate;
+        ledger.FreshRows = true; // 読み直すと、値は同じで別の実体の行が返る
         ledger.Rows.Insert(0, Row(3));
         history.RefreshCommand.Execute(null); // 読み始める(止まる)
         Assert.True(SpinWait.SpinUntil(() => ledger.Loads == loadsBefore + 1, TimeSpan.FromSeconds(5)));
 
         // 読み込みの途中に、前の一覧の行を選んでコピーする
-        history.SelectedRow = history.Rows[1]; // 番組2
+        var picked = history.Rows[1]; // 番組2
+        history.SelectedRow = picked;
         history.CopyOutputCommand.Execute(null);
         Assert.Equal("パスをコピーしました", history.ActionMessage);
 
         gate.Set();
         await history.Reloaded;
 
-        // 読み終えても消さない。選択は新しい一覧の同じ行に付け直す
+        // 読み終えても消さない。選択は、値の等しい新しい一覧の行(別の実体)に付け直す
         Assert.Equal(3, history.Rows.Count);
         Assert.NotNull(history.SelectedRow);
         Assert.Same(history.Rows[2], history.SelectedRow);
+        Assert.NotSame(picked, history.SelectedRow);
+        Assert.Equal(picked, history.SelectedRow);
         Assert.Equal("番組2", history.SelectedRow!.Program);
         Assert.Equal("パスをコピーしました", history.ActionMessage);
         Assert.True(history.CopyOutputCommand.CanExecute(null));
@@ -614,6 +621,7 @@ public sealed class ManagementViewModelTests
 
         using var gate = new ManualResetEventSlim(false);
         ledger.Gate = gate;
+        ledger.FreshRows = true;
         ledger.Rows.RemoveAt(1); // 番組2 が無くなる
         history.RefreshCommand.Execute(null);
         Assert.True(SpinWait.SpinUntil(() => ledger.Loads == loadsBefore + 1, TimeSpan.FromSeconds(5)));

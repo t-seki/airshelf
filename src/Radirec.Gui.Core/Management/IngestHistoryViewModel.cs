@@ -186,9 +186,14 @@ public sealed class IngestHistoryViewModel : ObservableObject
 
             // 読み込みの途中に選んだ行は、新しい一覧にも同じ行(record の値が等しい)があれば選び直す。
             // 一覧を差し替えると DataGrid が選択を外しうるので、差し替える前に覚えておく。
+            // 選び直すのは新しい一覧の実体(DataGrid は実体で選択を探す)。SelectedRow の setter は値で比べて
+            // 等しければ何もしない(SetProperty)ので、いったん外してから入れる。
             var selected = SelectedRow;
             Rows = rows;
-            SelectedRow = selected is null ? null : rows.FirstOrDefault(r => r == selected);
+            var reselect = selected is null ? null : rows.FirstOrDefault(r => r == selected);
+            if (reselect is not null && !ReferenceEquals(reselect, selected))
+                SelectedRow = null;
+            SelectedRow = reselect;
             OnPropertyChanged(nameof(CountText));
         }
         finally
