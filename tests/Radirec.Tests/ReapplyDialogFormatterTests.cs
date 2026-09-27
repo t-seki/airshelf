@@ -145,6 +145,49 @@ public sealed class ReapplyDialogFormatterTests
     }
 
     [Fact]
+    public void 確認で出力先から消す回を台帳とタグを直す回の次に出し_注記を添える()
+    {
+        // 差し替え放送で「取り込まない」と判断した回(ADR-0021 / #234)。NAS 上のファイルを消すことが確認の段階で分かる。
+        var plan = Report(true,
+        [
+            Item(ReapplyAction.Move),
+            .. Enumerable.Range(0, 2).Select(_ => Item(ReapplyAction.Remove, from: "特番", to: "特番")),
+        ]);
+        Assert.False(plan.IsAligned);
+
+        var text = ReapplyDialogFormatter.BuildConfirmation(plan);
+
+        Assert.Equal("3 回を今の設定に揃えます", text.Heading);
+        Assert.Contains(
+            "合計: 移動・リネーム 1 回 / 台帳とタグを直す 0 回 / 出力先から消す 2 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 0 回",
+            text.Body);
+        Assert.Contains("・TBSラジオ「特番」→「特番」\n　　出力先から消す 2", text.Body);
+        Assert.Contains(ReapplyDialogFormatter.RemoveNote, text.Body);
+        Assert.Contains("  消す予定 TBSラジオ 2026-09-19 「特番」→「特番」", string.Join("\n", ReapplyDialogFormatter.BuildLogLines(plan)));
+    }
+
+    [Fact]
+    public void 消す回が無ければ合計に出力先から消すを出さない()
+    {
+        var text = ReapplyDialogFormatter.BuildConfirmation(Report(true, [Item(ReapplyAction.Move)]));
+
+        Assert.DoesNotContain("出力先から消す", text.Body);
+    }
+
+    [Fact]
+    public void 完了で消した回があれば取込元に残っていることを添える()
+    {
+        var result = Report(false, [Item(ReapplyAction.Remove, from: "特番", to: "特番")], refresh: LibraryRefreshStatus.Started);
+
+        var text = ReapplyDialogFormatter.BuildCompletion(result);
+
+        Assert.Contains("出力先から消す 1 回", text.Body);
+        Assert.Contains("Jellyfin ライブラリ更新: 起動しました", text.Body);
+        Assert.Contains("取込元に残っています", text.Body);
+        Assert.DoesNotContain("メタデータ", text.Body); // タグは書き換えていない
+    }
+
+    [Fact]
     public void 確認で移動先のタグも直す重複の回があれば件数を添える()
     {
         var plan = Report(true,

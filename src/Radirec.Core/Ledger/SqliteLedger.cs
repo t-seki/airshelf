@@ -368,6 +368,19 @@ public sealed class SqliteLedger : ILedger, IIngestFailureStore, IHeldRecordingS
         return true;
     }
 
+    public bool Remove(LedgerEntry entry)
+    {
+        // 主キーだけでなく取込元も一致する行だけを消す(同じ主キーが別の取込元の記録に書き換わっていたら、それは消さない)。
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "DELETE FROM imports WHERE identity_key = $id AND broadcast_time = $t AND part_index = $p AND source_path = $src;";
+        cmd.Parameters.AddWithValue("$id", entry.IdentityKey);
+        cmd.Parameters.AddWithValue("$t", TimeKey(entry.BroadcastTime));
+        cmd.Parameters.AddWithValue("$p", entry.PartIndex);
+        cmd.Parameters.AddWithValue("$src", entry.SourcePath);
+        return cmd.ExecuteNonQuery() == 1;
+    }
+
     private static void BindEntry(SqliteCommand cmd, LedgerEntry entry)
     {
         cmd.Parameters.AddWithValue("$id", entry.IdentityKey);
