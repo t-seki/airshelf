@@ -34,23 +34,21 @@
             </Style.Triggers>
         </Style>
 
-        <!-- 読み取り専用の中身。選択・コピーはできる。空(読めていない)なら出さない。 -->
-        <Style x:Key="FileContent" TargetType="TextBox">
-            <Setter Property="IsReadOnly" Value="True" />
-            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
-            <Setter Property="FontFamily" Value="Consolas, MS Gothic" />
-            <Setter Property="TextWrapping" Value="NoWrap" />
-            <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
-            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
-            <Setter Property="MaxHeight" Value="220" />
+        <!--
+          Button / TextBox にはキー付きのスタイルを置かない(#171。ManagementWindow.xaml の Window.Resources の注記)。
+          当てると Fluent テーマの暗黙のスタイルを受け取らず、ダークでもクラシックの見た目になる。見た目の値は属性に書く。
+        -->
+
+        <!-- ファイルの中身(読み取り専用の TextBox)を包む枠。中身が空(読めていない)なら枠ごと出さない。 -->
+        <Style x:Key="FileContentFrame" TargetType="Border">
             <Setter Property="Margin" Value="0,8,0,0" />
             <Style.Triggers>
-                <Trigger Property="Text" Value="">
+                <DataTrigger Binding="{Binding Content}" Value="">
                     <Setter Property="Visibility" Value="Collapsed" />
-                </Trigger>
-                <Trigger Property="Text" Value="{x:Null}">
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Content}" Value="{x:Null}">
                     <Setter Property="Visibility" Value="Collapsed" />
-                </Trigger>
+                </DataTrigger>
             </Style.Triggers>
         </Style>
 
@@ -58,14 +56,12 @@
             <Setter Property="Padding" Value="14,10" />
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SurfaceStrokeColorDefaultBrush}" />
             <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
 
-        <Style x:Key="SmallButton" TargetType="Button">
-            <Setter Property="Padding" Value="10,3" />
-            <Setter Property="Margin" Value="8,0,0,0" />
-        </Style>
+        <Thickness x:Key="SmallButtonPadding">10,3</Thickness>
+        <Thickness x:Key="SmallButtonMargin">8,0,0,0</Thickness>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -147,8 +143,8 @@
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
                                 <!-- W-305 -->
-                                <Button Style="{StaticResource SmallButton}" Content="ファイルを開く" Command="{Binding OpenRadirecCommand}" />
-                                <Button Style="{StaticResource SmallButton}" Content="再読み込み" Command="{Binding ReloadCommand}" />
+                                <Button Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource SmallButtonMargin}" Content="ファイルを開く" Command="{Binding OpenRadirecCommand}" />
+                                <Button Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource SmallButtonMargin}" Content="再読み込み" Command="{Binding ReloadCommand}" />
                             </StackPanel>
                             <StackPanel DataContext="{Binding Radirec}">
                                 <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
@@ -159,7 +155,11 @@
                         <TextBlock Style="{StaticResource Optional}" Text="{Binding ReloadNote}" />
                         <StackPanel DataContext="{Binding Radirec}">
                             <!-- W-306 は ViewModel で伏せ済み -->
-                            <TextBox Style="{StaticResource FileContent}" Text="{Binding Content, Mode=OneWay}" />
+                            <Border Style="{StaticResource FileContentFrame}">
+                                <TextBox IsReadOnly="True" IsReadOnlyCaretVisible="False" FontFamily="Consolas, MS Gothic"
+                                         TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                         MaxHeight="220" Text="{Binding Content, Mode=OneWay}" />
+                            </Border>
                             <!-- W-315 / W-317 -->
                             <TextBlock Style="{StaticResource Optional}" Text="{Binding Note}" />
                             <!-- W-308 / W-310 -->
@@ -174,8 +174,8 @@
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
                                 <!-- W-305 -->
-                                <Button Style="{StaticResource SmallButton}" Content="ファイルを開く" Command="{Binding OpenStationsCommand}" />
-                                <Button Style="{StaticResource SmallButton}" Content="再読み込み" Command="{Binding ReloadStationsCommand}" />
+                                <Button Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource SmallButtonMargin}" Content="ファイルを開く" Command="{Binding OpenStationsCommand}" />
+                                <Button Padding="{StaticResource SmallButtonPadding}" Margin="{StaticResource SmallButtonMargin}" Content="再読み込み" Command="{Binding ReloadStationsCommand}" />
                             </StackPanel>
                             <StackPanel DataContext="{Binding Stations}">
                                 <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
@@ -185,7 +185,11 @@
                         <!-- W-316 / W-256 -->
                         <TextBlock Style="{StaticResource Optional}" Text="{Binding StationsReloadNote}" />
                         <StackPanel DataContext="{Binding Stations}">
-                            <TextBox Style="{StaticResource FileContent}" Text="{Binding Content, Mode=OneWay}" />
+                            <Border Style="{StaticResource FileContentFrame}">
+                                <TextBox IsReadOnly="True" IsReadOnlyCaretVisible="False" FontFamily="Consolas, MS Gothic"
+                                         TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                         MaxHeight="220" Text="{Binding Content, Mode=OneWay}" />
+                            </Border>
                             <!-- W-307 / W-315 / W-317 -->
                             <TextBlock Style="{StaticResource Optional}" Text="{Binding Note}" />
                             <!-- W-308 / W-311 / W-254 / W-255 -->

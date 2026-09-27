@@ -3,6 +3,9 @@
   文言は docs/mockups/management-window.md に従い、各所に W-ID を書いておく(モックと突き合わせるため)。
   ホームと取込履歴以外のページは Pages/ の UserControl に置く
   (番組 = Pages/ProgramsPage.xaml〈#154〉、設定 = Pages/SettingsPage.xaml〈#152〉、バージョン情報 = Pages/AboutPage.xaml〈#157〉)。
+  見た目は WPF の Fluent テーマで、Windows のライト / ダークに追従する(#171。ManagementWindow.xaml.cs)。色は名前や SystemColors で
+  直に書かず、Fluent の辞書のキー(エラー = SystemFillColorCriticalBrush、注意 = SystemFillColorCautionBrush、
+  薄い文字 = TextFillColorSecondaryBrush、枠と区切り = SurfaceStrokeColorDefaultBrush)を DynamicResource で引く。ページもこれに従う。
 -->
 <Window x:Class="Radirec.Gui.ManagementWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -25,7 +28,7 @@
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style x:Key="Sub" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
 
         <!-- ファイル列はファイル名だけを出し、セルの ToolTip にフルパスを出す(列は切り詰められるため。#87)。 -->
@@ -34,23 +37,19 @@
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
 
-        <!-- 選択・コピーできる読み取り専用のパス(詳細欄 W-145)。長いので折り返して全文を見せる。 -->
-        <Style x:Key="PathBox" TargetType="TextBox">
-            <Setter Property="IsReadOnly" Value="True" />
-            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,2" />
-        </Style>
+        <!--
+          Button / TextBox / DataGridRow にはキー付きのスタイルを置かない(#171)。WPF のスタイルは 1 つしか効かないので、
+          キー付きのスタイルを当てると Fluent テーマの暗黙のスタイルを受け取らず、ダークでもクラシックの見た目になる。
+          BasedOn で Fluent を受け継ぐ手も取れない:ページ(UserControl)の XAML はウィンドウの木に入る前に読み込まれ、
+          その時点の StaticResource はクラシックのスタイルを引く。見た目の値は各要素の属性に書く。
+        -->
     </Window.Resources>
 
     <DockPanel>
         <!-- W-003 -->
         <Border DockPanel.Dock="Bottom" Padding="12,4"
                 BorderThickness="0,1,0,0"
-                BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+                BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
             <TextBlock Style="{StaticResource Sub}" Text="{x:Static m:ManagementViewModel.CloseNote}" />
         </Border>
 
@@ -76,7 +75,7 @@
 
                 <!-- 状態と再スキャン -->
                 <Border DockPanel.Dock="Top" Padding="14,10" CornerRadius="4" BorderThickness="1"
-                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}">
+                        BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -113,7 +112,7 @@
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource Sub}" Text="{x:Static m:AttentionText.None}"
                            Visibility="{Binding IsAttentionEmpty, Converter={StaticResource Visible}}" />
                 <!-- W-139(「分けておく」で書けなかった) -->
-                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="DarkRed"
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
                            Text="{Binding AttentionNote}"
                            Visibility="{Binding IsAttentionNoteVisible, Converter={StaticResource Visible}}" />
                 <!-- 件数が多いと取込履歴が押し出されるので、要対応の欄の中でスクロールする -->
@@ -121,7 +120,7 @@
                               Visibility="{Binding HasAnyAttention, Converter={StaticResource Visible}}">
                   <StackPanel>
                     <Border Padding="14,8" CornerRadius="4" BorderThickness="1" Margin="0,0,0,6"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                            BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
                             Visibility="{Binding HasSiblings, Converter={StaticResource Visible}}">
                         <StackPanel>
                             <!-- W-122 -->
@@ -161,7 +160,7 @@
 
                     <!-- ===== 解決していない取込失敗(W-128〜W-133。#156)===== -->
                     <Border Padding="14,8" CornerRadius="4" BorderThickness="1" Margin="0,0,0,6"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                            BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
                             Visibility="{Binding HasFailures, Converter={StaticResource Visible}}">
                         <StackPanel>
                             <!-- W-128 -->
@@ -200,7 +199,7 @@
 
                     <!-- ===== 再適用が要る番組(W-134〜W-136。#156)===== -->
                     <Border Padding="14,8" CornerRadius="4" BorderThickness="1"
-                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                            BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
                             Visibility="{Binding HasDrift, Converter={StaticResource Visible}}">
                         <StackPanel>
                             <Grid Margin="0,0,0,4">
@@ -222,7 +221,7 @@
                                     <Style TargetType="TextBlock">
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsReapplyNoteWarning}" Value="True">
-                                                <Setter Property="Foreground" Value="DarkRed" />
+                                                <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -307,7 +306,7 @@
 
                 <!-- 詳細欄(W-145) -->
                 <Border DockPanel.Dock="Bottom" Padding="10,6,10,8" BorderThickness="0,1,0,0"
-                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"
+                        BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
                         Visibility="{Binding IsLoaded, Converter={StaticResource Visible}}">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -319,10 +318,13 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="出力先" Margin="0,2,12,2" />
-                        <TextBox Grid.Row="0" Grid.Column="1" Style="{StaticResource PathBox}"
+                        <!-- 選択・コピーできる読み取り専用のパス(W-145)。長いので折り返して全文を見せる -->
+                        <TextBox Grid.Row="0" Grid.Column="1" IsReadOnly="True" IsReadOnlyCaretVisible="False"
+                                 BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Padding="0" Margin="0,2"
                                  Text="{Binding SelectedOutputPath, Mode=OneWay}" />
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="取込元" Margin="0,2,12,2" />
-                        <TextBox Grid.Row="1" Grid.Column="1" Style="{StaticResource PathBox}"
+                        <TextBox Grid.Row="1" Grid.Column="1" IsReadOnly="True" IsReadOnlyCaretVisible="False"
+                                 BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Padding="0" Margin="0,2"
                                  Text="{Binding SelectedSourcePath, Mode=OneWay}" />
                     </Grid>
                 </Border>
@@ -335,14 +337,11 @@
                           CanUserAddRows="False" CanUserDeleteRows="False"
                           HeadersVisibility="Column" SelectionMode="Single"
                           GridLinesVisibility="Horizontal"
-                          PreviewKeyDown="OnHistoryGridPreviewKeyDown">
-                    <DataGrid.RowStyle>
-                        <Style TargetType="DataGridRow">
-                            <!-- DataGrid 自体の MouseDoubleClick は見出し(列幅の自動調整)でも起きるので、行で拾う -->
-                            <EventSetter Event="MouseDoubleClick" Handler="OnHistoryRowDoubleClick" />
-                            <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnHistoryRowRightButtonDown" />
-                        </Style>
-                    </DataGrid.RowStyle>
+                          PreviewKeyDown="OnHistoryGridPreviewKeyDown"
+                          MouseDoubleClick="OnHistoryGridDoubleClick"
+                          PreviewMouseRightButtonDown="OnHistoryGridRightButtonDown">
+                    <!-- RowStyle は置かない(Fluent の行のスタイルを上書きするため。#171)。行の操作は DataGrid で受けて行を探す -->
+
                     <!-- W-144 -->
                     <DataGrid.ContextMenu>
                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">

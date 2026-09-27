@@ -29,6 +29,7 @@ public partial class ManagementWindow : Window
         _viewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        FollowWindowsAppMode();
 
         // Tick の例外は ViewModel の中で握る(gui.log に書く)。ここから漏れたら UI スレッドの最後の網が
         // 管理画面を閉じる(Program.cs)。
@@ -36,9 +37,28 @@ public partial class ManagementWindow : Window
         Closed += (_, _) => _timer.Stop();
     }
 
-    // 行のダブルクリック・Enter で出力先を開く(旧取込履歴ウィンドウと同じ。#87)。
-    private void OnHistoryRowDoubleClick(object sender, MouseButtonEventArgs e)
+    // Windows のアプリのモード(ライト / ダーク)に追従する(#171)。WPF の Fluent テーマをこのウィンドウにだけ入れる。
+    // トレイは WinForms の Application.Run の上でこのウィンドウを開くので、WPF の Application のインスタンスが無い。
+    // Application.ThemeMode は使えないが、Window.ThemeMode はウィンドウの Resources に Fluent の辞書を入れ、Windows の
+    // 設定の変更(WM_SETTINGCHANGE)でも、Application を通らずにこのウィンドウの色を当て直す(dotnet/wpf release/10.0 の
+    // ThemeManager.OnSystemThemeChanged の else の枝と SystemResources の WM_SETTINGCHANGE)。
+    // Window.ThemeMode は実験的 API(WPF0001)なので、警告はここだけで抑える。
+    // XAML の色は Fluent の辞書のキー(TextFillColorSecondaryBrush など)を DynamicResource で引く。
+    // SystemColors のキーは Fluent が上書きしないので、ダークでもクラシックの色のままになるため使わない。
+    private void FollowWindowsAppMode()
     {
+#pragma warning disable WPF0001
+        ThemeMode = ThemeMode.System;
+#pragma warning restore WPF0001
+    }
+
+    // 行のダブルクリック・Enter で出力先を開く(旧取込履歴ウィンドウと同じ。#87)。DataGrid の MouseDoubleClick は見出し
+    // (列幅の自動調整)でも起きるので、行の上のときだけ開く(DataGridRowHit)。
+    private void OnHistoryGridDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DataGridRowHit.RowOf(e.OriginalSource) is null)
+            return;
+
         RevealSelectedOutput();
         e.Handled = true;
     }
@@ -52,12 +72,12 @@ public partial class ManagementWindow : Window
         e.Handled = true; // DataGrid 既定の「次の行へ移動」を抑える
     }
 
-    private void OnHistoryRowRightButtonDown(object sender, MouseButtonEventArgs e)
+    private void OnHistoryGridRightButtonDown(object sender, MouseButtonEventArgs e)
     {
         // 右クリックのメニューは「選んでいる行」に対して働くので、開く前にクリックされた行を選ぶ
         // (右クリックで選択が動くかは DataGrid の既定に依るため、ここで確定させる)。
         // e.Handled は立てない。メニューは通常どおり開く必要がある。
-        if (sender is DataGridRow row)
+        if (DataGridRowHit.RowOf(e.OriginalSource) is { } row)
             row.IsSelected = true;
     }
 
