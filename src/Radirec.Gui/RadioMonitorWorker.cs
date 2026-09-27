@@ -367,8 +367,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             cancellationToken,
             onStopRequested: () => job.Completion.TrySetResult(ReapplyResult.Stopped("取り込みが停止したため中止しました")));
 
-    // 読み込み済みの設定で再適用を組み立てて走らせる。組み立て(台帳オープン等)の失敗は理由で返す。
-    private async Task<(ReapplyReport? Report, string? Error)> RunServiceAsync(
+    // 読み込み済みの設定で再適用を組み立てて走らせる。組み立て(台帳オープン等)の失敗は結果で返す。
+    // 台帳のある場所(NAS など)に届かないときは、それと分かる印を付ける(CLI は 5 にする。#223)。文言はどちらも同じ。
+    private async Task<(ReapplyReport? Report, ReapplyResult? Failure)> RunServiceAsync(
         RadirecConfig config, ReapplySettings settings, bool dryRun, CancellationToken cancellationToken)
     {
         ReapplyService service;
@@ -380,7 +381,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         catch (Exception ex)
         {
             _log.LogError(ex, "統合設定の再適用: 組み立てに失敗しました");
-            return (null, $"再適用の準備に失敗しました: {ex.Message}");
+            return (null, ReapplyResult.BuildFailed(ex));
         }
 
         using (disposable)
@@ -640,7 +641,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         public StationMasterConfig LoadStations(RadirecConfig config) =>
             ConfigLoader.LoadOptional<StationMasterConfig>(config.StationsFile);
 
-        public Task<(ReapplyReport? Report, string? Error)> RunServiceAsync(
+        public Task<(ReapplyReport? Report, ReapplyResult? Failure)> RunServiceAsync(
             RadirecConfig config, ReapplySettings settings, bool dryRun, CancellationToken cancellationToken) =>
             worker.RunServiceAsync(config, settings, dryRun, cancellationToken);
 
