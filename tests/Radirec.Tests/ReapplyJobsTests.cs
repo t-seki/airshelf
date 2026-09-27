@@ -160,6 +160,22 @@ public sealed class ReapplyJobsTests
     }
 
     [Fact]
+    public async Task 設定を読めない理由の前置きは_1回だけ()
+    {
+        // 読み込みの戻り値は前置きを含む(ConfigLoading.TryLoad)。reload の拒否と同じく、そのまま出す(#218)。
+        var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
+        var jobs = new ReapplyJobs(host);
+        var planId = (await Run(jobs, ReapplyJobKind.PlanForCli)).PlanId!;
+        host.ConfigError = "設定の読み込みに失敗しました: JSON が壊れています";
+
+        var applied = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: planId);
+
+        Assert.Equal("設定の読み込みに失敗しました: JSON が壊れています(取り込みは前の設定のまま動いています)", applied.Error);
+        // gui.log の行も前置きを重ねない。
+        Assert.Equal(["統合設定の再適用を中止しました: 設定の読み込みに失敗しました: JSON が壊れています"], host.Warnings);
+    }
+
+    [Fact]
     public async Task 設定を反映できなければ実行しない()
     {
         var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
@@ -311,9 +327,9 @@ public sealed class ReapplyJobsTests
 
         public void LogReport(ReapplyReport report) => LoggedReports.Add(report.DryRun);
 
-        public void LogWarning(string message)
-        {
-        }
+        public List<string> Warnings { get; } = [];
+
+        public void LogWarning(string message) => Warnings.Add(message);
 
         public void LogError(Exception exception, string message)
         {

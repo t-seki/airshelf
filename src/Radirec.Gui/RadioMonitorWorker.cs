@@ -190,8 +190,9 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 
         lock (_reloadGate)
         {
+            // error は前置きを含む(ConfigLoading.TryLoad)。RequestReload の拒否と同じくそのまま返す(#218)。
             if (!ConfigLoading.TryLoad(_configPath, out var newConfig, out var error))
-                return Task.FromResult(ReapplyResult.Failed($"設定の読み込みに失敗しました: {error}"));
+                return Task.FromResult(ReapplyResult.Failed(error!));
 
             // reload を先に置く(Set)。ジョブはその後に積むので、ループがジョブを取り出した時点で reload も
             // 見えており、ジョブの処理の直前の Take で反映される(ExecuteAsync)。
@@ -567,10 +568,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
                     trigger, imported, failed, refresh, notify, failNotify);
             }
 
-            // 出力先の同名衝突を別名で避けた取込は Warning で残す。同日・別時刻の正当なケースでも起きるので
-            // トーストにはせず、near-dup を疑うときに gui.log から辿れるようにする(ADR-0015)。
-            foreach (var item in report.Items.Where(i => i.Outcome == IngestOutcome.Imported && i.Message is not null))
-                _log.LogWarning("{Message}: {Output}", item.Message, item.OutputPath);
+            LogRenamedImports(report.Items);
 
             // 走査ごとに status スナップショットを更新(in-process 制御)。0 件走査でも
             // 「最後にいつ走ったか」を反映する。書き手はこの直列コンシューマ 1 つだけ。
@@ -583,6 +581,16 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             };
             return report;
         }
+        catch (IngestCanceledException ex) when (cancellationToken.IsCancellationRequested)
+        {
+            // 停止要求で打ち切った走査。結果の行は最後まで終わったときにしか書かないので、それまでに取り込んだ分を 1 行残す
+            // (残さないと、台帳と出力先を見ないと分からない。#218)。停止要求はそのまま呼び手へ伝える。
+            _log.LogInformation(
+                "{Trigger}スキャン(停止のため中断): 取込 {Imported} / 失敗 {Failed}",
+                trigger, ex.Count(IngestOutcome.Imported), ex.Count(IngestOutcome.Failed));
+            LogRenamedImports(ex.Items); // 打ち切るまでに別名で置いた取込も、最後まで終わった走査と同じく残す
+            throw;
+        }
         catch (Exception ex) when (
             trigger == ScanRunTrigger && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
         {
@@ -591,6 +599,14 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
             _log.LogError(ex, "{Trigger}スキャンで想定外の例外", trigger);
             throw;
         }
+    }
+
+    // 出力先の同名衝突を別名で避けた取込は Warning で残す。同日・別時刻の正当なケースでも起きるので
+    // トーストにはせず、near-dup を疑うときに gui.log から辿れるようにする(ADR-0015)。
+    private void LogRenamedImports(IEnumerable<IngestItemResult> items)
+    {
+        foreach (var item in items.Where(i => i.Outcome == IngestOutcome.Imported && i.Message is not null))
+            _log.LogWarning("{Message}: {Output}", item.Message, item.OutputPath);
     }
 
     private int _disposed;

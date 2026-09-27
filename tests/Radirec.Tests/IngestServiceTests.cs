@@ -35,6 +35,20 @@ public sealed class IngestServiceTests
         }
     }
 
+    // 先に渡したファイルを返したところで取り消し(常駐の停止要求)を起こし、残りを返す取込元。
+    private sealed class CancelingRecordingSource(
+        CancellationTokenSource cancel, RecordingFile[] before, params RecordingFile[] after) : IRecordingSource
+    {
+        public IEnumerable<RecordingFile> Enumerate()
+        {
+            foreach (var file in before)
+                yield return file;
+            cancel.Cancel();
+            foreach (var file in after)
+                yield return file;
+        }
+    }
+
     private sealed class FakeLedger : ILedger
     {
         private readonly List<(string Key, TimeOnly? Time, int Part)> _entries = [];
@@ -459,6 +473,24 @@ public sealed class IngestServiceTests
         await Assert.ThrowsAsync<IOException>(() => service.RunOnceAsync(dryRun: false));
 
         Assert.NotNull(_failureStore.Get(gone.FilePath));
+    }
+
+    [Fact]
+    public async Task 取り消しで打ち切った走査は_それまでの明細を持つ例外で終わる()
+    {
+        // 常駐の停止要求で走査を打ち切ったとき、呼び手(RadioMonitorWorker)がそれまでの件数を gui.log に残せるように(#218)。
+        using var cancel = new CancellationTokenSource();
+        var source = new CancelingRecordingSource(cancel, [Rec(StandardName), BadFile()], Rec(OtherWeek(19)));
+        var service = Build([], source: source);
+
+        var ex = await Assert.ThrowsAsync<IngestCanceledException>(() => service.RunOnceAsync(dryRun: false, cancel.Token));
+
+        Assert.IsAssignableFrom<OperationCanceledException>(ex); // 今までの「停止要求はループへ伝える」がそのまま効く
+        Assert.Equal(cancel.Token, ex.CancellationToken);
+        Assert.Equal(1, ex.Count(IngestOutcome.Imported));
+        Assert.Equal(1, ex.Count(IngestOutcome.Failed));
+        Assert.Single(_target.Written); // 打ち切った後のファイルは処理しない
+        Assert.Equal(0, _publisher.Calls); // 打ち切った走査は要約を出さない(今までどおり)
     }
 
     [Fact]

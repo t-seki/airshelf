@@ -144,7 +144,8 @@ internal static class Program
             }
             else
             {
-                TrayLog.Warn($"設定の読み込みに失敗しました({error})。取り込みは起動せずトレイのみ表示します");
+                // error は前置き(「設定の読み込みに失敗しました: 」など)を含む(ConfigLoading.TryLoad)。重ねない(#218)。
+                TrayLog.Warn($"{error}。取り込みは起動せずトレイのみ表示します");
                 configError = error;
                 degradedReason = ServiceStatusText.DegradedConfigUnreadable; // W-105
             }
