@@ -145,6 +145,7 @@
     <select data-key="hist">
       <option value="ok">読める</option>
       <option value="error">読み込み失敗</option>
+      <option value="loading">最初の読み込み中</option>
     </select></label>
   <label>番組ページの段
     <select data-key="prog">
@@ -316,6 +317,7 @@
       <span class="sub" data-if="hist:ok run:watching,polling,noscan,crashed,startloop,startfail" data-w="W-140">新しい方の 5 件</span></h3>
     <div data-if="run:noconfig" class="msg warn" data-w="W-150">設定を読めないため、取込履歴を出せません</div>
     <div data-if="hist:error run:watching,polling,noscan,crashed,startloop,startfail" class="msg err" data-w="W-149">読み込みに失敗しました</div>
+    <div data-if="hist:loading run:watching,polling,noscan,crashed,startloop,startfail" class="sub" data-w="W-154">読み込み中…</div>
     <div data-if="hist:ok run:watching,polling,noscan,crashed,startloop,startfail">
       <table class="grid">
         <colgroup><col style="width:240px"><col style="width:120px"><col style="width:150px"><col style="width:140px"><col></colgroup>
@@ -342,6 +344,13 @@
         <button class="btn small" data-w="W-143">更新</button>
         <span class="sub" data-w="W-149">読み込みに失敗しました</span>
       </div>
+    </div>
+    <div data-if="hist:loading run:watching,polling,noscan,crashed,startloop,startfail">
+      <div class="row" style="margin-bottom: 6px;">
+        <button class="btn small" data-w="W-143" disabled>更新</button>
+        <span class="sub" data-w="W-154">読み込み中…</span>
+      </div>
+      <div class="mocknote">台帳は UI スレッドの外で読む(#222)。最初の読み込みの間だけこれを出し、「更新」で読み直す間は前の行と件数を出したまま「更新」を押せなくする。</div>
     </div>
     <div data-if="hist:ok run:watching,polling,noscan,crashed,startloop,startfail">
       <div class="row" style="margin-bottom: 6px;">
