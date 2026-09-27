@@ -50,7 +50,11 @@ public sealed record ReapplyCountsJson(
 /// <param name="Action">
 /// 扱い(<c>move</c>・<c>ledgerAndTags</c>・<c>ledgerOnly</c>・<c>duplicateLeft</c>・<c>excluded</c>・<c>failed</c>・<c>remove</c>)。
 /// </param>
-/// <param name="Reason">対象外・失敗の理由、重複の注記。無ければ null。</param>
+/// <param name="ToAlbum">変更後のアルバム名。<c>remove</c> の回は移動先が無いので今のアルバム。</param>
+/// <param name="ToPath">変更後の出力ファイル。<c>remove</c> の回は消す今の出力ファイル。</param>
+/// <param name="Reason">
+/// 対象外・失敗の理由、重複の注記。<c>remove</c> の回で出力ファイルが既に無いときは、台帳の記録だけを消す旨。無ければ null。
+/// </param>
 /// <param name="RewritesTags">置き場所を変えずにタグ(album / title / track)を書き換えるか。</param>
 public sealed record ReapplyItemJson(
     ReapplyAction Action, string Station, string FromAlbum, string ToAlbum,

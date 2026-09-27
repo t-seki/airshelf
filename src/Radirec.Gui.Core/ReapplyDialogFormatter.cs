@@ -189,7 +189,7 @@ public static class ReapplyDialogFormatter
     }
 
     // アルバム単位のまとめ。長い番組名でも崩れないよう、変更前 → 変更後と件数を別の行にする。
-    // 件数は 0 でない種類だけ(アルバムごとに 6 種類並べると読めないため)。
+    // 件数は 0 でない種類だけ(アルバムごとに 7 種類並べると読めないため)。
     private static string Albums(ReapplyReport report)
     {
         var albums = report.Albums;

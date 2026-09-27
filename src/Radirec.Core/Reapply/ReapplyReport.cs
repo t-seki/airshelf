@@ -32,7 +32,8 @@ public enum ReapplyAction
     /// 実行中に失敗した。どこで止まったかにより、元のファイルか移動先のファイルのどちらかが残っている
     /// (確定・元の削除の後に台帳の書き換えで失敗すると、元は消えて移動先にある)。台帳とタグを直す回(タグも直す重複の
     /// 回の移動先も)は、ファイルは同じ場所にあり、確定の前なら元のタグのまま、確定の後ならタグだけ揃っている。
-    /// 次の再適用で揃う。
+    /// 出力先から消す回(<see cref="Remove"/>)は、ファイルを消せなければファイルも台帳の行も残り、ファイルを消した後に
+    /// 台帳の削除で失敗すれば台帳の行だけが残る。次の再適用で揃う。
     /// </summary>
     Failed,
 
@@ -55,7 +56,10 @@ public sealed record ReapplyItem
     /// <summary>台帳に記録されているアルバム名(変更前)。</summary>
     public required string FromAlbum { get; init; }
 
-    /// <summary>今の設定で解決したアルバム名(変更後)。</summary>
+    /// <summary>
+    /// 今の設定で解決したアルバム名(変更後)。出力先から消す回(<see cref="ReapplyAction.Remove"/>)は移動先が無いので、
+    /// 今のアルバム(<see cref="FromAlbum"/> と同じ)。
+    /// </summary>
     public required string ToAlbum { get; init; }
 
     public required DateOnly BroadcastDate { get; init; }
@@ -64,12 +68,18 @@ public sealed record ReapplyItem
     /// <summary>台帳に記録されている出力ファイル。</summary>
     public required string FromPath { get; init; }
 
-    /// <summary>今の設定での出力ファイル(新しく取り込んだ場合と同じ場所)。</summary>
+    /// <summary>
+    /// 今の設定での出力ファイル(新しく取り込んだ場合と同じ場所)。出力先から消す回は、消す今の出力ファイル
+    /// (<see cref="FromPath"/> と同じ)。
+    /// </summary>
     public required string ToPath { get; init; }
 
     public required string SourcePath { get; init; }
 
-    /// <summary>対象外・失敗の理由。重複の注記。それ以外は null。</summary>
+    /// <summary>
+    /// 対象外・失敗の理由。重複の注記。出力先から消す回で出力ファイルが既に無いときは、台帳の記録だけを消す旨
+    /// (「出力ファイルが見つかりません。台帳の記録だけを消します」)。それ以外は null。
+    /// </summary>
     public string? Reason { get; init; }
 
     /// <summary>

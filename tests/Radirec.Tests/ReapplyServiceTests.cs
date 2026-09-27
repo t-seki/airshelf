@@ -217,6 +217,51 @@ public sealed class ReapplyServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task 消す回の場所へ別の回が動くときは_確認と実行で同じく対象外にし_次の再適用で動かす()
+    {
+        // 回 A(フォルダ (1)・「取り込まない」)を消し、回 B(フォルダ (2))を (1) の名前のアルバムへ動かす設定。B の移動先は A の出力先と同じ。
+        // 実行は A をその場で消すので、A の場所を覚えないと、確認では「移動先にある」(重複)、実行では移動、と食い違う(#213)。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        PlaceSource(Folder2, Dec23At1000);
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        var aPath = OutputOf(Folder1, "2024-12-23");
+        Assert.True(File.Exists(aPath));
+
+        var settings = Decided(FilenameProgramTreatment.Skip);
+        settings.Programs =
+        [
+            new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Station, Folders = [Folder2] },
+                Canonical = new ProgramCanonical { Album = Folder1 },
+            },
+        ];
+
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+
+        foreach (var report in new[] { plan, applied })
+        {
+            Assert.Equal(2, report.Items.Count);
+            Assert.Equal(ReapplyAction.Remove, report.Items.Single(i => i.FromAlbum == Folder1).Action);
+            var b = report.Items.Single(i => i.FromAlbum == Folder2);
+            Assert.Equal(ReapplyAction.Excluded, b.Action);
+            Assert.Equal(aPath, b.ToPath);
+        }
+        Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(applied)); // 見せた予定どおりに実行した
+        Assert.True(plan.HasSamePlanAs(applied));
+        Assert.False(File.Exists(aPath)); // A は消えた。B はまだ動いていない
+        Assert.True(File.Exists(OutputOf(Folder2, "2024-12-23")));
+
+        // 次の再適用で B が動く。
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
+        Assert.True(File.Exists(aPath));
+        Assert.Equal(Folder1, Assert.Single(ledger.ListAll()).Program);
+    }
+
+    [Fact]
     public async Task 出力ファイルが既に無い回は_台帳の行だけを消す()
     {
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);

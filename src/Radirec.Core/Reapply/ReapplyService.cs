@@ -86,6 +86,11 @@ public sealed class ReapplyService(
             // 放送局の変更を再適用しない理由が当てはまらない。要対応の「出力先から消す予定」と同じ回を扱う)。
             if (resolved.IsSkipDecided)
             {
+                // 消す回の場所と台帳のキーも、この再適用の中で使われたものとして覚える。実行は 1 回ずつその場で消すので、
+                // 覚えないと、後に処理する回が同じ場所・同じキーを目指したとき、確認では「移動先にある・台帳にある」で対象外や重複、
+                // 実行では消えた後なので移動、と予定と違うことをしてしまう(#213)。覚えればどちらも対象外に揃い、次の再適用で動く。
+                claimedPaths.Add(entry.OutputPath);
+                claimedKeys.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
                 var removal = PlanRemoval(entry);
                 if (!dryRun)
                     removal = ApplyRemoval(removal, entry, vacatedDirectories);
@@ -208,7 +213,8 @@ public sealed class ReapplyService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // 消せなかった(他のアプリが開いている等)。ファイルも台帳も残り、次の再適用でもう一度消す。
+            // 消せなかった。ファイルを消せなかったとき(他のアプリが開いている等)はファイルも台帳も残り、次の再適用でもう一度消す。
+            // ファイルを消した後に台帳の削除で失敗したときは台帳の行だけが残り、次の再適用で「台帳の記録だけを消す」回として消える。
             return item with { Action = ReapplyAction.Failed, Reason = ex.Message };
         }
     }
