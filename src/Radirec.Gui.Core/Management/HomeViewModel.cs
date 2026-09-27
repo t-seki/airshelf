@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Radirec.Core.Configuration;
 using Radirec.Hosting.Control;
 
 namespace Radirec.Gui.Core.Management;
@@ -7,6 +8,7 @@ namespace Radirec.Gui.Core.Management;
 /// <summary>
 /// 管理画面のホーム(#151)。「状態と再スキャン」「要対応」「取込履歴(新しい方の <see cref="RecentCount"/> 件)」を持つ。
 /// 要対応は 4 種:統合設定の無い兄弟フォルダ(#155)、解決していない取込失敗と、番組の設定と食い違ったままの回(#156)、差し替え放送の疑い(#233)。
+/// 差し替え放送の疑いの判断は、番組ページの下書きに積む(W-159〜W-164。#235)。
 /// <para>
 /// 状態は、管理画面が開いている間だけシェルのタイマーが <see cref="Refresh"/> を呼んで読み直す(2 秒ごと)。
 /// 数件の取込履歴と要対応は、最終スキャンの完了時刻(<see cref="ServiceStatusSnapshot.LastScanCompletedUtc"/>)が
@@ -64,6 +66,8 @@ public sealed class HomeViewModel : ObservableObject
     private IReadOnlyList<FailureAttentionRow> _failureRows = [];
     private IReadOnlyList<DriftAttentionRow> _driftRows = [];
     private IReadOnlyList<SubstituteAttentionRow> _substituteRows = [];
+    private string? _substituteNote;          // W-163 / W-164(判断を積めなかった)
+    private string? _stagedSummary;           // W-161
     private readonly IHistoryPathActions? _pathActions;
     private string? _failureNote;
     private readonly ISavedReapplyEntry? _savedReapply;
@@ -108,6 +112,7 @@ public sealed class HomeViewModel : ObservableObject
         ReapplyCommand = new AsyncRelayCommand(ReapplyAsync, () => CanReapply);
         RescanCommand = new RelayCommand(Rescan, () => CanRescan);
         ShowAllCommand = new RelayCommand(showAll);
+        ShowProgramsCommand = new RelayCommand(() => _attention?.ShowPrograms());
         if (_applyGate is not null)
             _applyGate.Changed += (_, _) => UpdateCanRescan();
 
@@ -203,6 +208,7 @@ public sealed class HomeViewModel : ObservableObject
         else
         {
             UpdateKeepApartAvailability();
+            UpdateStagedDecisions(); // 番組ページで判断の行を直した・消した・保存した等に追従する
         }
         RefreshSavedReapply();
     }
@@ -304,6 +310,35 @@ public sealed class HomeViewModel : ObservableObject
     }
 
     public bool HasSubstitutes => SubstituteRows.Count > 0;
+
+    /// <summary>W-163 / W-164(判断を下書きに積めなかった理由)。無ければ null。</summary>
+    public string? SubstituteNote
+    {
+        get => _substituteNote;
+        private set
+        {
+            if (SetProperty(ref _substituteNote, value))
+                OnPropertyChanged(nameof(IsSubstituteNoteVisible));
+        }
+    }
+
+    public bool IsSubstituteNoteVisible => SubstituteNote is not null;
+
+    /// <summary>W-161(番組ページに、保存していない判断がある)。無ければ null。</summary>
+    public string? StagedSummary
+    {
+        get => _stagedSummary;
+        private set
+        {
+            if (SetProperty(ref _stagedSummary, value))
+                OnPropertyChanged(nameof(IsStagedSummaryVisible));
+        }
+    }
+
+    public bool IsStagedSummaryVisible => StagedSummary is not null;
+
+    /// <summary>「番組ページへ」(W-162)。</summary>
+    public RelayCommand ShowProgramsCommand { get; }
 
     /// <summary>4 種のどれかがある(要対応の欄を出す)。</summary>
     public bool HasAnyAttention => HasSiblings || HasFailures || HasDrift || HasSubstitutes;
@@ -466,7 +501,7 @@ public sealed class HomeViewModel : ObservableObject
                     DriftRows = items.SettingsDrift.Select(d => new DriftAttentionRow(d))
                         .Concat(items.PendingRemovals.Select(r => new DriftAttentionRow(r)))
                         .ToList();
-                    SubstituteRows = items.SubstituteSuspects.Select(s => new SubstituteAttentionRow(s)).ToList();
+                    SubstituteRows = items.SubstituteSuspects.Select(s => new SubstituteAttentionRow(s, StageAsync)).ToList();
                 }
                 catch (Exception ex)
                 {
@@ -480,6 +515,7 @@ public sealed class HomeViewModel : ObservableObject
                 }
                 NotifyAttentionCount();
                 UpdateKeepApartAvailability();
+                UpdateStagedDecisions();
                 RefreshSavedReapply();
             }
             while (_attentionAgain);
@@ -505,6 +541,45 @@ public sealed class HomeViewModel : ObservableObject
         foreach (var row in SiblingRows)
             row.CanKeepApart = blocked is null;
         KeepApartBlocked = HasSiblings ? blocked : null;
+    }
+
+    // 差し替え放送の疑いの各組に積んだ判断(W-160)と、番組ページの保存していない判断の数(W-161)を読み直す。
+    // 番組ページの一覧を読むだけ(ファイルは読まない)なので、タイマーの 2 秒ごとにも呼ぶ。
+    private void UpdateStagedDecisions()
+    {
+        if (_attention is null)
+            return;
+        try
+        {
+            foreach (var row in SubstituteRows)
+                row.Staged = _attention.StagedDecisionLabel(row.Suspect) is { } label ? AttentionText.Staged(label) : null;
+            var count = _attention.StagedDecisionCount;
+            StagedSummary = count > 0 ? AttentionText.StagedSummary(count) : null;
+        }
+        catch (Exception ex)
+        {
+            _logWarn($"管理画面: 番組ページの状態を読めませんでした(差し替え放送の判断): {ex}");
+        }
+    }
+
+    // W-159。判断を番組ページの下書きに積む(ホームに留まる)。積めなかったら W-163 / W-164 を出す。
+    private async Task StageAsync(SubstituteAttentionRow row, FilenameProgramTreatment treat)
+    {
+        if (_attention is null)
+            return;
+        try
+        {
+            SubstituteNote = await _attention.StageDecisionAsync(row.Suspect, treat);
+        }
+        catch (Exception ex)
+        {
+            // コマンドの例外を UI スレッドの未捕捉例外にしない(そちらは管理画面ごと閉じる最後の網)。
+            _logWarn($"管理画面: 差し替え放送の判断を下書きに積めませんでした: {ex}");
+            SubstituteNote = $"{ProgramsPageViewModel.StageUnavailable}: {ex.Message}";
+        }
+        UpdateStagedDecisions();
+        UpdateKeepApartAvailability(); // 積むと番組ページに保存していない変更ができる(W-138)
+        RefreshSavedReapply();         // 同じく W-256
     }
 
     private void NotifyAttentionCount()

@@ -34,6 +34,17 @@ public partial class ProgramsPage : UserControl
         }
     }
 
+    private void OnDecisionGridDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DataGridRowHit.RowOf(e.OriginalSource) is { Item: FilenameProgramRow row } && ViewModel is { } vm)
+        {
+            vm.SelectedDecision = row;
+            if (vm.EditDecisionCommand.CanExecute(null))
+                vm.EditDecisionCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
     private void OnKeepGridDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (DataGridRowHit.RowOf(e.OriginalSource) is { Item: KeepSeparateRow row } && ViewModel is { } vm)

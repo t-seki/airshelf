@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Radirec.Core.Attention;
+using Radirec.Core.Configuration;
 using Radirec.Core.Ledger;
 using Radirec.Core.Normalization;
 using Radirec.Core.Reapply;
@@ -66,7 +67,27 @@ public static class AttentionText
 
     /// <summary>W-157(W-155 の説明)。</summary>
     public const string SubstituteHint =
-        "ファイル名の番組名がフォルダ名を含まない回です。判断するまで、新しい回は取り込まずに保留します(判断は programs.json の FilenamePrograms に書きます)";
+        "ファイル名の番組名がフォルダ名を含まない回です。判断するまで、新しい回は取り込まずに保留します。" +
+        "ボタンで番組ページの下書きに積み、番組ページで保存すると反映します";
+
+    /// <summary>W-159(ボタン)。</summary>
+    public const string StageSameProgram = "この番組の回";
+
+    /// <summary>W-159(ボタン)。</summary>
+    public const string StageSkip = "取り込まない";
+
+    /// <summary>W-159(ボタン)。押すと、アルバム名をファイル名の番組名にして積む(番組ページで直す)。</summary>
+    public const string StageOtherProgram = "別の番組…";
+
+    /// <summary>W-160。その組に、保存していない判断が積まれている。</summary>
+    public static string Staged(string treat) => $"下書き: {treat}";
+
+    /// <summary>W-161。番組ページに、保存していない判断がある。</summary>
+    public static string StagedSummary(int count)
+        => $"番組ページに保存していない判断が {count} 件あります。番組ページで「確認」→「保存して適用」を押すと反映します";
+
+    /// <summary>W-162(ボタン)。</summary>
+    public const string ShowPrograms = "番組ページへ";
 
     /// <summary>W-156。差し替え放送の疑いの 1 組(ADR-0021)。数が 0 の側は出さない。</summary>
     public static string SuspectLine(SubstituteSuspectGroup group)
@@ -116,8 +137,8 @@ public sealed record KeepApartResult(KeepApartOutcome Outcome, string? Message =
 }
 
 /// <summary>
-/// ホームの要対応が、計算と「統合する」「分けておく」をシェル(管理画面)に頼む面。ViewModel 同士をつなぐだけなので、
-/// テストでは差し替える。
+/// ホームの要対応が、計算と「統合する」「分けておく」、差し替え放送の判断(番組ページの下書きに積む・積んだ判断の表示と数・
+/// 番組ページへ移る。W-159〜W-164。#235)をシェル(管理画面)に頼む面。ViewModel 同士をつなぐだけなので、テストでは差し替える。
 /// </summary>
 public interface IAttentionActions
 {
@@ -134,6 +155,21 @@ public interface IAttentionActions
     /// 「分けておく」をいま押せないなら、その理由(W-138。番組ページに保存していない変更がある)。押せるなら null。
     /// </summary>
     string? KeepApartBlockedReason { get; }
+
+    /// <summary>
+    /// 差し替え放送の疑いの 1 組に、判断を番組ページの下書きとして積む(W-159。ページは移らない)。積めたら null、
+    /// 積めなかったら理由(W-163 / W-164)。
+    /// </summary>
+    Task<string?> StageDecisionAsync(SubstituteSuspectGroup group, FilenameProgramTreatment treat);
+
+    /// <summary>その組に積まれている、保存していない判断の呼び名(W-160)。無ければ null。</summary>
+    string? StagedDecisionLabel(SubstituteSuspectGroup group);
+
+    /// <summary>番組ページの、保存していない判断の数(W-161)。</summary>
+    int StagedDecisionCount { get; }
+
+    /// <summary>「番組ページへ」(W-162)。</summary>
+    void ShowPrograms();
 }
 
 /// <summary>要対応の「解決していない取込失敗」の 1 件(W-129〜W-132)。</summary>
@@ -200,13 +236,49 @@ public sealed class DriftAttentionRow
     public string Line { get; }
 }
 
-/// <summary>要対応の「差し替え放送の疑い」の 1 組(W-156。ADR-0021)。判断のボタンは #235 で足す。</summary>
-public sealed class SubstituteAttentionRow(SubstituteSuspectGroup suspect)
+/// <summary>
+/// 要対応の「差し替え放送の疑い」の 1 組(W-156。ADR-0021)。判断のボタン(W-159)で番組ページの下書きに積み、積んだ判断を
+/// W-160 で見せる(#235)。
+/// </summary>
+public sealed class SubstituteAttentionRow : ObservableObject
 {
-    public SubstituteSuspectGroup Suspect { get; } = suspect;
+    private string? _staged;
+
+    public SubstituteAttentionRow(SubstituteSuspectGroup suspect, Func<SubstituteAttentionRow, FilenameProgramTreatment, Task> stage)
+    {
+        Suspect = suspect;
+        Line = AttentionText.SuspectLine(suspect);
+        SameProgramCommand = new AsyncRelayCommand(() => stage(this, FilenameProgramTreatment.SameProgram));
+        SkipCommand = new AsyncRelayCommand(() => stage(this, FilenameProgramTreatment.Skip));
+        OtherProgramCommand = new AsyncRelayCommand(() => stage(this, FilenameProgramTreatment.OtherProgram));
+    }
+
+    public SubstituteSuspectGroup Suspect { get; }
 
     /// <summary>W-156。</summary>
-    public string Line { get; } = AttentionText.SuspectLine(suspect);
+    public string Line { get; }
+
+    /// <summary>W-160(積んだ判断)。積んでいなければ null。</summary>
+    public string? Staged
+    {
+        get => _staged;
+        set
+        {
+            if (SetProperty(ref _staged, value))
+                OnPropertyChanged(nameof(IsStaged));
+        }
+    }
+
+    public bool IsStaged => Staged is not null;
+
+    /// <summary>W-159「この番組の回」。</summary>
+    public IAsyncRelayCommand SameProgramCommand { get; }
+
+    /// <summary>W-159「取り込まない」。</summary>
+    public IAsyncRelayCommand SkipCommand { get; }
+
+    /// <summary>W-159「別の番組…」。</summary>
+    public IAsyncRelayCommand OtherProgramCommand { get; }
 }
 
 /// <summary>要対応の「統合設定の無い兄弟フォルダ」の 1 組(W-123〜W-127)。</summary>

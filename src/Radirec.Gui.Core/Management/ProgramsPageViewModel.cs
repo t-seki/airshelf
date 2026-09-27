@@ -21,6 +21,9 @@ public enum ProgramsPageMode
     /// <summary>「分けておく兄弟フォルダ」の編集フォーム(W-228)。</summary>
     KeepForm,
 
+    /// <summary>「ファイル名の番組名の判断」の編集フォーム(W-232〜W-234。ADR-0021・#235)。</summary>
+    DecisionForm,
+
     /// <summary>確認の dry-run を待っている(W-240)。</summary>
     Checking,
 
@@ -128,6 +131,35 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <summary>W-138。番組ページに保存していない作業があるので、要対応の「分けておく」で programs.json を書けない。</summary>
     public const string KeepApartBlocked = "番組ページに保存していない変更があるため、分けておけません";
 
+    /// <summary>W-233。判断の編集フォームの「アルバム名」欄の説明。</summary>
+    public const string DecisionAlbumHint = "「別の番組」のときだけ使うアルバム名です(放送局はそのまま)";
+
+    /// <summary>W-234。</summary>
+    public const string FolderRequired = "フォルダを入れてください";
+
+    /// <summary>W-234。</summary>
+    public const string FilenameProgramRequired = "ファイル名の番組名を入れてください";
+
+    /// <summary>W-234。</summary>
+    public const string OtherAlbumRequired = "「別の番組」にはアルバム名を入れてください";
+
+    /// <summary>W-234。同じ組(照合キーで同じ)の判断が、ほかの行にある。</summary>
+    public const string DuplicateDecision = "同じ組(放送局・フォルダ・ファイル名の番組名)の判断がすでにあります";
+
+    /// <summary>W-163。番組ページが編集フォーム・確認・適用の途中なので、要対応から判断を積めない。</summary>
+    public const string StageBlocked = "番組ページで編集か確認の途中のため、下書きに積めません";
+
+    /// <summary>W-164。番組ページの一覧を出せない(programs.json を読めない・使わない設定・縮退)ので、要対応から判断を積めない。</summary>
+    public const string StageUnavailable = "番組ページの一覧を出せないため、下書きに積めません(番組ページを見てください)";
+
+    /// <summary>判断の編集フォームの「扱い」の選択肢(W-231 の 3 択)。</summary>
+    public static IReadOnlyList<TreatOption> TreatOptions { get; } =
+    [
+        new(FilenameProgramTreatment.SameProgram),
+        new(FilenameProgramTreatment.Skip),
+        new(FilenameProgramTreatment.OtherProgram),
+    ];
+
     /// <summary>確認がこれより長くかかるときだけ W-240 を出す(すぐ終わるなら出さない。トレイの再適用と同じ 1.5 秒)。</summary>
     public static readonly TimeSpan CheckingDelay = TimeSpan.FromMilliseconds(1500);
 
@@ -143,6 +175,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     private readonly List<ProgramAlias> _removedPrograms = [];
     private readonly List<KeptApartSiblings> _removedKeeps = [];
+    private readonly List<FilenameProgramDecision> _removedDecisions = [];
 
     private ProgramsFileSnapshot? _snapshot;
     private bool _loaded;
@@ -158,13 +191,18 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     private ProgramEntryRow? _selectedProgram;
     private KeepSeparateRow? _selectedKeep;
+    private FilenameProgramRow? _selectedDecision;
 
     // 編集フォーム(編集している行。追加なら null)
     private ProgramEntryRow? _editingProgram;
     private KeepSeparateRow? _editingKeep;
+    private FilenameProgramRow? _editingDecision;
     private string _formHeading = "";
     private string _formStation = "";
     private string _formFolders = "";
+    private string _formFolder = "";
+    private string _formFilenameProgram = "";
+    private FilenameProgramTreatment _formTreat = FilenameProgramTreatment.SameProgram;
     private string _formAlbum = "";
     private string _formNote = "";
     private IReadOnlyList<string> _formErrors = [];
@@ -240,6 +278,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
         AddKeepCommand = new RelayCommand(AddKeep, () => IsListMode && IsReady);
         EditKeepCommand = new RelayCommand(EditKeep, () => IsListMode && SelectedKeep is not null);
         DeleteKeepCommand = new RelayCommand(DeleteKeep, () => IsListMode && SelectedKeep is not null);
+        AddDecisionCommand = new RelayCommand(AddDecision, () => IsListMode && IsReady);
+        EditDecisionCommand = new RelayCommand(EditDecision, () => IsListMode && SelectedDecision is not null);
+        DeleteDecisionCommand = new RelayCommand(DeleteDecision, () => IsListMode && SelectedDecision is not null);
         RevertCommand = new RelayCommand(Revert, () => IsListMode && HasChanges);
         CommitFormCommand = new RelayCommand(CommitForm);
         CancelFormCommand = new RelayCommand(() => Mode = ProgramsPageMode.List);
@@ -260,6 +301,22 @@ public sealed class ProgramsPageViewModel : ObservableObject
     public ObservableCollection<ProgramEntryRow> Programs { get; } = [];
 
     public ObservableCollection<KeepSeparateRow> KeepSeparate { get; } = [];
+
+    /// <summary>ファイル名の番組名の判断(W-230。<c>FilenamePrograms</c>。ADR-0021)。</summary>
+    public ObservableCollection<FilenameProgramRow> FilenamePrograms { get; } = [];
+
+    public FilenameProgramRow? SelectedDecision
+    {
+        get => _selectedDecision;
+        set
+        {
+            if (SetProperty(ref _selectedDecision, value))
+            {
+                EditDecisionCommand.NotifyCanExecuteChanged();
+                DeleteDecisionCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
 
     public ProgramEntryRow? SelectedProgram
     {
@@ -315,10 +372,19 @@ public sealed class ProgramsPageViewModel : ObservableObject
     /// <summary>W-210。</summary>
     public string KeepCountText => CountText(KeepSeparate.Count);
 
+    /// <summary>W-210。</summary>
+    public string DecisionCountText => CountText(FilenamePrograms.Count);
+
     /// <summary>保存していない変更の数(追加・編集・削除したエントリ)。</summary>
     public int ChangeCount =>
         Programs.Count(r => r.IsChanged) + _removedPrograms.Count
-        + KeepSeparate.Count(r => r.IsChanged) + _removedKeeps.Count;
+        + KeepSeparate.Count(r => r.IsChanged) + _removedKeeps.Count
+        + StagedDecisionCount;
+
+    /// <summary>
+    /// ファイル名の番組名の判断のうち、保存していないもの(追加・編集・削除。要対応から積んだものを含む)の数(W-161)。
+    /// </summary>
+    public int StagedDecisionCount => FilenamePrograms.Count(r => r.IsChanged) + _removedDecisions.Count;
 
     public bool HasChanges => ChangeCount > 0;
 
@@ -344,6 +410,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
             OnPropertyChanged(nameof(IsFormMode));
             OnPropertyChanged(nameof(IsProgramFormMode));
             OnPropertyChanged(nameof(IsKeepFormMode));
+            OnPropertyChanged(nameof(IsDecisionFormMode));
+            OnPropertyChanged(nameof(IsFoldersFormMode));
             OnPropertyChanged(nameof(IsCheckingMode));
             OnPropertyChanged(nameof(IsConfirmMode));
             OnPropertyChanged(nameof(IsApplyingMode));
@@ -358,9 +426,13 @@ public sealed class ProgramsPageViewModel : ObservableObject
     }
 
     public bool IsListMode => Mode == ProgramsPageMode.List;
-    public bool IsFormMode => Mode is ProgramsPageMode.ProgramForm or ProgramsPageMode.KeepForm;
+    public bool IsFormMode => Mode is ProgramsPageMode.ProgramForm or ProgramsPageMode.KeepForm or ProgramsPageMode.DecisionForm;
     public bool IsProgramFormMode => Mode == ProgramsPageMode.ProgramForm;
     public bool IsKeepFormMode => Mode == ProgramsPageMode.KeepForm;
+    public bool IsDecisionFormMode => Mode == ProgramsPageMode.DecisionForm;
+
+    /// <summary>複数行の「フォルダ」「フォルダの組」の欄を出すフォームか(判断のフォームはフォルダ 1 つ)。</summary>
+    public bool IsFoldersFormMode => Mode is ProgramsPageMode.ProgramForm or ProgramsPageMode.KeepForm;
     public bool IsCheckingMode => Mode == ProgramsPageMode.Checking;
     public bool IsConfirmMode => Mode == ProgramsPageMode.Confirm;
     public bool IsApplyingMode => Mode == ProgramsPageMode.Applying;
@@ -379,6 +451,26 @@ public sealed class ProgramsPageViewModel : ObservableObject
     public string FormAlbum { get => _formAlbum; set => SetProperty(ref _formAlbum, value); }
 
     public string FormNote { get => _formNote; set => SetProperty(ref _formNote, value); }
+
+    /// <summary>判断のフォームの「フォルダ」(1 つ。W-232)。</summary>
+    public string FormFolder { get => _formFolder; set => SetProperty(ref _formFolder, value); }
+
+    /// <summary>判断のフォームの「ファイル名の番組名」(W-232)。</summary>
+    public string FormFilenameProgram { get => _formFilenameProgram; set => SetProperty(ref _formFilenameProgram, value); }
+
+    /// <summary>判断のフォームの「扱い」(W-231 の 3 択)。</summary>
+    public FilenameProgramTreatment FormTreat
+    {
+        get => _formTreat;
+        set
+        {
+            if (SetProperty(ref _formTreat, value))
+                OnPropertyChanged(nameof(IsFormOtherProgram));
+        }
+    }
+
+    /// <summary>判断のフォームで「別の番組」を選んでいる(アルバム名の欄を出す)。</summary>
+    public bool IsFormOtherProgram => FormTreat == FilenameProgramTreatment.OtherProgram;
 
     /// <summary>W-224 / W-225。「決定」で入力を確かめた結果。</summary>
     public IReadOnlyList<string> FormErrors
@@ -530,6 +622,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
     public RelayCommand AddKeepCommand { get; }
     public RelayCommand EditKeepCommand { get; }
     public RelayCommand DeleteKeepCommand { get; }
+    public RelayCommand AddDecisionCommand { get; }
+    public RelayCommand EditDecisionCommand { get; }
+    public RelayCommand DeleteDecisionCommand { get; }
 
     /// <summary>W-209。</summary>
     public RelayCommand RevertCommand { get; }
@@ -804,10 +899,12 @@ public sealed class ProgramsPageViewModel : ObservableObject
         _snapshot = snapshot;
         _removedPrograms.Clear();
         _removedKeeps.Clear();
+        _removedDecisions.Clear();
         _reapplyPending = false;
         IsSavedBasis = false; // 一覧に戻すので、保存済みの設定での確認は終わる
         Programs.Clear();
         KeepSeparate.Clear();
+        FilenamePrograms.Clear();
         if (snapshot is not null)
         {
             // 読み込んだ設定は書き換えない(画面で編集するのは写し)。変わったかどうかは写しと比べて判る。
@@ -815,9 +912,12 @@ public sealed class ProgramsPageViewModel : ObservableObject
                 Programs.Add(new ProgramEntryRow(entry, ProgramsDraft.Copy(entry)));
             foreach (var entry in snapshot.Config.KeepSeparate)
                 KeepSeparate.Add(new KeepSeparateRow(entry, ProgramsDraft.Copy(entry)));
+            foreach (var entry in snapshot.Config.FilenamePrograms)
+                FilenamePrograms.Add(new FilenameProgramRow(entry, ProgramsDraft.Copy(entry)));
         }
         SelectedProgram = null;
         SelectedKeep = null;
+        SelectedDecision = null;
         Mode = ProgramsPageMode.List;
         OnPropertyChanged(nameof(IsReady));
         ListChanged();
@@ -900,6 +1000,50 @@ public sealed class ProgramsPageViewModel : ObservableObject
         if (row.Original is not null)
             _removedKeeps.Add(row.Original);
         SelectedKeep = null;
+        ListChanged();
+    }
+
+    private void AddDecision()
+    {
+        _editingDecision = null;
+        FormHeading = "ファイル名の番組名の判断を追加"; // W-232
+        FormStation = "";
+        FormFolder = "";
+        FormFilenameProgram = "";
+        FormTreat = FilenameProgramTreatment.SameProgram;
+        FormAlbum = "";
+        FormNote = "";
+        FormErrors = [];
+        FormNotice = null;
+        Mode = ProgramsPageMode.DecisionForm;
+    }
+
+    private void EditDecision()
+    {
+        if (SelectedDecision is not { } row)
+            return;
+        _editingDecision = row;
+        FormHeading = "ファイル名の番組名の判断を編集"; // W-232
+        FormStation = row.Station;
+        FormFolder = row.Folder;
+        FormFilenameProgram = row.FilenameProgram;
+        FormTreat = row.Current.Treat;
+        // 「別の番組」でない判断を編集して「別の番組」に変えるときは、ファイル名の番組名を初期値にする(要対応の W-159 と同じ)。
+        FormAlbum = string.IsNullOrWhiteSpace(row.Current.Album) ? row.FilenameProgram : row.Current.Album;
+        FormNote = row.Note;
+        FormErrors = [];
+        FormNotice = null;
+        Mode = ProgramsPageMode.DecisionForm;
+    }
+
+    private void DeleteDecision()
+    {
+        if (SelectedDecision is not { } row)
+            return;
+        FilenamePrograms.Remove(row);
+        if (row.Original is not null)
+            _removedDecisions.Add(row.Original);
+        SelectedDecision = null;
         ListChanged();
     }
 
@@ -1072,6 +1216,112 @@ public sealed class ProgramsPageViewModel : ObservableObject
             CommitProgramForm();
         else if (Mode == ProgramsPageMode.KeepForm)
             CommitKeepForm();
+        else if (Mode == ProgramsPageMode.DecisionForm)
+            CommitDecisionForm();
+    }
+
+    private void CommitDecisionForm()
+    {
+        var station = FormStation.Trim();
+        var folder = FormFolder.Trim();
+        var filenameProgram = FormFilenameProgram.Trim();
+        var album = FormAlbum.Trim();
+        var treat = FormTreat;
+
+        var errors = new List<string>();
+        if (station.Length == 0)
+            errors.Add(StationRequired);
+        if (folder.Length == 0)
+            errors.Add(FolderRequired);
+        if (filenameProgram.Length == 0)
+            errors.Add(FilenameProgramRequired);
+        // アルバム名の無い「別の番組」は、取り込みの起動と設定リロードが受け付けない(ProgramsConfigException)。
+        if (treat == FilenameProgramTreatment.OtherProgram && album.Length == 0)
+            errors.Add(OtherAlbumRequired);
+        if (errors.Count == 0 && FindDecision(ProgramsDraft.DecisionKey(station, folder, filenameProgram)) is { } other
+            && !ReferenceEquals(other, _editingDecision))
+            errors.Add(DuplicateDecision);
+        FormErrors = errors;
+        if (errors.Count > 0)
+            return;
+
+        var entry = new FilenameProgramDecision
+        {
+            Match = new FilenameProgramMatch { Station = station, Folder = folder, FilenameProgram = filenameProgram },
+            Treat = treat,
+            // 「別の番組」でないときはアルバム名を書かない(取り込みは使わない)。
+            Album = treat == FilenameProgramTreatment.OtherProgram ? album : null,
+            Note = ProgramsDraft.ParseNote(FormNote),
+        };
+
+        if (_editingDecision is { } editing && FilenamePrograms.IndexOf(editing) is var index and >= 0)
+        {
+            FilenamePrograms[index] = new FilenameProgramRow(editing.Original, entry);
+            SelectedDecision = FilenamePrograms[index];
+        }
+        else
+        {
+            FilenamePrograms.Add(new FilenameProgramRow(null, entry));
+            SelectedDecision = FilenamePrograms[^1];
+        }
+
+        Mode = ProgramsPageMode.List;
+        ListChanged();
+    }
+
+    private FilenameProgramRow? FindDecision((string Station, string Folder, string FilenameProgram) key)
+        => FilenamePrograms.FirstOrDefault(r => r.Key == key);
+
+    // ---- 要対応の「この番組の回」「取り込まない」「別の番組…」(W-159。#235・ADR-0021)----
+
+    /// <summary>
+    /// 要対応の差し替え放送の疑いの 1 組に、判断を積む(W-159)。番組ページの一覧に保存していない行として足す(同じ組の行があれば、
+    /// その行の判断を置き換える)。ファイルには書かず、ページも移らない(82 組をホームから続けて片付けられるように)。
+    /// 「別の番組」のアルバム名は、同じ組の行にあればそれを、無ければファイル名の番組名を初期値にする(番組ページで直す)。
+    /// </summary>
+    /// <returns>積めたら null。積めなかったら、その理由(W-163 / W-164)。</returns>
+    public string? StageDecision(string station, string folder, string filenameProgram, FilenameProgramTreatment treat)
+    {
+        if (!IsReady)
+            return StageUnavailable; // W-164
+        if (!IsListMode)
+            return StageBlocked; // W-163
+
+        var existing = FindDecision(ProgramsDraft.DecisionKey(station, folder, filenameProgram));
+        var entry = new FilenameProgramDecision
+        {
+            // 同じ組の行があれば、その表記を残す(照合キーで同じなら、どちらで書いても当たる)。
+            Match = existing is { } row
+                ? new FilenameProgramMatch { Station = row.Station, Folder = row.Folder, FilenameProgram = row.FilenameProgram }
+                : new FilenameProgramMatch { Station = station, Folder = folder, FilenameProgram = filenameProgram },
+            Treat = treat,
+            // 空のアルバム名は引き継がない(アルバム名の無い「別の番組」は、取り込みの起動と設定リロードが受け付けない)。
+            Album = treat == FilenameProgramTreatment.OtherProgram
+                ? existing?.Current.Album is { } album && !string.IsNullOrWhiteSpace(album) ? album : filenameProgram
+                : null,
+            Note = existing?.Current.Note,
+        };
+
+        if (existing is not null && FilenamePrograms.IndexOf(existing) is var index and >= 0)
+            FilenamePrograms[index] = new FilenameProgramRow(existing.Original, entry);
+        else
+            FilenamePrograms.Add(new FilenameProgramRow(null, entry));
+
+        ListChanged();
+        return null;
+    }
+
+    /// <summary>
+    /// 要対応の 1 組に、保存していない判断が積まれていれば、その扱いの呼び名(W-160。「別の番組」はアルバム名付き)。無ければ null。
+    /// 保存済みの判断は数えない(保存して設定リロードすれば、その組は要対応から消える)。
+    /// </summary>
+    public string? StagedDecisionLabel(string station, string folder, string filenameProgram)
+    {
+        if (FindDecision(ProgramsDraft.DecisionKey(station, folder, filenameProgram)) is not { IsChanged: true } row)
+            return null;
+        return row.Current.Treat == FilenameProgramTreatment.OtherProgram
+            ? $"{row.Treat}「{row.Album}」"
+            : row.Treat;
     }
 
     private void CommitProgramForm()
@@ -1224,8 +1474,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         Defaults = snapshot.Config.Defaults,
         Programs = Programs.Select(r => ProgramsDraft.Copy(r.Current)).ToList(),
         KeepSeparate = KeepSeparate.Select(r => ProgramsDraft.Copy(r.Current)).ToList(),
-        // ファイル名の番組名の判断(ADR-0021)はまだこのページで編集しない(#235)。読んだときのものをそのまま書き戻す(落とさない)。
-        FilenamePrograms = snapshot.Config.FilenamePrograms,
+        FilenamePrograms = FilenamePrograms.Select(r => ProgramsDraft.Copy(r.Current)).ToList(),
     };
 
     // W-241。変更前 = 消した・変えたエントリの元、変更後 = 足した・変えたエントリの今。
@@ -1249,6 +1498,14 @@ public sealed class ProgramsPageViewModel : ObservableObject
             after.Add(row.Current);
         }
         before.AddRange(_removedKeeps);
+
+        foreach (var row in FilenamePrograms.Where(r => r.IsChanged))
+        {
+            if (row.Original is not null)
+                before.Add(row.Original);
+            after.Add(row.Current);
+        }
+        before.AddRange(_removedDecisions);
 
         return (ProgramsDraft.Describe(before), ProgramsDraft.Describe(after));
     }
@@ -1588,6 +1845,8 @@ public sealed class ProgramsPageViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ProgramsCountText));
         OnPropertyChanged(nameof(KeepCountText));
+        OnPropertyChanged(nameof(DecisionCountText));
+        OnPropertyChanged(nameof(StagedDecisionCount));
         OnPropertyChanged(nameof(ChangeCount));
         OnPropertyChanged(nameof(HasChanges));
         OnPropertyChanged(nameof(ChangesText));
@@ -1604,6 +1863,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
         AddKeepCommand.NotifyCanExecuteChanged();
         EditKeepCommand.NotifyCanExecuteChanged();
         DeleteKeepCommand.NotifyCanExecuteChanged();
+        AddDecisionCommand.NotifyCanExecuteChanged();
+        EditDecisionCommand.NotifyCanExecuteChanged();
+        DeleteDecisionCommand.NotifyCanExecuteChanged();
         RevertCommand.NotifyCanExecuteChanged();
         ConfirmCommand.NotifyCanExecuteChanged();
         SaveAndApplyCommand.NotifyCanExecuteChanged();

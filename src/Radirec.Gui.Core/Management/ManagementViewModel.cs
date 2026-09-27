@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Radirec.Core.Attention;
+using Radirec.Core.Configuration;
 using Radirec.Core.Normalization;
 using Radirec.Gui.Core.Updates;
 using Radirec.Hosting;
@@ -199,6 +200,7 @@ public sealed class ManagementViewModel : ObservableObject
     }
 
     // 要対応の「統合する」「分けておく」(#155)。下書きは番組ページに作り、そのページへ移る。
+    // 差し替え放送の判断(W-159。#235)は、番組ページの下書きに積むだけで、ページは移らない。
     private sealed class AttentionActions(ManagementViewModel owner, Func<AttentionItems> compute) : IAttentionActions
     {
         public AttentionItems Compute() => compute();
@@ -219,6 +221,21 @@ public sealed class ManagementViewModel : ObservableObject
             }
             return result.Message;
         }
+
+        // 番組ページをまだ読んでいなければ読み、結果の画面のままなら一覧に戻してから積む(「統合する」の ShowDraftAsync と同じ準備)。
+        public async Task<string?> StageDecisionAsync(SubstituteSuspectGroup group, FilenameProgramTreatment treat)
+        {
+            await owner.Programs.OnShownAsync();
+            await owner.Programs.LeaveResultForDraftAsync();
+            return owner.Programs.StageDecision(group.Station, group.Folder, group.FilenameProgram, treat);
+        }
+
+        public string? StagedDecisionLabel(SubstituteSuspectGroup group)
+            => owner.Programs.StagedDecisionLabel(group.Station, group.Folder, group.FilenameProgram);
+
+        public int StagedDecisionCount => owner.Programs.StagedDecisionCount;
+
+        public void ShowPrograms() => owner.CurrentPage = ManagementPage.Programs;
     }
 
     // 番組ページを読み込んでから下書きを入れ、そのページへ移る(ページを出すときの読み込みは、下書きがあれば読み直さない)。
