@@ -13,6 +13,10 @@ namespace Radirec.Gui.Core.Management;
 /// 変わったときだけ読み直す(取り込みが増えうるのはスキャンの後だけなので)。要対応は、ホームへ切り替えたとき
 /// (<see cref="RefreshAttention"/>)と「分けておく」を書いた後にも計算し直す(ADR-0018。2 秒ごとには計算しない)。
 /// </para>
+/// <para>
+/// 数件の取込履歴は、要対応と同じく UI スレッドの外で読む(NAS に届かないと SMB の時間切れまで返らないため。#222)。
+/// 最初の読み込みの間だけ W-154 を出し、読み直しの間は前の行と状態を出したままにする。
+/// </para>
 /// </summary>
 public sealed class HomeViewModel : ObservableObject
 {
@@ -43,9 +47,11 @@ public sealed class HomeViewModel : ObservableObject
     private bool _rescanPending;              // W-111 を出している(次のスキャンの完了を待っている)
     private DateTimeOffset? _rescanBaseline;  // 再スキャンを押したときの最終スキャンの完了時刻
     private bool _rescanFailed;
-    private DateTimeOffset? _historyScan;     // 数件の取込履歴を読んだときの最終スキャンの完了時刻
+    private DateTimeOffset? _historyScan;     // 数件の取込履歴を読み始めたときの最終スキャンの完了時刻
+    private DateTimeOffset? _attentionScan;   // 要対応を計算し直したときの最終スキャンの完了時刻
     private IReadOnlyList<IngestHistoryRow> _recentRows = [];
-    private HistoryLoadState _historyState;
+    private HistoryLoadState _historyState = HistoryLoadState.Loading;
+    private bool _historyRunning;             // 数件の取込履歴を読んでいる(UI スレッドの外で)
 
     private readonly IAttentionActions? _attention;
     private HistoryLoadState? _attentionState;
@@ -107,6 +113,7 @@ public sealed class HomeViewModel : ObservableObject
         var status = ReadStatus();
         Apply(status);
         LoadRecent(status?.LastScanCompletedUtc);
+        _attentionScan = status?.LastScanCompletedUtc;
         RefreshAttention();
     }
 
@@ -146,6 +153,7 @@ public sealed class HomeViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsHistoryLoaded));
                 OnPropertyChanged(nameof(IsHistoryFailed));
                 OnPropertyChanged(nameof(IsHistoryUnavailable));
+                OnPropertyChanged(nameof(IsHistoryLoading));
             }
         }
     }
@@ -153,6 +161,12 @@ public sealed class HomeViewModel : ObservableObject
     public bool IsHistoryLoaded => HistoryState == HistoryLoadState.Loaded;
     public bool IsHistoryFailed => HistoryState == HistoryLoadState.Failed;
     public bool IsHistoryUnavailable => HistoryState == HistoryLoadState.Unavailable;
+
+    /// <summary>最初の読み込みの途中(W-154)。</summary>
+    public bool IsHistoryLoading => HistoryState == HistoryLoadState.Loading;
+
+    /// <summary>いま走っている(最後に始めた)数件の取込履歴の読み込み。終わっていれば完了済みのタスク(テストで待つ)。</summary>
+    public Task HistoryRefreshed { get; private set; } = Task.CompletedTask;
 
     /// <summary>W-140 の <c>新しい方の {N} 件</c>。台帳を読めたときだけ。</summary>
     public string? RecentCaption => IsHistoryLoaded ? HistoryText.Recent(RecentRows.Count) : null;
@@ -166,6 +180,8 @@ public sealed class HomeViewModel : ObservableObject
     /// <summary>
     /// 状態を読み直す(管理画面が開いている間、シェルのタイマーが 2 秒ごとに呼ぶ)。最終スキャンが変わっていれば
     /// 数件の取込履歴も読み直し、W-111 を下ろす。例外は gui.log に書いて握る(タイマーから UI スレッドへ漏らさない)。
+    /// 数件の取込履歴を読んでいる途中なら、その回の読み直しは捨てる(時間切れを待つ読み込みを重ねない。#222)。
+    /// 覚えるのは読み始めた回の完了時刻だけなので、まだ読んでいない完了時刻は、読み終えた後の回で読み直す。
     /// </summary>
     public void Refresh()
     {
@@ -177,8 +193,10 @@ public sealed class HomeViewModel : ObservableObject
 
         var completed = status?.LastScanCompletedUtc;
         if (completed != _historyScan)
-        {
             LoadRecent(completed);
+        if (completed != _attentionScan)
+        {
+            _attentionScan = completed;
             RefreshAttention();
         }
         else
@@ -633,27 +651,45 @@ public sealed class HomeViewModel : ObservableObject
 
     private void LoadRecent(DateTimeOffset? scanCompleted)
     {
-        _historyScan = scanCompleted;
-
         if (_loadHistory is null)
         {
+            _historyScan = scanCompleted;
             RecentRows = [];
             HistoryState = HistoryLoadState.Unavailable;
             OnPropertyChanged(nameof(RecentCaption));
             return;
         }
 
+        // 読んでいる途中なら捨てる。_historyScan は読み始めた回のままなので、読み終えた後の Refresh で読み直す。
+        if (_historyRunning)
+            return;
+
+        _historyScan = scanCompleted;
+        _historyRunning = true;
+        HistoryRefreshed = LoadRecentAsync(_loadHistory);
+    }
+
+    // 台帳は UI スレッドの外で読み、結果は呼んだスレッド(UI スレッド)で反映する(要対応の計算と同じ作り)。
+    private async Task LoadRecentAsync(Func<IReadOnlyList<IngestHistoryRow>> load)
+    {
         try
         {
-            RecentRows = _loadHistory().Take(RecentCount).ToList();
-            HistoryState = HistoryLoadState.Loaded;
+            try
+            {
+                RecentRows = await Task.Run(() => load().Take(RecentCount).ToList());
+                HistoryState = HistoryLoadState.Loaded;
+            }
+            catch (Exception ex)
+            {
+                _logWarn($"管理画面: 取込履歴を読めませんでした(ホーム): {ex}");
+                RecentRows = [];
+                HistoryState = HistoryLoadState.Failed;
+            }
+            OnPropertyChanged(nameof(RecentCaption));
         }
-        catch (Exception ex)
+        finally
         {
-            _logWarn($"管理画面: 取込履歴を読めませんでした(ホーム): {ex}");
-            RecentRows = [];
-            HistoryState = HistoryLoadState.Failed;
+            _historyRunning = false;
         }
-        OnPropertyChanged(nameof(RecentCaption));
     }
 }

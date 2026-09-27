@@ -255,6 +255,10 @@
                 <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                            Text="{x:Static m:HistoryText.LoadFailed}"
                            Visibility="{Binding IsHistoryFailed, Converter={StaticResource Visible}}" />
+                <!-- W-154(最初の読み込みの途中。読み直しの間は前の行を出したまま) -->
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
+                           Text="{x:Static m:HistoryText.Loading}"
+                           Visibility="{Binding IsHistoryLoading, Converter={StaticResource Visible}}" />
                 <StackPanel DockPanel.Dock="Top"
                             Visibility="{Binding IsHistoryLoaded, Converter={StaticResource Visible}}">
                     <!-- W-141(列)。ホームの数件は並べ替えない(常に新しい順) -->

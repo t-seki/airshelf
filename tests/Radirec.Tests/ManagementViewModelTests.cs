@@ -12,6 +12,7 @@ public sealed class ManagementViewModelTests
 {
     private static readonly DateTimeOffset Scan1 = new(2026, 9, 25, 1, 40, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Scan2 = new(2026, 9, 25, 1, 42, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Scan3 = new(2026, 9, 25, 1, 44, 0, TimeSpan.Zero);
 
     private sealed class FakeControl : IServiceControl
     {
@@ -42,13 +43,23 @@ public sealed class ManagementViewModelTests
 
     private sealed class FakeLedger
     {
+        private int _loads;
+
         public List<IngestHistoryRow> Rows { get; } = [];
-        public int Loads { get; private set; }
+        public int Loads => Volatile.Read(ref _loads);
         public Exception? Throw { get; set; }
+
+        /// <summary>
+        /// 立っていれば、読み込みをここで止める(届かない NAS の時間切れを待つ代わり)。台帳は UI スレッドの外で読むので、
+        /// 止めている間もテストのスレッドは進む(#222)。
+        /// </summary>
+        public ManualResetEventSlim? Gate { get; set; }
 
         public IReadOnlyList<IngestHistoryRow> Load()
         {
-            Loads++;
+            Interlocked.Increment(ref _loads);
+            if (Gate is { } gate && !gate.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("テストの Gate が開かなかった");
             if (Throw is { } ex)
                 throw ex;
             return Rows.ToList();
@@ -100,6 +111,16 @@ public sealed class ManagementViewModelTests
     private ManagementViewModel Create(
         IServiceControl? control, FakeLedger? ledger, FakeActions? actions = null, string? degradedReason = null) =>
         new(control, degradedReason, ledger is null ? null : ledger.Load, actions ?? new FakeActions(), _log.Add, Jst);
+
+    // 台帳は UI スレッドの外で読む(#222)。取込履歴を見るテストは、開いたときの読み込みが終わるのを待つ。
+    private async Task<ManagementViewModel> CreateLoadedAsync(
+        IServiceControl? control, FakeLedger? ledger, FakeActions? actions = null, string? degradedReason = null)
+    {
+        var vm = Create(control, ledger, actions, degradedReason);
+        await vm.Home.HistoryRefreshed;
+        await vm.History.Reloaded;
+        return vm;
+    }
 
     // ---------- 枠 ----------
 
@@ -201,11 +222,11 @@ public sealed class ManagementViewModelTests
     }
 
     [Fact]
-    public void Crashed_worker_disables_rescan_with_W112()
+    public async Task Crashed_worker_disables_rescan_with_W112()
     {
         var control = new FakeControl { Status = Snapshot(running: false) };
 
-        var home = Create(control, LedgerWith(1)).Home;
+        var home = (await CreateLoadedAsync(control, LedgerWith(1))).Home;
 
         Assert.Equal("状態: 停止(取り込みが異常終了。gui.log 参照 → 再起動)", home.StatusText);
         Assert.Equal("最終スキャン: —", home.LastScanText);
@@ -230,9 +251,9 @@ public sealed class ManagementViewModelTests
     }
 
     [Fact]
-    public void Start_failed_W104_still_shows_history()
+    public async Task Start_failed_W104_still_shows_history()
     {
-        var home = Create(control: null, LedgerWith(2), degradedReason: ServiceStatusText.DegradedStartFailed).Home;
+        var home = (await CreateLoadedAsync(control: null, LedgerWith(2), degradedReason: ServiceStatusText.DegradedStartFailed)).Home;
 
         Assert.Equal("状態: 取り込み停止中(取り込みの起動に失敗しました(設定ページ参照))", home.StatusText);
         Assert.Equal("最終スキャン: —", home.LastScanText);
@@ -277,29 +298,31 @@ public sealed class ManagementViewModelTests
     // ---------- ホーム:取込履歴(新しい方の 5 件) ----------
 
     [Fact]
-    public void Home_shows_newest_five_rows()
+    public async Task Home_shows_newest_five_rows()
     {
-        var home = Create(new FakeControl(), LedgerWith(8)).Home;
+        var home = (await CreateLoadedAsync(new FakeControl(), LedgerWith(8))).Home;
 
         Assert.Equal(["番組1", "番組2", "番組3", "番組4", "番組5"], home.RecentRows.Select(r => r.Program));
         Assert.Equal("新しい方の 5 件", home.RecentCaption); // W-140
     }
 
     [Fact]
-    public void Home_reloads_history_only_when_last_scan_changes()
+    public async Task Home_reloads_history_only_when_last_scan_changes()
     {
         var control = new FakeControl { Status = Snapshot(completed: Scan1) };
         var ledger = LedgerWith(1);
-        var vm = Create(control, ledger);
+        var vm = await CreateLoadedAsync(control, ledger);
         var loadsAfterOpen = ledger.Loads; // ホームと取込履歴ページで 1 回ずつ
 
         vm.Tick();
         vm.Tick();
+        await vm.Home.HistoryRefreshed;
         Assert.Equal(loadsAfterOpen, ledger.Loads);
 
         ledger.Rows.Insert(0, Row(99));
         control.Status = Snapshot(completed: Scan2);
         vm.Tick();
+        await vm.Home.HistoryRefreshed;
 
         Assert.Equal(loadsAfterOpen + 1, ledger.Loads);
         Assert.Equal("番組99", vm.Home.RecentRows[0].Program);
@@ -308,13 +331,13 @@ public sealed class ManagementViewModelTests
     }
 
     [Fact]
-    public void Home_history_failure_W149_then_recovers_on_next_scan()
+    public async Task Home_history_failure_W149_then_recovers_on_next_scan()
     {
         var control = new FakeControl { Status = Snapshot(completed: Scan1) };
         var ledger = LedgerWith(1);
         ledger.Throw = new IOException("locked");
 
-        var vm = Create(control, ledger);
+        var vm = await CreateLoadedAsync(control, ledger);
         Assert.True(vm.Home.IsHistoryFailed);
         Assert.Null(vm.Home.RecentCaption);
         Assert.Contains(_log, l => l.Contains("locked"));
@@ -322,6 +345,7 @@ public sealed class ManagementViewModelTests
         ledger.Throw = null;
         control.Status = Snapshot(completed: Scan2);
         vm.Tick();
+        await vm.Home.HistoryRefreshed;
 
         Assert.True(vm.Home.IsHistoryLoaded);
         Assert.Equal("新しい方の 1 件", vm.Home.RecentCaption);
@@ -330,9 +354,9 @@ public sealed class ManagementViewModelTests
     // ---------- 取込履歴ページ ----------
 
     [Fact]
-    public void History_page_shows_all_rows_and_count_W151()
+    public async Task History_page_shows_all_rows_and_count_W151()
     {
-        var history = Create(new FakeControl(), LedgerWith(8)).History;
+        var history = (await CreateLoadedAsync(new FakeControl(), LedgerWith(8))).History;
 
         Assert.True(history.IsLoaded);
         Assert.Equal(8, history.Rows.Count);
@@ -340,25 +364,26 @@ public sealed class ManagementViewModelTests
     }
 
     [Fact]
-    public void History_page_reloads_on_refresh()
+    public async Task History_page_reloads_on_refresh()
     {
         var ledger = LedgerWith(1);
-        var history = Create(new FakeControl(), ledger).History;
+        var history = (await CreateLoadedAsync(new FakeControl(), ledger)).History;
         ledger.Rows.Add(Row(2));
 
         history.RefreshCommand.Execute(null); // W-143
+        await history.Reloaded;
 
         Assert.Equal(2, history.Rows.Count);
         Assert.Equal("2 件", history.CountText);
     }
 
     [Fact]
-    public void History_page_load_failure_W149_keeps_refresh()
+    public async Task History_page_load_failure_W149_keeps_refresh()
     {
         var ledger = LedgerWith(1);
         ledger.Throw = new IOException("locked");
 
-        var history = Create(new FakeControl(), ledger).History;
+        var history = (await CreateLoadedAsync(new FakeControl(), ledger)).History;
 
         Assert.Equal(HistoryLoadState.Failed, history.State);
         Assert.Equal("読み込みに失敗しました", history.CountText);
@@ -368,14 +393,15 @@ public sealed class ManagementViewModelTests
 
         ledger.Throw = null;
         history.RefreshCommand.Execute(null);
+        await history.Reloaded;
         Assert.True(history.IsLoaded);
         Assert.Equal("1 件", history.CountText);
     }
 
     [Fact]
-    public void Selecting_row_fills_detail_and_enables_menu()
+    public async Task Selecting_row_fills_detail_and_enables_menu()
     {
-        var history = Create(new FakeControl(), LedgerWith(2)).History;
+        var history = (await CreateLoadedAsync(new FakeControl(), LedgerWith(2))).History;
 
         Assert.False(history.RevealOutputCommand.CanExecute(null));
         Assert.False(history.CopySourceCommand.CanExecute(null));
@@ -395,7 +421,7 @@ public sealed class ManagementViewModelTests
     public async Task Reveal_output_and_source_show_result_in_window()
     {
         var actions = new FakeActions();
-        var history = Create(new FakeControl(), LedgerWith(1), actions).History;
+        var history = (await CreateLoadedAsync(new FakeControl(), LedgerWith(1), actions)).History;
         history.SelectedRow = history.Rows[0];
 
         await history.RevealOutputCommand.ExecuteAsync(null);
@@ -409,7 +435,7 @@ public sealed class ManagementViewModelTests
     public async Task Reveal_exception_is_shown_in_window_and_logged()
     {
         var actions = new FakeActions { ThrowOnReveal = new InvalidOperationException("shell") };
-        var history = Create(new FakeControl(), LedgerWith(1), actions).History;
+        var history = (await CreateLoadedAsync(new FakeControl(), LedgerWith(1), actions)).History;
         history.SelectedRow = history.Rows[0];
 
         await history.RevealOutputCommand.ExecuteAsync(null); // 例外を漏らさない
@@ -419,10 +445,10 @@ public sealed class ManagementViewModelTests
     }
 
     [Fact]
-    public void Copy_reports_success_and_failure_W148()
+    public async Task Copy_reports_success_and_failure_W148()
     {
         var actions = new FakeActions();
-        var history = Create(new FakeControl(), LedgerWith(1), actions).History;
+        var history = (await CreateLoadedAsync(new FakeControl(), LedgerWith(1), actions)).History;
         history.SelectedRow = history.Rows[0];
 
         history.CopyOutputCommand.Execute(null);
@@ -435,16 +461,116 @@ public sealed class ManagementViewModelTests
     }
 
     [Fact]
-    public void Refresh_clears_selection_and_action_message()
+    public async Task Refresh_clears_selection_and_action_message()
     {
-        var history = Create(new FakeControl(), LedgerWith(1)).History;
+        var history = (await CreateLoadedAsync(new FakeControl(), LedgerWith(1))).History;
         history.SelectedRow = history.Rows[0];
         history.CopyOutputCommand.Execute(null);
 
         history.RefreshCommand.Execute(null);
+        await history.Reloaded;
 
         Assert.Null(history.SelectedRow);
         Assert.Equal("", history.ActionMessage);
         Assert.Equal("", history.SelectedOutputPath);
+    }
+
+    // ---------- 台帳は UI スレッドの外で読む(#222) ----------
+
+    [Fact]
+    public async Task Opening_does_not_wait_for_ledger_and_shows_W154_until_first_load()
+    {
+        var ledger = LedgerWith(2);
+        using var gate = new ManualResetEventSlim(false);
+        ledger.Gate = gate; // 届かない NAS の時間切れを待っている
+
+        // 読み込みが止まっていても、開く(UI スレッドで作る)処理は返る
+        var vm = Create(new FakeControl(), ledger);
+
+        Assert.True(vm.Home.IsHistoryLoading); // W-154
+        Assert.False(vm.Home.IsHistoryLoaded);
+        Assert.Null(vm.Home.RecentCaption);
+        Assert.Equal("読み込み中…", vm.History.CountText); // W-154
+        Assert.False(vm.History.IsLoaded);
+        Assert.True(vm.History.IsAvailable);
+        Assert.False(vm.History.RefreshCommand.CanExecute(null)); // 読み込みの途中は押せない
+
+        gate.Set();
+        await vm.Home.HistoryRefreshed;
+        await vm.History.Reloaded;
+
+        Assert.True(vm.Home.IsHistoryLoaded);
+        Assert.False(vm.Home.IsHistoryLoading);
+        Assert.Equal(2, vm.Home.RecentRows.Count);
+        Assert.Equal("2 件", vm.History.CountText);
+        Assert.True(vm.History.RefreshCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Home_keeps_previous_rows_and_drops_reloads_while_loading()
+    {
+        var control = new FakeControl { Status = Snapshot(completed: Scan1) };
+        var ledger = LedgerWith(1);
+        var vm = await CreateLoadedAsync(control, ledger);
+        var loadsAfterOpen = ledger.Loads;
+
+        using var gate = new ManualResetEventSlim(false);
+        ledger.Gate = gate;
+        ledger.Rows.Insert(0, Row(99));
+        control.Status = Snapshot(completed: Scan2);
+        vm.Tick(); // 読み始める(止まる)
+        Assert.True(SpinWait.SpinUntil(() => ledger.Loads == loadsAfterOpen + 1, TimeSpan.FromSeconds(5)));
+
+        // 読み直しの間は、前の行と状態を出したまま(W-154 にしない)
+        Assert.True(vm.Home.IsHistoryLoaded);
+        Assert.False(vm.Home.IsHistoryLoading);
+        Assert.Equal("番組1", vm.Home.RecentRows[0].Program);
+
+        // 読んでいる途中に来た回は捨てる(時間切れを待つ読み込みを重ねない)
+        control.Status = Snapshot(completed: Scan3);
+        vm.Tick();
+        vm.Tick();
+        Assert.Equal(loadsAfterOpen + 1, ledger.Loads);
+
+        gate.Set();
+        await vm.Home.HistoryRefreshed;
+        Assert.Equal("番組99", vm.Home.RecentRows[0].Program);
+
+        // 捨てた回(まだ読んでいない完了時刻)は、読み終えた後の回で読み直す。同じ回は 2 度読まない
+        vm.Tick();
+        await vm.Home.HistoryRefreshed;
+        Assert.Equal(loadsAfterOpen + 2, ledger.Loads);
+        vm.Tick();
+        await vm.Home.HistoryRefreshed;
+        Assert.Equal(loadsAfterOpen + 2, ledger.Loads);
+    }
+
+    [Fact]
+    public async Task History_page_refresh_is_disabled_while_loading_and_keeps_rows()
+    {
+        var ledger = LedgerWith(1);
+        var history = (await CreateLoadedAsync(new FakeControl(), ledger)).History;
+        var loadsBefore = ledger.Loads;
+
+        using var gate = new ManualResetEventSlim(false);
+        ledger.Gate = gate;
+        ledger.Rows.Add(Row(2));
+        history.RefreshCommand.Execute(null); // W-143(読み始める。止まる)
+        Assert.True(SpinWait.SpinUntil(() => ledger.Loads == loadsBefore + 1, TimeSpan.FromSeconds(5)));
+
+        Assert.False(history.RefreshCommand.CanExecute(null));
+        Assert.True(history.IsLoaded); // 前の行と件数を出したまま
+        Assert.Single(history.Rows);
+        Assert.Equal("1 件", history.CountText);
+
+        history.RefreshCommand.Execute(null); // コマンドの外から呼ばれても重ねない
+        Assert.Equal(loadsBefore + 1, ledger.Loads);
+
+        gate.Set();
+        await history.Reloaded;
+
+        Assert.Equal(2, history.Rows.Count);
+        Assert.Equal("2 件", history.CountText);
+        Assert.True(history.RefreshCommand.CanExecute(null));
     }
 }

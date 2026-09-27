@@ -11,6 +11,11 @@ namespace Radirec.Gui.Core.Management;
 /// 全件は管理画面を開いたときに 1 度読み、あとは「更新」でだけ読み直す(見ている最中に行がずれないように)。
 /// 開く・コピーの結果は「更新」の横に 1 行で出す(<see cref="ActionMessage"/>)。
 /// </para>
+/// <para>
+/// 台帳は UI スレッドの外で読む(NAS に届かないと SMB の時間切れまで返らず、その間画面が固まるため。#222)。
+/// 最初の読み込みの間だけ W-154 を出し、読み直しの間は前の行と件数を出したままにする。読み込みの途中は「更新」を押せない
+/// (時間切れを待つ読み込みを重ねない)。
+/// </para>
 /// </summary>
 public sealed class IngestHistoryViewModel : ObservableObject
 {
@@ -31,7 +36,8 @@ public sealed class IngestHistoryViewModel : ObservableObject
     private readonly Action<string> _logWarn;
 
     private IReadOnlyList<IngestHistoryRow> _rows = [];
-    private HistoryLoadState _state;
+    private HistoryLoadState _state = HistoryLoadState.Loading;
+    private bool _loading;                    // 台帳を読んでいる(UI スレッドの外で)
     private IngestHistoryRow? _selected;
     private string _actionMessage = "";
 
@@ -44,7 +50,7 @@ public sealed class IngestHistoryViewModel : ObservableObject
         _actions = actions;
         _logWarn = logWarn;
 
-        RefreshCommand = new RelayCommand(Reload, () => _load is not null);
+        RefreshCommand = new RelayCommand(Reload, () => _load is not null && !_loading);
         RevealOutputCommand = new AsyncRelayCommand(() => RevealAsync(output: true), () => HasOutput);
         RevealSourceCommand = new AsyncRelayCommand(() => RevealAsync(output: false), () => HasSource);
         CopyOutputCommand = new RelayCommand(() => Copy(output: true), () => HasOutput);
@@ -79,13 +85,17 @@ public sealed class IngestHistoryViewModel : ObservableObject
     /// <summary><see cref="IsUnavailable"/> の逆(「更新」と件数の行を出す。読み込みに失敗したときも読み直すために出す)。</summary>
     public bool IsAvailable => !IsUnavailable;
 
-    /// <summary>「更新」の横:W-151 <c>{N} 件</c> か W-149 <c>読み込みに失敗しました</c>。</summary>
+    /// <summary>「更新」の横:W-151 <c>{N} 件</c> か W-149 <c>読み込みに失敗しました</c>(最初の読み込みの途中は W-154)。</summary>
     public string CountText => State switch
     {
         HistoryLoadState.Loaded => HistoryText.Count(Rows.Count),
         HistoryLoadState.Failed => HistoryText.LoadFailed,
+        HistoryLoadState.Loading => HistoryText.Loading,
         _ => "",
     };
+
+    /// <summary>いま走っている(最後に始めた)読み込み。終わっていれば完了済みのタスク(テストで待つ)。</summary>
+    public Task Reloaded { get; private set; } = Task.CompletedTask;
 
     /// <summary>選んでいる行(右クリックも、開く前にその行を選ぶ)。</summary>
     public IngestHistoryRow? SelectedRow
@@ -143,22 +153,46 @@ public sealed class IngestHistoryViewModel : ObservableObject
             return;
         }
 
+        // 読み込みの途中は「更新」を押せないが、コマンドの外から呼ばれても重ねない(捨てる)。
+        if (_loading)
+            return;
+
+        SetLoading(true);
+        Reloaded = ReloadAsync(_load);
+    }
+
+    // 台帳は UI スレッドの外で読み、結果は呼んだスレッド(UI スレッド)で反映する(要対応の計算と同じ作り)。
+    private async Task ReloadAsync(Func<IReadOnlyList<IngestHistoryRow>> load)
+    {
         try
         {
-            Rows = _load();
-            State = HistoryLoadState.Loaded;
-        }
-        catch (Exception ex)
-        {
-            // 旧ウィンドウはメッセージボックスを出していたが、画面の中(件数の位置)に出す。理由は gui.log。
-            _logWarn($"管理画面: 取込履歴を読めませんでした: {ex}");
-            Rows = [];
-            State = HistoryLoadState.Failed;
-        }
+            try
+            {
+                Rows = await Task.Run(load);
+                State = HistoryLoadState.Loaded;
+            }
+            catch (Exception ex)
+            {
+                // 旧ウィンドウはメッセージボックスを出していたが、画面の中(件数の位置)に出す。理由は gui.log。
+                _logWarn($"管理画面: 取込履歴を読めませんでした: {ex}");
+                Rows = [];
+                State = HistoryLoadState.Failed;
+            }
 
-        SelectedRow = null;
-        ActionMessage = "";
-        OnPropertyChanged(nameof(CountText));
+            SelectedRow = null;
+            ActionMessage = "";
+            OnPropertyChanged(nameof(CountText));
+        }
+        finally
+        {
+            SetLoading(false);
+        }
+    }
+
+    private void SetLoading(bool loading)
+    {
+        _loading = loading;
+        RefreshCommand.NotifyCanExecuteChanged();
     }
 
     private async Task RevealAsync(bool output)
