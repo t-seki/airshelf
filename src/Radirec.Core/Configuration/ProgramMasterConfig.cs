@@ -68,7 +68,10 @@ public enum FilenameProgramTreatment
     /// <summary>取り込まない。</summary>
     Skip,
 
-    /// <summary>別の番組として取り込む(アルバム名は <see cref="FilenameProgramDecision.Album"/>。局はそのまま)。</summary>
+    /// <summary>
+    /// 別の番組として取り込む(アルバム名は <see cref="FilenameProgramDecision.Album"/>。局はそのまま。統合番組のフォルダから来た回は
+    /// そのフォルダのパートを引き継ぐ。#239)。
+    /// </summary>
     OtherProgram,
 }
 

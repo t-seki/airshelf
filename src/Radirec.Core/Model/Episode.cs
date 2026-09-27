@@ -20,7 +20,10 @@ public sealed record Episode
     /// <summary>放送局または番組名を alias で解決できず生名にフォールバックしたか。</summary>
     public bool UsedFallback { get; init; }
 
-    /// <summary>複数フォルダ統合番組でのパート番号(1 始まり)。単一フォルダなら null。出力名の <c>-N</c> に使う。</summary>
+    /// <summary>
+    /// パート番号(1 始まり)。統合番組のフォルダから来た回に付く(差し替え放送で「別の番組」のアルバムへ入る回も引き継ぐ。#239)。
+    /// 統合番組のフォルダから来ていない回は null(radikool の重複マーカーを除く)。出力名の <c>-N</c> に使う。
+    /// </summary>
     public int? PartIndex { get; init; }
 
     /// <summary>ファイル名の番組名(CONTEXT.md)。らじれこ以外は null。</summary>

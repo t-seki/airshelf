@@ -254,6 +254,39 @@ public sealed class SubstituteBroadcastIngestTests
     }
 
     [Fact]
+    public async Task 統合番組の2つのフォルダから同じ日に別の番組へ入る2回は_パートで分けて両方取り込む()
+    {
+        // #239:2 つの枠にまたがって放送された特番(ふらっと (1)・(2) のニューイヤー駅伝など)を 1 つのアルバムにまとめる。
+        const string folder2 = Folder + "Part2";
+        var programs = new ProgramMasterConfig
+        {
+            Programs =
+            [
+                new ProgramAlias
+                {
+                    Match = new ProgramMatch { Station = Station, Folders = [Folder, folder2] },
+                    Canonical = new ProgramCanonical { Album = "チャリ" },
+                },
+            ],
+            FilenamePrograms = [.. new[] { Folder, folder2 }.Select(folder => new FilenameProgramDecision
+            {
+                Match = new FilenameProgramMatch { Station = Station, Folder = folder, FilenameProgram = Substitute },
+                Treat = FilenameProgramTreatment.OtherProgram,
+                Album = "辛坊治郎 ズーム",
+            })],
+        };
+        var first = Rec(Substitute, "20250113000000");
+        var second = Rec(Substitute, "20250113010000", folder: folder2);
+
+        var report = await Build([first, second], programs).RunOnceAsync(dryRun: false);
+
+        Assert.All(report.Items, i => Assert.Equal(IngestOutcome.Imported, i.Outcome));
+        Assert.Equal([1, 2], report.Items.Select(i => i.Episode!.PartIndex!.Value).Order());
+        Assert.All(_ledger.Entries, e => Assert.Equal("辛坊治郎 ズーム", e.Program));
+        Assert.Equal([1, 2], _ledger.Entries.Select(e => e.PartIndex).Order());
+    }
+
+    [Fact]
     public async Task 判断は別の組には効かない()
     {
         // 同じフォルダでも、ファイル名の番組名が違えば別の組(判断は組ごと)。
