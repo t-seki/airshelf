@@ -256,6 +256,38 @@ public sealed class SubstituteDecisionUiTests : IDisposable
     }
 
     [Fact]
+    public async Task Draft_with_staged_decisions_has_the_same_values_as_the_saved_file()
+    {
+        // 「保存して適用」の worker は、保存して読み直した設定が確認のときの下書きと値で同じかを確かめ、違えば実行しない(W-278)。
+        // 積んだ判断(「別の番組」のアルバム名の初期値・メモ無し等)が、書いて読み直しても同じ値になることを確かめる。
+        var vm = await Page();
+        vm.StageDecision(Lf, Chari, Shinbo, FilenameProgramTreatment.OtherProgram);
+        vm.StageDecision(Lf, Chari, Baseball, FilenameProgramTreatment.Skip);
+        vm.StageDecision("文化放送", "日向坂46の「ひ」", "プロ野球", FilenameProgramTreatment.SameProgram); // 保存済みの行を置き換える
+
+        await SaveOnly(vm);
+
+        var draft = new ReapplySettings(new StationMasterConfig(), _control.PlannedWith!);
+        var saved = new ReapplySettings(new StationMasterConfig(), ProgramsFileWriter.Read(ProgramsPath).Config);
+        Assert.True(draft.HasSameValuesAs(saved));
+    }
+
+    [Fact]
+    public async Task Staging_other_program_over_an_empty_album_falls_back_to_the_filename_program()
+    {
+        // アルバム名が空の「別の番組」は取り込みが受け付けないので、積むときに空を引き継がない。
+        var vm = await Page("""
+            { "FilenamePrograms": [
+              { "Match": { "Station": "ニッポン放送", "Folder": "パンサー向井のチャリで30分", "FilenameProgram": "辛坊治郎 ズーム そこまで言うか！" },
+                "Treat": "Skip", "Album": " " } ] }
+            """);
+
+        vm.StageDecision(Lf, Chari, Shinbo, FilenameProgramTreatment.OtherProgram);
+
+        Assert.Equal(Shinbo, Assert.Single(vm.FilenamePrograms).Current.Album);
+    }
+
+    [Fact]
     public async Task Deleting_and_reverting_decisions()
     {
         var vm = await Page();

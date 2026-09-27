@@ -249,11 +249,16 @@
         <span class="an" data-w="W-113">再スキャンを要求できませんでした(gui.log 参照)</span>。</div>
     </div>
 
-    <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items run:watching,polling,noscan,crashed,startloop,startfail" data-w="W-120">要対応 10 件</span></h3>
+    <h3><span data-w="W-120">要対応</span><span class="badge" data-if="attn:items,staged run:watching,polling,noscan,crashed,startloop,startfail" data-w="W-120">要対応 11 件</span></h3>
     <div data-if="run:noconfig" class="msg warn" data-w="W-137">設定を読めないため、要対応を出せません</div>
     <div data-if="run:noconfig" class="mocknote">台帳か programs.json・stations.json を読めず計算できなかったときは、
       <span class="an" data-w="W-137">要対応を出せませんでした: {理由}</span> を出す(縮退していなくても)。</div>
     <div data-if="attn:empty run:watching,polling,noscan,crashed,startloop,startfail" class="sub" data-w="W-121">要対応はありません</div>
+    <!-- W-161 / W-162 は要対応の欄(スクロールする)の外に置く。差し替え放送の疑いは導入直後に 82 組並ぶので、送っても見えるように -->
+    <div class="row" data-if="attn:staged run:watching,polling,noscan,crashed,startloop,startfail" style="justify-content: space-between; flex-wrap: nowrap; margin: 4px 0 8px;">
+      <div class="an" data-w="W-161">番組ページに保存していない判断が 2 件あります。番組ページで「確認」→「保存して適用」を押すと反映します</div>
+      <button class="btn small" data-go="page:programs prog:dirty" data-w="W-162">番組ページへ</button>
+    </div>
 
     <div data-if="attn:items,staged run:watching,polling,noscan,crashed,startloop,startfail">
       <div class="attn">
@@ -320,10 +325,6 @@
       <div class="attn">
         <h4 data-w="W-155">差し替え放送の疑い</h4>
         <div class="sub" data-w="W-157">ファイル名の番組名がフォルダ名を含まない回です。判断するまで、新しい回は取り込まずに保留します。ボタンで番組ページの下書きに積み、番組ページで保存すると反映します</div>
-        <div class="row" data-if="attn:staged" style="justify-content: space-between; flex-wrap: nowrap; margin: 4px 0;">
-          <div class="an" data-w="W-161">番組ページに保存していない判断が 2 件あります。番組ページで「確認」→「保存して適用」を押すと反映します</div>
-          <button class="btn small" data-go="page:programs prog:dirty" data-w="W-162">番組ページへ</button>
-        </div>
         <div class="item">
           <div><div data-w="W-156">ニッポン放送「パンサー向井のチャリで30分」に「辛坊治郎 ズーム そこまで言うか！」 保留 1 回 / 取り込み済み 4 回</div>
                <div class="an" data-if="attn:staged" data-w="W-160"><b>下書き: 別の番組「辛坊治郎 ズーム そこまで言うか！」</b></div></div>
@@ -353,7 +354,7 @@
         <div class="mocknote">ADR-0021(#233・#235)。組ごとに 1 行。保留 = 取り込まずにいる回(保留のストア)、取り込み済み = 仕組みを入れる前にフォルダの番組へ取り込んだ回(台帳)。数が 0 の側は出さない。
           ボタン(W-159)は番組ページの「ファイル名の番組名の判断」(W-230)に保存していない行として積むだけで、ホームに留まる(導入直後の 82 組をホームから続けて片付けるため)。同じ組を押し直すと置き換える。「別の番組…」はアルバム名をファイル名の番組名にして積む(番組ページで直す)。
           積むと番組ページに保存していない変更ができるので、「分けておく」(W-138)と「再適用の確認へ」(W-256)は押せなくなる。
-          番組ページが編集フォーム・確認の途中なら積まずに、W-161 の位置へ赤で <span class="an" data-w="W-163">番組ページで編集か確認の途中のため、下書きに積めません</span>
+          番組ページが編集フォーム・確認の途中なら積まずに、W-161 の下(要対応の欄の外)へ赤で <span class="an" data-w="W-163">番組ページで編集か確認の途中のため、下書きに積めません</span>
           (一覧を出せないときは <span class="an" data-w="W-164">番組ページの一覧を出せないため、下書きに積めません(番組ページを見てください)</span>)を出す。
           「保存して適用」の後、設定リロードと再適用のジョブの後の走査で、保留していた回が判断どおりに取り込まれ、この組は要対応から消える。</div>
       </div>

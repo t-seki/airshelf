@@ -80,6 +80,8 @@ public sealed class FilenameProgramRow
     {
         Original = original;
         Current = current;
+        // 行は作り直して編集する(Current は書き換えない)ので、照合キーは一度だけ作る(ホームが 2 秒ごとに全組で引くため)。
+        Key = ProgramsDraft.DecisionKey(current.Match.Station, current.Match.Folder, current.Match.FilenameProgram);
     }
 
     /// <summary>読み込んだときの判断。この画面で追加した(要対応から積んだ)行なら null。</summary>
@@ -104,7 +106,7 @@ public sealed class FilenameProgramRow
     public bool IsChanged => Original is null || !ProgramsDraft.Same(Original, Current);
 
     /// <summary>判断する組(局・フォルダ・ファイル名の番組名)の照合キー。取り込みと同じ照合(<see cref="TextNormalizer.ToMatchKey"/>)。</summary>
-    public (string Station, string Folder, string FilenameProgram) Key => ProgramsDraft.DecisionKey(Station, Folder, FilenameProgram);
+    public (string Station, string Folder, string FilenameProgram) Key { get; }
 }
 
 /// <summary>判断の編集フォームの「扱い」の選択肢 1 つ(W-231)。</summary>

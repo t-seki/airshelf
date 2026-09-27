@@ -115,6 +115,26 @@
                 <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
                            Text="{Binding AttentionNote}"
                            Visibility="{Binding IsAttentionNoteVisible, Converter={StaticResource Visible}}" />
+                <!--
+                  W-161 / W-162(番組ページに保存していない判断がある)と W-163 / W-164(差し替え放送の判断を積めなかった)。
+                  差し替え放送の疑いは数十組並びうる(導入直後は 82 組)ので、下のスクロールの外に置き、送っても見えるようにする。
+                -->
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,6"
+                      Visibility="{Binding IsStagedSummaryVisible, Converter={StaticResource Visible}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                               Text="{Binding StagedSummary}" />
+                    <Button Grid.Column="1" Margin="12,0,0,0" Padding="10,2" VerticalAlignment="Center"
+                            Content="{x:Static m:AttentionText.ShowPrograms}"
+                            Command="{Binding ShowProgramsCommand}" />
+                </Grid>
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,6" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                           Text="{Binding SubstituteNote}"
+                           Visibility="{Binding IsSubstituteNoteVisible, Converter={StaticResource Visible}}" />
                 <!-- 件数が多いと取込履歴が押し出されるので、要対応の欄の中でスクロールする -->
                 <ScrollViewer DockPanel.Dock="Top" MaxHeight="280" VerticalScrollBarVisibility="Auto"
                               Visibility="{Binding HasAnyAttention, Converter={StaticResource Visible}}">
@@ -248,23 +268,6 @@
                             <!-- W-157 -->
                             <TextBlock Style="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,4"
                                        Text="{x:Static m:AttentionText.SubstituteHint}" />
-                            <!-- W-161 / W-162(番組ページに保存していない判断がある) -->
-                            <Grid Margin="0,0,0,4" Visibility="{Binding IsStagedSummaryVisible, Converter={StaticResource Visible}}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource SystemFillColorCautionBrush}"
-                                           Text="{Binding StagedSummary}" />
-                                <Button Grid.Column="1" Margin="12,0,0,0" Padding="10,2" VerticalAlignment="Center"
-                                        Content="{x:Static m:AttentionText.ShowPrograms}"
-                                        Command="{Binding ShowProgramsCommand}" />
-                            </Grid>
-                            <!-- W-163 / W-164(積めなかった) -->
-                            <TextBlock TextWrapping="Wrap" Margin="0,0,0,4" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
-                                       Text="{Binding SubstituteNote}"
-                                       Visibility="{Binding IsSubstituteNoteVisible, Converter={StaticResource Visible}}" />
                             <ItemsControl ItemsSource="{Binding SubstituteRows}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>

@@ -1029,7 +1029,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
         FormFilenameProgram = row.FilenameProgram;
         FormTreat = row.Current.Treat;
         // 「別の番組」でない判断を編集して「別の番組」に変えるときは、ファイル名の番組名を初期値にする(要対応の W-159 と同じ)。
-        FormAlbum = row.Current.Album ?? row.FilenameProgram;
+        FormAlbum = string.IsNullOrWhiteSpace(row.Current.Album) ? row.FilenameProgram : row.Current.Album;
         FormNote = row.Note;
         FormErrors = [];
         FormNotice = null;
@@ -1295,8 +1295,9 @@ public sealed class ProgramsPageViewModel : ObservableObject
                 ? new FilenameProgramMatch { Station = row.Station, Folder = row.Folder, FilenameProgram = row.FilenameProgram }
                 : new FilenameProgramMatch { Station = station, Folder = folder, FilenameProgram = filenameProgram },
             Treat = treat,
+            // 空のアルバム名は引き継がない(アルバム名の無い「別の番組」は、取り込みの起動と設定リロードが受け付けない)。
             Album = treat == FilenameProgramTreatment.OtherProgram
-                ? existing?.Current.Album ?? filenameProgram
+                ? existing?.Current.Album is { } album && !string.IsNullOrWhiteSpace(album) ? album : filenameProgram
                 : null,
             Note = existing?.Current.Note,
         };
