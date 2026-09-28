@@ -277,6 +277,38 @@ public sealed class HomeAttentionTests : IDisposable
         Assert.Equal(3, _computes); // ホームへ切り替えた
     }
 
+    // ---------- トーストのクリック(#237) ----------
+
+    [Fact]
+    public async Task ShowHome_from_another_page_moves_to_home_and_recomputes()
+    {
+        var vm = await Create();
+        vm.CurrentPage = ManagementPage.Settings;
+        Assert.Equal(1, _computes);
+
+        vm.ShowHome();
+        await vm.Home.AttentionRefreshed;
+
+        Assert.Equal(ManagementPage.Home, vm.CurrentPage);
+        Assert.Equal(2, _computes);
+    }
+
+    [Fact]
+    public async Task ShowHome_on_home_recomputes_attention()
+    {
+        var vm = await Create();
+        Assert.Equal(1, _computes);
+
+        // 開いたまま保留が増えた(トーストが出た)。ホームにいても、開き直すのを待たずに計算し直す。
+        Ingested(Tbs, "安住紳一郎の日曜天国(1)", "安住紳一郎の日曜天国(2)");
+        vm.ShowHome();
+        await vm.Home.AttentionRefreshed;
+
+        Assert.Equal(ManagementPage.Home, vm.CurrentPage);
+        Assert.Equal(2, _computes);
+        Assert.Single(vm.Home.SiblingRows);
+    }
+
     [Fact]
     public async Task Computes_off_the_calling_thread_without_reentry()
     {

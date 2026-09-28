@@ -141,6 +141,18 @@ public sealed class ManagementViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// ホームを出す(保留・取込失敗のトーストのクリック。#237)。ほかのページにいればホームへ移り、ホームにいれば要対応を計算し直す
+    /// (トーストが知らせた事柄を、次に開き直すまで待たずに出す)。番組ページの下書きは、左の一覧で移るときと同じく残る。
+    /// </summary>
+    public void ShowHome()
+    {
+        if (CurrentPage == ManagementPage.Home)
+            Home.RefreshAttention();
+        else
+            CurrentPage = ManagementPage.Home; // ホームへ移ると計算し直す(上の CurrentPage)
+    }
+
     /// <summary>ページの切り替え(左の一覧の選択)に結ぶ番号。範囲外(選択が外れた等)は無視する。</summary>
     public int CurrentPageIndex
     {
