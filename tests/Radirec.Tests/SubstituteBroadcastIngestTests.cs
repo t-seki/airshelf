@@ -10,7 +10,7 @@ using Radirec.Core.Sources;
 namespace Radirec.Tests;
 
 /// <summary>
-/// 差し替え放送(ADR-0021)の取り込み。ファイル名の番組名がフォルダ名を含まず判断も無い回は保留し、判断があればそれに従う。
+/// 差し替え放送(ADR-0021)の取り込み。ファイル名の番組名がフォルダ名も番組のアルバム名(#241)も含まず判断も無い回は保留し、判断があればそれに従う。
 /// 保留のストアと保留シグナル(初めて保留したときだけ)も確かめる。
 /// </summary>
 public sealed class SubstituteBroadcastIngestTests
@@ -171,6 +171,42 @@ public sealed class SubstituteBroadcastIngestTests
             report.Items.Select(i => i.Outcome));
         Assert.Equal(2, _target.Written.Count);
         Assert.Equal([substitute.FilePath], _held.Rows.Keys);
+    }
+
+    [Fact]
+    public async Task アルバム名を含む名前でも_取り込まない_別の番組の判断はそのまま効く()
+    {
+        // #241:判断はアルバム名より先に見る。アルバム名を含む名前にはっきり書いた判断を黙って無効にしない。
+        const string album = "パンサー向井のチャリ";
+        const string skipped = album + " 特別編 再放送";
+        const string other = album + " 特別編 駅伝";
+        FilenameProgramDecision Decision(string name, FilenameProgramTreatment treat, string? decidedAlbum = null) => new()
+        {
+            Match = new FilenameProgramMatch { Station = Station, Folder = album + "1", FilenameProgram = name },
+            Treat = treat,
+            Album = decidedAlbum,
+        };
+        var programs = new ProgramMasterConfig
+        {
+            Programs = [new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Station, Folders = [album + "1", album + "2"] },
+                Canonical = new ProgramCanonical { Album = album },
+            }],
+            FilenamePrograms =
+            [
+                Decision(skipped, FilenameProgramTreatment.Skip),
+                Decision(other, FilenameProgramTreatment.OtherProgram, "駅伝"),
+            ],
+        };
+        var skipFile = Rec(skipped, "20250106100000", folder: album + "1");
+        var otherFile = Rec(other, "20250113100000", folder: album + "1");
+
+        var report = await Build([skipFile, otherFile], programs).RunOnceAsync(dryRun: false);
+
+        Assert.Equal([IngestOutcome.SkippedByDecision, IngestOutcome.Imported], report.Items.Select(i => i.Outcome));
+        Assert.Equal("駅伝", _ledger.Entries.Single().Program);
+        Assert.Empty(_held.Rows);
     }
 
     [Fact]

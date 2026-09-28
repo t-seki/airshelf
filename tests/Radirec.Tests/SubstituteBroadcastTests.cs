@@ -134,6 +134,31 @@ public sealed class SubstituteBroadcastTests : IDisposable
         Assert.Equal(FilenameProgramVerdict.ContainsFolder, judgement.Verdict);
     }
 
+    [Theory]
+    [InlineData(FilenameProgramTreatment.Skip, FilenameProgramVerdict.Skip)]
+    [InlineData(FilenameProgramTreatment.OtherProgram, FilenameProgramVerdict.OtherProgram)]
+    [InlineData(FilenameProgramTreatment.SameProgram, FilenameProgramVerdict.SameProgram)]
+    public void アルバム名を含む名前でも_判断があれば判断を優先する(FilenameProgramTreatment treat, FilenameProgramVerdict expected)
+    {
+        const string special = Okashiba + " 特別編 駅伝";
+        var decision = Decision(treat, album: "駅伝", name: special, station: Qr, folder: OkashibaFolders[0]);
+
+        var judgement = new ProgramResolver(OkashibaPrograms(decision)).JudgeFilenameProgram(Qr, OkashibaFolders[0], special);
+
+        Assert.Equal(expected, judgement.Verdict);
+    }
+
+    [Fact]
+    public void フォルダ名を含む名前は_判断より先に含む扱い()
+    {
+        // 手順 ①(フォルダ名)は今のまま判断より先。アルバム名だけが判断の後(#241)。
+        var decision = Decision(FilenameProgramTreatment.Skip, name: OkashibaFolders[0], station: Qr, folder: OkashibaFolders[0]);
+
+        var judgement = new ProgramResolver(OkashibaPrograms(decision)).JudgeFilenameProgram(Qr, OkashibaFolders[0], OkashibaFolders[0]);
+
+        Assert.Equal(FilenameProgramVerdict.ContainsFolder, judgement.Verdict);
+    }
+
     [Fact]
     public void 統合でない正規名の設定のアルバム名も見る()
     {
@@ -609,30 +634,63 @@ public sealed class SubstituteBroadcastTests : IDisposable
     public void 統合番組のアルバム名を含む取り込み済みの回と保留は_要対応に出さない()
     {
         // #241:時間帯の書き方ごとに積んだ「この番組の回」の判断を消しても、要対応に出ない(台帳の回の解決も同じ規則)。
-        var folder = OkashibaFolders[0];
-        var ledger = new[]
-        {
-            new LedgerEntry
-            {
-                IdentityKey = $"{Qr}|{Okashiba}|20241021100000",
-                Station = Qr,
-                Program = Okashiba,
-                BroadcastDate = new DateOnly(2024, 10, 21),
-                SourcePath = $"/radio/{Qr}/{folder}/[{Qr}]{Okashiba} 10時～10時55分(TimeFree)_20241021100000.m4a",
-                OutputPath = $"/out/{Qr}/{Okashiba}/20241021100000-1.m4a",
-                PartIndex = 1,
-                RuleVersion = "1",
-                UsedFallback = false,
-                ImportedAtUtc = DateTimeOffset.UnixEpoch,
-            },
-        };
-        var held = new[] { new HeldRecording("/radio/x.m4a", Qr, folder, Okashiba + " 10時～11時", At) };
+        var held = new[] { new HeldRecording("/radio/x.m4a", Qr, OkashibaFolders[0], Okashiba + " 10時～11時", At) };
 
-        var items = Attention(ledger, OkashibaPrograms(), held);
+        var items = Attention([OkashibaEntry(Okashiba + " 10時～10時55分")], OkashibaPrograms(), held);
 
         Assert.Empty(items.SubstituteSuspects);
         Assert.Empty(items.SettingsDrift);
         Assert.Equal(0, items.Count);
+    }
+
+    // おかしばの 10時のフォルダ(パート 1)から、フォルダの番組のアルバムへ取り込んだ回。
+    private static LedgerEntry OkashibaEntry(string name, string stamp = "20241021100000") => new()
+    {
+        IdentityKey = $"{Qr}|{Okashiba}|{stamp}",
+        Station = Qr,
+        Program = Okashiba,
+        BroadcastDate = new DateOnly(2024, 10, 21),
+        SourcePath = $"/radio/{Qr}/{OkashibaFolders[0]}/[{Qr}]{name}(TimeFree)_{stamp}.m4a",
+        OutputPath = $"/out/{Qr}/{Okashiba}/{stamp}-1.m4a",
+        PartIndex = 1,
+        RuleVersion = "1",
+        UsedFallback = false,
+        ImportedAtUtc = DateTimeOffset.UnixEpoch,
+    };
+
+    private static FilenameProgramDecision OkashibaDecision(FilenameProgramTreatment treat, string name, string? album = null)
+        => Decision(treat, album, name: name, station: Qr, folder: OkashibaFolders[0]);
+
+    [Fact]
+    public void アルバム名を含む名前に取り込まないと判断した取り込み済みの回は_消す予定に出る()
+    {
+        // #241:判断はアルバム名より先に見る。アルバム名を含む名前に書いた「取り込まない」を黙って無効にしない。
+        const string special = Okashiba + " 特別編 駅伝";
+        var programs = OkashibaPrograms(OkashibaDecision(FilenameProgramTreatment.Skip, special));
+
+        var items = Attention([OkashibaEntry(special)], programs);
+
+        Assert.Equal([new PendingRemovalGroup(Qr, Okashiba, OkashibaFolders[0], special, 1)], items.PendingRemovals);
+        Assert.Empty(items.SettingsDrift);
+        Assert.Empty(items.SubstituteSuspects);
+    }
+
+    [Fact]
+    public void アルバム名を含む名前に別の番組と判断した取り込み済みの回は_判断のアルバムで解決する()
+    {
+        const string special = Okashiba + " 特別編 駅伝";
+        var programs = OkashibaPrograms(OkashibaDecision(FilenameProgramTreatment.OtherProgram, special, album: "駅伝"));
+        var resolver = new LedgerEpisodeResolver(
+            new MockFileSystem().Path, new RajirekoImporter(),
+            new StationResolver(new StationMasterConfig()), new ProgramResolver(programs));
+
+        var resolved = resolver.Resolve(OkashibaEntry(special));
+        var items = Attention([OkashibaEntry(special)], programs);
+
+        Assert.NotNull(resolved?.Episode);
+        Assert.Equal(FilenameProgramVerdict.OtherProgram, resolved.Episode.FilenameVerdict);
+        Assert.Equal("駅伝", resolved.Episode.Program);
+        Assert.Equal([new SettingsDriftGroup(Qr, Okashiba, "駅伝", 1)], items.SettingsDrift);
     }
 
     // ---- トースト ----

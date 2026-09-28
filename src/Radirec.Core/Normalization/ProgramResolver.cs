@@ -23,9 +23,9 @@ public interface IProgramResolver
     ProgramResolution Resolve(string canonicalStation, string programFolder);
 
     /// <summary>
-    /// ファイル名の番組名から、その回の扱いを決める(ADR-0021)。①フォルダ名か、フォルダが属する正規名の設定のアルバム名を含む
-    /// → <see cref="FilenameProgramVerdict.ContainsFolder"/>(アルバム名は #241)、
-    /// ②判断の登録がある → その判断、③どちらでもない → <see cref="FilenameProgramVerdict.Unjudged"/>(保留)。
+    /// ファイル名の番組名から、その回の扱いを決める(ADR-0021)。①フォルダ名を含む → <see cref="FilenameProgramVerdict.ContainsFolder"/>、
+    /// ②判断の登録がある → その判断、③フォルダが属する正規名の設定のアルバム名を含む → <see cref="FilenameProgramVerdict.ContainsFolder"/>
+    /// (#241。はっきり書いた判断を優先するので ② の後)、④どれでもない → <see cref="FilenameProgramVerdict.Unjudged"/>(保留)。
     /// ② で複数の判断が当たったら、完全一致 → 前方一致の照合キーが長い方 → 部分一致の照合キーが長い方、同着は後に書いた方(#240)。
     /// </summary>
     /// <param name="filenameProgram">ファイル名の番組名。null・空なら疑う手がかりが無いので ①。</param>
@@ -41,7 +41,7 @@ public sealed class ProgramResolver : IProgramResolver
 {
     private readonly Dictionary<(string Station, string Folder), (string Album, int? PartIndex)> _map = new();
 
-    // フォルダが属する正規名の設定のアルバム名の照合キー。ファイル名の番組名がこれを含めば疑わない(#241。統合番組のフォルダ名には
+    // フォルダが属する正規名の設定のアルバム名の照合キー。ファイル名の番組名がこれを含み、当たる判断が無ければ疑わない(#241。統合番組のフォルダ名には
     // 分割の印〈「…おかしば10時1」〉が付き、ファイル名の番組名〈「…おかしば 10時～11時」〉が含まないため)。
     private readonly Dictionary<(string Station, string Folder), string> _albumKeys = new();
 
@@ -128,16 +128,18 @@ public sealed class ProgramResolver : IProgramResolver
         var nameKey = TextNormalizer.ToMatchKey(filenameProgram);
         var folderKey = TextNormalizer.ToMatchKey(programFolder);
         var place = (TextNormalizer.ToMatchKey(canonicalStation), folderKey);
-        if (nameKey.Length == 0
-            || nameKey.Contains(folderKey, StringComparison.Ordinal)
-            || (_albumKeys.TryGetValue(place, out var albumKey) && albumKey.Length > 0
-                && nameKey.Contains(albumKey, StringComparison.Ordinal)))
+        if (nameKey.Length == 0 || nameKey.Contains(folderKey, StringComparison.Ordinal))
             return FilenameProgramJudgement.ContainsFolder;
 
         // 優先は 完全一致 → 前方一致の長い方 → 部分一致の長い方、同着は後に書いた方(#240。FilenameProgramMatcher)。
-        return _decisions.TryGetValue(place, out var decisions)
-               && FilenameProgramMatcher.FindBest(decisions, d => d.Mode, d => d.Key, nameKey) is { } decided
-            ? decided.Judgement
+        if (_decisions.TryGetValue(place, out var decisions)
+            && FilenameProgramMatcher.FindBest(decisions, d => d.Mode, d => d.Key, nameKey) is { } decided)
+            return decided.Judgement;
+
+        // アルバム名は判断の後に見る(#241)。アルバム名を含む名前にはっきり書いた「取り込まない」「別の番組」の判断を黙って無効にしない。
+        return _albumKeys.TryGetValue(place, out var albumKey) && albumKey.Length > 0
+               && nameKey.Contains(albumKey, StringComparison.Ordinal)
+            ? FilenameProgramJudgement.ContainsFolder
             : new FilenameProgramJudgement(FilenameProgramVerdict.Unjudged);
     }
 }
