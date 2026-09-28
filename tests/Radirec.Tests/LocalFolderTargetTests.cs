@@ -179,6 +179,47 @@ public sealed class LocalFolderTargetTests
         Assert.False(fs.File.Exists(InPlacePartial));
     }
 
+    // 取り込みのタグ書き込み(Write)が失敗する(らじれこの録音が壊れていて TagLib が読めない等)。
+    private sealed class FailingTagWriter : ITagWriter
+    {
+        public void Write(string filePath, NormalizedTags tags) => throw new IOException("タグを書けません");
+        public void WritePlacement(string filePath, NormalizedTags tags) => throw new IOException("タグを書けません");
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenTagWriteFails_Throws_AndRemovesThePartial()
+    {
+        // 失敗した録音は走査のたびに再試行されるので、.partial を残すと起動時の掃除の後も出力先に居続ける(#249)。
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [SourcePath] = new MockFileData("broken-audio"),
+        });
+        var sut = Target(fs, new FailingTagWriter());
+
+        await Assert.ThrowsAsync<IOException>(() => WriteAsync(sut, Episode()));
+
+        Assert.Empty(fs.Directory.GetFiles(OutDir(fs)));
+        Assert.True(fs.File.Exists(SourcePath)); // 取込元には触れない
+    }
+
+    [Fact]
+    public async Task WriteAsync_WhenFinalRenameFails_Throws_AndRemovesThePartial_AndKeepsTheExistingFile()
+    {
+        // 配置先を決めた後に同じ名前のファイルが現れると、確定のリネームが失敗する(上書きしない)。
+        var fs = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            [SourcePath] = new MockFileData("audio-mine"),
+        });
+        var sut = Target(fs);
+        var plan = sut.Plan(Source(), Episode(), Tags());
+        fs.AddFile(plan.Path, new MockFileData("appeared"));
+
+        await Assert.ThrowsAnyAsync<IOException>(() => sut.WriteAsync(Source(), plan, Tags()));
+
+        Assert.Equal("appeared", fs.File.ReadAllText(plan.Path));
+        Assert.Equal([fs.Path.GetFullPath(plan.Path)], fs.Directory.GetFiles(OutDir(fs)).Select(fs.Path.GetFullPath));
+    }
+
     [Fact]
     public void CleanupOrphans_DeletesOnlyPartialTempFiles()
     {
