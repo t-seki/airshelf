@@ -148,6 +148,32 @@ public sealed class SubstituteBroadcastIngestTests
     }
 
     [Fact]
+    public async Task 統合番組のアルバム名を含む回は_フォルダ名を含まなくても取り込む()
+    {
+        // #241:統合番組のフォルダ名には分割の印が付き、ファイル名の番組名(時間帯の書き方が回ごとに違う)は含まない。
+        const string album = "パンサー向井のチャリ";
+        var programs = new ProgramMasterConfig
+        {
+            Programs = [new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Station, Folders = [album + "1", album + "2"] },
+                Canonical = new ProgramCanonical { Album = album },
+            }],
+        };
+        var first = Rec(album + " 10時～10時55分", "20250106100000", folder: album + "1");
+        var second = Rec(album + " 11時～12時", "20250106110000", folder: album + "2");
+        var substitute = Rec(Substitute, "20250113100000", folder: album + "1");
+
+        var report = await Build([first, second, substitute], programs).RunOnceAsync(dryRun: false);
+
+        Assert.Equal(
+            [IngestOutcome.Imported, IngestOutcome.Imported, IngestOutcome.Held],
+            report.Items.Select(i => i.Outcome));
+        Assert.Equal(2, _target.Written.Count);
+        Assert.Equal([substitute.FilePath], _held.Rows.Keys);
+    }
+
+    [Fact]
     public async Task 表記ゆれは照合キーで吸収する()
     {
         // 全角英数・空白の違い(ANN0 のゲスト名入りの回と同じく、フォルダ名を含めば取り込む)。

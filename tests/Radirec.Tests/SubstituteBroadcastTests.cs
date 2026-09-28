@@ -97,6 +97,100 @@ public sealed class SubstituteBroadcastTests : IDisposable
         Assert.Contains(Substitute, ex.Message);
     }
 
+    // ---- 正規名の設定のアルバム名(#241)----
+
+    private const string Qr = "文化放送";
+    private const string Okashiba = "ますだおかだ岡田圭右とアンタッチャブル柴田英嗣のおかしば";
+
+    // 統合番組のフォルダ名には分割の印が付き、ファイル名の番組名(時間帯の書き方が回ごとに違う)はフォルダ名を含まない。
+    private static readonly string[] OkashibaFolders = [Okashiba + "10時1", Okashiba + "11時1", Okashiba + "12時1"];
+
+    private static ProgramMasterConfig OkashibaPrograms(params FilenameProgramDecision[] decisions) => new()
+    {
+        Programs = [new ProgramAlias
+        {
+            Match = new ProgramMatch { Station = Qr, Folders = [.. OkashibaFolders] },
+            Canonical = new ProgramCanonical { Album = Okashiba },
+        }],
+        FilenamePrograms = [.. decisions],
+    };
+
+    public static TheoryData<string, string> OkashibaNames => new()
+    {
+        { OkashibaFolders[0], Okashiba + " 10時～10時55分" },
+        { OkashibaFolders[0], Okashiba + " 10時～11時" },
+        { OkashibaFolders[1], Okashiba + " 11時～12時" },
+        { OkashibaFolders[2], Okashiba + " 12時～12時40分" },
+        { OkashibaFolders[2], Okashiba + "　１２時～１３時" }, // 全角の空白・数字も照合キーで吸収する
+        { OkashibaFolders[2], Okashiba },
+    };
+
+    [Theory]
+    [MemberData(nameof(OkashibaNames))]
+    public void 統合番組のアルバム名を含む回は_フォルダ名を含まなくても含む扱い(string folder, string name)
+    {
+        var judgement = new ProgramResolver(OkashibaPrograms()).JudgeFilenameProgram(Qr, folder, name);
+
+        Assert.Equal(FilenameProgramVerdict.ContainsFolder, judgement.Verdict);
+    }
+
+    [Fact]
+    public void 統合でない正規名の設定のアルバム名も見る()
+    {
+        var programs = new ProgramMasterConfig
+        {
+            Programs = [new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Lf, Folders = [Folder] },
+                Canonical = new ProgramCanonical { Album = "チャリで30分" },
+            }],
+        };
+
+        var judgement = new ProgramResolver(programs).JudgeFilenameProgram(Lf, Folder, "チャリで30分 特別編");
+
+        Assert.Equal(FilenameProgramVerdict.ContainsFolder, judgement.Verdict);
+    }
+
+    [Fact]
+    public void 正規名の設定の無いフォルダは_ほかのフォルダのアルバム名を含んでも今までどおり判断待ち()
+    {
+        // アルバム名は、そのフォルダが属する設定のものだけを見る(同じ局のほかの番組のアルバム名は効かない)。
+        var resolver = new ProgramResolver(OkashibaPrograms());
+
+        Assert.Equal(
+            FilenameProgramVerdict.Unjudged,
+            resolver.JudgeFilenameProgram(Qr, "おかしばアネックス 甲斐彩加のひとり場", Okashiba + " 10時～11時").Verdict);
+        Assert.Equal(FilenameProgramVerdict.Unjudged, resolver.JudgeFilenameProgram(Qr, OkashibaFolders[0], "文化放送ホームランラジオ").Verdict);
+    }
+
+    [Fact]
+    public void アルバム名は局が違えば効かない()
+    {
+        var judgement = new ProgramResolver(OkashibaPrograms()).JudgeFilenameProgram(Lf, OkashibaFolders[0], Okashiba + " 10時～11時");
+
+        Assert.Equal(FilenameProgramVerdict.Unjudged, judgement.Verdict);
+    }
+
+    [Fact]
+    public void 統合番組のアルバム名を含む回は_番組のアルバムとパートで組む()
+    {
+        var assembler = new EpisodeAssembler(new StationResolver(new StationMasterConfig()), new ProgramResolver(OkashibaPrograms()));
+        var file = new RecordingFile
+        {
+            FilePath = $"/radio/{Qr}/{OkashibaFolders[1]}/[{Qr}]{Okashiba} 11時～12時(TimeFree)_20241021110000.m4a",
+            FileName = $"[{Qr}]{Okashiba} 11時～12時(TimeFree)_20241021110000.m4a",
+            StationFolder = Qr,
+            ProgramFolder = OkashibaFolders[1],
+            Extension = ".m4a",
+        };
+
+        var episode = assembler.Assemble(new RajirekoImporter().Parse(file));
+
+        Assert.Equal(FilenameProgramVerdict.ContainsFolder, episode.FilenameVerdict);
+        Assert.Equal(Okashiba, episode.Program);
+        Assert.Equal(2, episode.PartIndex);
+    }
+
     // ---- 照合の種類(#240)----
 
     private static FilenameProgramJudgement Judge(string name, params FilenameProgramDecision[] decisions)
@@ -509,6 +603,36 @@ public sealed class SubstituteBroadcastTests : IDisposable
 
         Assert.Equal([new SettingsDriftGroup(Lf, Folder, "辛坊治郎 ズーム", 1)], items.SettingsDrift);
         Assert.Empty(items.PendingRemovals);
+    }
+
+    [Fact]
+    public void 統合番組のアルバム名を含む取り込み済みの回と保留は_要対応に出さない()
+    {
+        // #241:時間帯の書き方ごとに積んだ「この番組の回」の判断を消しても、要対応に出ない(台帳の回の解決も同じ規則)。
+        var folder = OkashibaFolders[0];
+        var ledger = new[]
+        {
+            new LedgerEntry
+            {
+                IdentityKey = $"{Qr}|{Okashiba}|20241021100000",
+                Station = Qr,
+                Program = Okashiba,
+                BroadcastDate = new DateOnly(2024, 10, 21),
+                SourcePath = $"/radio/{Qr}/{folder}/[{Qr}]{Okashiba} 10時～10時55分(TimeFree)_20241021100000.m4a",
+                OutputPath = $"/out/{Qr}/{Okashiba}/20241021100000-1.m4a",
+                PartIndex = 1,
+                RuleVersion = "1",
+                UsedFallback = false,
+                ImportedAtUtc = DateTimeOffset.UnixEpoch,
+            },
+        };
+        var held = new[] { new HeldRecording("/radio/x.m4a", Qr, folder, Okashiba + " 10時～11時", At) };
+
+        var items = Attention(ledger, OkashibaPrograms(), held);
+
+        Assert.Empty(items.SubstituteSuspects);
+        Assert.Empty(items.SettingsDrift);
+        Assert.Equal(0, items.Count);
     }
 
     // ---- トースト ----
