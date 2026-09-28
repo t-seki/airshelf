@@ -17,7 +17,7 @@
 [ADR-0013](docs/adr/0013-velopack-per-user-updates.md)。旧 Windows サービス/EventLog は退役。named pipe は、CLI の `radirec status` / `reload` がトレイへ頼む経路として形を変えて戻した:[ADR-0020](docs/adr/0020-cli-as-agent-front-via-control-channel.md))。
 配布は **Velopack の per-user インストーラ(非 admin)+ タグ駆動 Release**
 ([最新リリース](https://github.com/t-seki/radirec-tool/releases))。
-ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装。
+ソース跨ぎのアルバム統合(M4-C)は未実装。編集 GUI(M5)は作らないと決めた(#5、2026-09-28)。
 
 ## インストール・更新(Windows・per-user・非 admin)
 
