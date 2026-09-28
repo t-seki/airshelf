@@ -16,19 +16,20 @@ public sealed class ProgramMasterConfig
     public List<KeptApartSiblings> KeepSeparate { get; set; } = [];
 
     /// <summary>
-    /// ファイル名の番組名の判断(CONTEXT.md「差し替え放送」。ADR-0021)。(局, フォルダ, ファイル名の番組名) の組ごとに、
-    /// 利用者が決めた扱い。ファイル名の番組名がフォルダ名を含まない回は、ここに判断が無ければ取り込まずに保留する。
-    /// 空なら programs.json に書かない。
+    /// ファイル名の番組名の判断(CONTEXT.md「差し替え放送」。ADR-0021)。(局, フォルダ) の中で、ファイル名の番組名を完全一致・
+    /// 前方一致・部分一致(#240)で照合して当てる、利用者が決めた扱い。ファイル名の番組名がフォルダ名を含まない回は、ここに当たる
+    /// 判断が無ければ取り込まずに保留する。空なら programs.json に書かない。
     /// </summary>
     public List<FilenameProgramDecision> FilenamePrograms { get; set; } = [];
 }
 
 /// <summary>
-/// ファイル名の番組名の判断 1 件。<c>{ "Match": { "Station", "Folder", "FilenameProgram" }, "Treat", "Album", "Note" }</c>(ADR-0021)。
+/// ファイル名の番組名の判断 1 件。<c>{ "Match": { "Station", "Folder", "FilenameProgram", "Mode" }, "Treat", "Album", "Note" }</c>
+/// (ADR-0021。<c>Mode</c> は #240 で足した。省略したら完全一致)。
 /// </summary>
 public sealed class FilenameProgramDecision
 {
-    /// <summary>判断する組(局・番組フォルダ・ファイル名の番組名)。</summary>
+    /// <summary>判断を当てる回(局・番組フォルダ・照合に使う文字列・照合の種類)。</summary>
     public FilenameProgramMatch Match { get; set; } = new();
 
     /// <summary>扱い。書き忘れを「この番組の回」と読まないよう、省略できない。</summary>
@@ -54,8 +55,29 @@ public sealed class FilenameProgramMatch
     /// <summary>らじれこの番組フォルダ名(1 つ)。</summary>
     public string Folder { get; set; } = string.Empty;
 
-    /// <summary>ファイル名の番組名(CONTEXT.md)。</summary>
+    /// <summary>
+    /// 照合に使う文字列。完全一致ならファイル名の番組名(CONTEXT.md)そのもの、前方一致・部分一致ならその先頭・一部(#240)。
+    /// </summary>
     public string FilenameProgram { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 照合の種類(#240)。省略したら完全一致。完全一致は programs.json に書かない(古い版でも読めるように)。
+    /// </summary>
+    public FilenameProgramMatchMode Mode { get; set; } = FilenameProgramMatchMode.Exact;
+}
+
+/// <summary>ファイル名の番組名の判断の照合の種類(#240)。programs.json には名前(<c>"Prefix"</c> など)で書く。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<FilenameProgramMatchMode>))]
+public enum FilenameProgramMatchMode
+{
+    /// <summary>完全一致(既定)。</summary>
+    Exact,
+
+    /// <summary>前方一致。ファイル名の番組名が照合の文字列で始まる(後ろにゲスト名・回の名前・スポンサーが付く形)。</summary>
+    Prefix,
+
+    /// <summary>部分一致。ファイル名の番組名が照合の文字列を含む(前に冠・スポンサーが付く形)。</summary>
+    Contains,
 }
 
 /// <summary>ファイル名の番組名の扱い(ADR-0021 の 3 択)。programs.json には名前(<c>"Skip"</c> など)で書く。</summary>

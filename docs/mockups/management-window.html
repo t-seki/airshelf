@@ -474,7 +474,8 @@
         </div>
       </div>
       <table class="grid">
-        <colgroup><col style="width:100px"><col style="width:250px"><col style="width:230px"><col style="width:100px"><col></colgroup>
+        <!-- ProgramsPage.xaml と同じ比率:放送局 80・種類 100 は固定、フォルダ 3* : アルバム名 3* : メモ 2*(#240) -->
+        <colgroup><col style="width:80px"><col style="width:calc((100% - 180px) * 3 / 8)"><col style="width:calc((100% - 180px) * 3 / 8)"><col style="width:100px"><col></colgroup>
         <tr data-w="W-203"><th>放送局</th><th>フォルダ</th><th>アルバム名</th><th>種類</th><th>メモ</th></tr>
         <tr><td>J-WAVE</td><td>LOGISTEEDRADIONOMICS</td><td>LOGISTEED RADIONOMICS</td><td data-w="W-204">アルバム名だけ</td><td>空白を入れて読みやすく</td></tr>
         <tr class="sel"><td>J-WAVE</td><td>SONYSONPOQUESTFORTHEFUTURE</td><td>SONY SONPO QUEST FOR THE FUTURE</td><td data-w="W-204">アルバム名だけ</td><td></td></tr>
@@ -508,16 +509,17 @@
         </div>
       </div>
       <table class="grid">
-        <colgroup><col style="width:100px"><col style="width:190px"><col style="width:230px"><col style="width:100px"><col style="width:170px"><col></colgroup>
+        <!-- ProgramsPage.xaml と同じ比率:放送局 80・扱い 80 は固定、フォルダ 2* : ファイル名の番組名 3* : アルバム名 2* : メモ 1.5*(#240) -->
+        <colgroup><col style="width:80px"><col style="width:calc((100% - 160px) * 2 / 8.5)"><col style="width:calc((100% - 160px) * 3 / 8.5)"><col style="width:80px"><col style="width:calc((100% - 160px) * 2 / 8.5)"><col></colgroup>
         <tr class="an" data-w="W-230"><th>放送局</th><th>フォルダ</th><th>ファイル名の番組名</th><th>扱い</th><th>アルバム名</th><th>メモ</th></tr>
         <tr><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(1)</td><td class="wrap">パンサー向井の#ふらっと (1)</td><td class="an" data-w="W-231">この番組の回</td><td></td><td></td></tr>
         <tr><td>文化放送</td><td class="wrap">日向坂46の「ひ」</td><td class="wrap">文化放送スポーツスペシャル プロ野球日本シリーズ2024 第2戦 横浜DeNAベイスターズ 対 福岡ソフトバンクホークス 実況中継</td><td class="an" data-w="W-231">取り込まない</td><td></td><td class="wrap">実況中継</td></tr>
-        <tr><td>TOKYO FM</td><td class="wrap">ベルクpresents日向坂46の余計な事までやりましょう</td><td class="wrap">土屋圭市のくるまの話 supported by プレソフィア</td><td class="an" data-w="W-231">別の番組</td><td class="wrap">土屋圭市のくるまの話</td><td class="wrap">番組の終了後も予約が残っていた</td></tr>
+        <tr><td>TOKYO FM</td><td class="wrap">ベルクpresents日向坂46の余計な事までやりましょう</td><td class="wrap">土屋圭市のくるまの話<span class="an" data-w="W-235">（前方一致）</span></td><td class="an" data-w="W-231">別の番組</td><td class="wrap">土屋圭市のくるまの話</td><td class="wrap">番組の終了後も予約が残っていた</td></tr>
         <tr class="changed" data-if="prog:dirty"><td>ニッポン放送</td><td class="wrap">パンサー向井のチャリで30分</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td class="an" data-w="W-231">別の番組</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td>(要対応から積んだ・未保存)</td></tr>
         <tr class="changed" data-if="prog:dirty"><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(2)</td><td class="wrap">パンサー向井の#ふらっと (2)</td><td class="an" data-w="W-231">この番組の回</td><td></td><td>(要対応から積んだ・未保存)</td></tr>
       </table>
       <div class="mocknote">ADR-0021・#235。ホームの要対応の「この番組の回」「取り込まない」「別の番組…」(W-159)で積んだ判断は、ここに保存していない行(太字)として出る。
-        「アルバム名」は「別の番組」の行だけ。保存すると programs.json の <code>FilenamePrograms</code> に書き、設定リロードの後の走査で、保留していた回が判断どおりに取り込まれる。
+        「アルバム名」は「別の番組」の行だけ。「ファイル名の番組名」には、前方一致・部分一致の判断だけ照合の種類を添える(W-235。#240。完全一致には添えない。要対応から積んだ行は完全一致)。保存すると programs.json の <code>FilenamePrograms</code> に書き、設定リロードの後の走査で、保留していた回が判断どおりに取り込まれる。
         取り込み済みの回は「保存して適用」の再適用で揃う(「別の番組」は判断のアルバムへ移り、「取り込まない」は出力先から消える。取込元は残る)。</div>
 
       <div class="row" style="justify-content: flex-end; margin-top: 14px;">
@@ -590,6 +592,9 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <label class="an" data-w="W-232">放送局</label><input value="ニッポン放送">
         <label class="an" data-w="W-232">フォルダ</label><input value="パンサー向井のチャリで30分">
         <label class="an" data-w="W-232">ファイル名の番組名</label><input value="辛坊治郎 ズーム そこまで言うか！">
+        <label class="an" data-w="W-232">照合</label>
+        <select style="width: 200px;"><option class="an" data-w="W-235" selected>完全一致</option><option class="an" data-w="W-235">前方一致</option><option class="an" data-w="W-235">部分一致</option></select>
+        <div class="hint an" data-w="W-236">前方一致・部分一致なら、ファイル名の番組名の欄には照合する一部分(例: 番組名だけ)を入れます。スポンサー名やゲスト名の違う回を 1 つの判断で扱えます</div>
         <label class="an" data-w="W-232">扱い</label>
         <select style="width: 200px;"><option class="an" data-w="W-231">この番組の回</option><option class="an" data-w="W-231">取り込まない</option><option class="an" data-w="W-231" selected>別の番組</option></select>
         <label class="an" data-w="W-232">アルバム名</label>
@@ -600,7 +605,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       </div>
       <div class="mocknote">「アルバム名」の欄は、扱いが「別の番組」のときだけ出す。「別の番組」でない判断を編集して「別の番組」に変えるときは、ファイル名の番組名を初期値にする。
         ほかの入力エラーは <span class="an" data-w="W-234">フォルダを入れてください</span> / <span class="an" data-w="W-234">ファイル名の番組名を入れてください</span> /
-        <span class="an" data-w="W-234">同じ組(放送局・フォルダ・ファイル名の番組名)の判断がすでにあります</span>(照合キーで比べる)と、放送局の W-224。</div>
+        <span class="an" data-w="W-234">同じ組(放送局・フォルダ・照合・ファイル名の番組名)の判断がすでにあります</span>(照合の種類が同じで、文字列を照合キーで比べる)と、放送局の W-224。
+        「照合」の既定は完全一致(#240)。要対応から積んだ行も完全一致なので、前方一致・部分一致にするときはここで変えて文字列を縮める。</div>
       <div class="row" style="justify-content: flex-end;">
         <button class="btn primary" data-go="prog:dirty" data-w="W-227">決定</button>
         <button class="btn" data-go="prog:list" data-w="W-227">キャンセル</button>

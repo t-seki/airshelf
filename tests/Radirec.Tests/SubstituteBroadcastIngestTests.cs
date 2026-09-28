@@ -99,13 +99,15 @@ public sealed class SubstituteBroadcastIngestTests
         LastWriteTimeUtc = Now.AddSeconds(-ageSeconds),
     };
 
-    private static ProgramMasterConfig Decide(FilenameProgramTreatment treat, string? album = null, string name = Substitute) => new()
+    private static ProgramMasterConfig Decide(
+        FilenameProgramTreatment treat, string? album = null, string name = Substitute,
+        FilenameProgramMatchMode mode = FilenameProgramMatchMode.Exact) => new()
     {
         FilenamePrograms =
         [
             new FilenameProgramDecision
             {
-                Match = new FilenameProgramMatch { Station = Station, Folder = Folder, FilenameProgram = name },
+                Match = new FilenameProgramMatch { Station = Station, Folder = Folder, FilenameProgram = name, Mode = mode },
                 Treat = treat,
                 Album = album,
             },
@@ -295,6 +297,35 @@ public sealed class SubstituteBroadcastIngestTests
         var report = await Build([other], Decide(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
 
         Assert.Equal(IngestOutcome.Held, report.Items.Single().Outcome);
+    }
+
+    [Fact]
+    public async Task 前方一致の判断は_ゲスト名の違う回をまとめて扱う()
+    {
+        // #240:野村萬斎のラジオで福袋【ゲスト】○○ のように、ゲストが変わるたびに組が分かれても 1 つの判断で取り込む。
+        var a = Rec("野村萬斎のラジオで福袋【ゲスト】中越典子", "20250113000000");
+        var b = Rec("野村萬斎のラジオで福袋【ゲスト】羽生結弦　パート１", "20250120000000");
+        var programs = Decide(FilenameProgramTreatment.OtherProgram, "野村萬斎のラジオで福袋", "野村萬斎のラジオで福袋",
+            FilenameProgramMatchMode.Prefix);
+
+        var report = await Build([a, b], programs).RunOnceAsync(dryRun: false);
+
+        Assert.All(report.Items, i => Assert.Equal(IngestOutcome.Imported, i.Outcome));
+        Assert.All(_ledger.Entries, e => Assert.Equal("野村萬斎のラジオで福袋", e.Program));
+    }
+
+    [Fact]
+    public async Task 部分一致の判断は_前に付くスポンサー名の違う回をまとめて扱う()
+    {
+        // #240:イースト駅前クリニック presents / ブレインスリープ presents のように、前に付くスポンサーが替わっても 1 つの判断で取り込む。
+        var a = Rec("イースト駅前クリニック presents 川島明のねごと", "20250113000000");
+        var b = Rec("ブレインスリープ presents 川島明のねごと", "20250120000000");
+        var programs = Decide(FilenameProgramTreatment.SameProgram, name: "川島明のねごと", mode: FilenameProgramMatchMode.Contains);
+
+        var report = await Build([a, b], programs).RunOnceAsync(dryRun: false);
+
+        Assert.All(report.Items, i => Assert.Equal(IngestOutcome.Imported, i.Outcome));
+        Assert.All(_ledger.Entries, e => Assert.Equal(Folder, e.Program));
     }
 
     [Fact]

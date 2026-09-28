@@ -381,6 +381,154 @@ public sealed class SubstituteDecisionUiTests : IDisposable
         Assert.Equal("プロ野球", vm.FormAlbum);
     }
 
+    // ---------- 照合の種類(W-235 / W-236。#240)----------
+
+    private const string WithModes = """
+        { "FilenamePrograms": [
+            { "Match": { "Station": "TOKYO FM", "Folder": "ベルク", "FilenameProgram": "土屋圭市のくるまの話" }, "Treat": "Skip" },
+            { "Match": { "Station": "TOKYO FM", "Folder": "ベルク", "FilenameProgram": "土屋圭市のくるまの話", "Mode": "Prefix" },
+              "Treat": "OtherProgram", "Album": "土屋圭市のくるまの話" },
+            { "Match": { "Station": "TBSラジオ", "Folder": "ねごと", "FilenameProgram": "川島明のねごと", "Mode": "Contains" },
+              "Treat": "SameProgram" } ] }
+        """;
+
+    [Fact]
+    public async Task Lists_the_match_mode_beside_the_filename_program_W235()
+    {
+        var vm = await Page(WithModes);
+
+        // 完全一致と前方一致に同じ文字列を書いても、別の判断として並ぶ。前方一致・部分一致だけ全角の括弧で照合の種類を添える。
+        Assert.Equal(
+            ["土屋圭市のくるまの話", "土屋圭市のくるまの話（前方一致）", "川島明のねごと（部分一致）"],
+            vm.FilenamePrograms.Select(r => r.FilenameProgramText));
+        // 照合・同一性に使う値には添えない。
+        Assert.Equal(["土屋圭市のくるまの話", "土屋圭市のくるまの話", "川島明のねごと"], vm.FilenamePrograms.Select(r => r.FilenameProgram));
+        Assert.All(vm.FilenamePrograms, r => Assert.False(r.IsChanged));
+    }
+
+    [Fact]
+    public async Task Decision_form_edits_the_match_mode_and_saves_it_by_name()
+    {
+        // 要対応から積んだ完全一致の行を開き、照合を前方一致に変えて文字列を縮める(#240 の直し方)。
+        var vm = await Page("""{ "Programs": [] }""");
+        vm.StageDecision(Lf, Chari, Shinbo, FilenameProgramTreatment.Skip);
+        vm.SelectedDecision = vm.FilenamePrograms[0];
+        vm.EditDecisionCommand.Execute(null);
+        Assert.Equal(FilenameProgramMatchMode.Exact, vm.FormMatchMode);
+
+        vm.FormMatchMode = FilenameProgramMatchMode.Prefix;
+        vm.FormFilenameProgram = "辛坊治郎";
+        vm.CommitFormCommand.Execute(null);
+
+        var row = Assert.Single(vm.FilenamePrograms);
+        Assert.Equal(FilenameProgramMatchMode.Prefix, row.Current.Match.Mode);
+        Assert.Equal("辛坊治郎（前方一致）", row.FilenameProgramText);
+        await vm.ConfirmCommand.ExecuteAsync(null);
+        Assert.Contains("\"Mode\": \"Prefix\"", vm.DiffAfter); // W-241 も書き出す形で見せる
+        await vm.SaveOnlyCommand.ExecuteAsync(null);
+
+        var saved = Assert.Single(ProgramsFileWriter.Read(ProgramsPath).Config.FilenamePrograms);
+        Assert.Equal(FilenameProgramMatchMode.Prefix, saved.Match.Mode);
+        Assert.Equal("辛坊治郎", saved.Match.FilenameProgram);
+    }
+
+    [Fact]
+    public async Task Decision_form_treats_the_same_string_with_another_mode_as_another_decision()
+    {
+        var vm = await Page(WithModes);
+        vm.AddDecisionCommand.Execute(null);
+        vm.FormStation = "TOKYO FM";
+        vm.FormFolder = "ベルク";
+        vm.FormFilenameProgram = "土屋圭市のくるまの話";
+        vm.FormTreat = FilenameProgramTreatment.SameProgram;
+
+        vm.FormMatchMode = FilenameProgramMatchMode.Prefix;
+        vm.CommitFormCommand.Execute(null);
+        Assert.Equal([ProgramsPageViewModel.DuplicateDecision], vm.FormErrors); // 同じ種類・同じ照合キー
+
+        vm.FormMatchMode = FilenameProgramMatchMode.Contains;
+        vm.CommitFormCommand.Execute(null);
+        Assert.True(vm.IsListMode);
+        Assert.Equal(4, vm.FilenamePrograms.Count);
+    }
+
+    [Fact]
+    public async Task Decision_form_rejects_an_empty_match_key_for_prefix_and_contains()
+    {
+        // 照合キーが空の前方一致・部分一致は、取り込みの起動と設定リロードが受け付けない。
+        var vm = await Page();
+        vm.AddDecisionCommand.Execute(null);
+        vm.FormStation = Lf;
+        vm.FormFolder = Chari;
+        vm.FormFilenameProgram = "　 ";
+        vm.FormMatchMode = FilenameProgramMatchMode.Contains;
+
+        vm.CommitFormCommand.Execute(null);
+
+        Assert.Equal([ProgramsPageViewModel.FilenameProgramRequired], vm.FormErrors);
+    }
+
+    [Fact]
+    public async Task Staged_label_follows_a_row_narrowed_to_prefix_W160()
+    {
+        // 積んだ完全一致の行を番組ページで前方一致に縮めても、ホームのその組に W-160 が出続ける(出ないと、もう一度押して
+        // 別の完全一致の行を足し、保存後は完全一致が優先されて前方一致が効かなくなる)。
+        const string guest1 = "野村萬斎のラジオで福袋【ゲスト】中越典子";
+        const string guest2 = "野村萬斎のラジオで福袋【ゲスト】羽生結弦";
+        var vm = await Page("""{ "Programs": [] }""");
+        vm.StageDecision(Lf, Chari, guest1, FilenameProgramTreatment.OtherProgram);
+        vm.SelectedDecision = vm.FilenamePrograms[0];
+        vm.EditDecisionCommand.Execute(null);
+        vm.FormMatchMode = FilenameProgramMatchMode.Prefix;
+        vm.FormFilenameProgram = "野村萬斎のラジオで福袋";
+        vm.FormAlbum = "野村萬斎のラジオで福袋";
+        vm.CommitFormCommand.Execute(null);
+
+        Assert.Equal("別の番組「野村萬斎のラジオで福袋」", vm.StagedDecisionLabel(Lf, Chari, guest1));
+        Assert.Equal("別の番組「野村萬斎のラジオで福袋」", vm.StagedDecisionLabel(Lf, Chari, guest2)); // 同じ判断が当たる別の組にも
+        Assert.Null(vm.StagedDecisionLabel(Lf, Chari, Shinbo)); // 当たらない組には出さない
+        Assert.Null(vm.StagedDecisionLabel("TBSラジオ", Chari, guest1)); // 局が違えば当てない
+
+        // 当たる行が複数あれば、取り込みと同じ優先(完全一致が前方一致に勝つ)。
+        vm.StageDecision(Lf, Chari, guest2, FilenameProgramTreatment.Skip);
+        Assert.Equal("取り込まない", vm.StagedDecisionLabel(Lf, Chari, guest2));
+        Assert.Equal("別の番組「野村萬斎のラジオで福袋」", vm.StagedDecisionLabel(Lf, Chari, guest1));
+    }
+
+    [Fact]
+    public async Task Diff_does_not_show_the_exact_mode_W241()
+    {
+        // 確認の「変更後」(W-241)は programs.json の書き出しと同じ形。完全一致の判断に "Mode" を出さない。
+        var vm = await Page("""{ "Programs": [] }""");
+        vm.StageDecision(Lf, Chari, Shinbo, FilenameProgramTreatment.Skip);
+        vm.StageDecision(Lf, Chari, Baseball, FilenameProgramTreatment.Skip);
+        vm.SelectedDecision = vm.FilenamePrograms[1];
+        vm.EditDecisionCommand.Execute(null);
+        vm.FormMatchMode = FilenameProgramMatchMode.Contains;
+        vm.FormFilenameProgram = "プロ野球";
+        vm.CommitFormCommand.Execute(null);
+
+        await vm.ConfirmCommand.ExecuteAsync(null);
+
+        Assert.Contains(Shinbo, vm.DiffAfter);
+        Assert.DoesNotContain("Exact", vm.DiffAfter);
+        Assert.Single(vm.DiffAfter.Split("\"Mode\"")[1..]); // 部分一致の行にだけ出る
+        Assert.Contains("\"Mode\": \"Contains\"", vm.DiffAfter);
+    }
+
+    [Fact]
+    public async Task Staging_stays_exact_even_when_a_prefix_decision_has_the_same_string()
+    {
+        // 要対応から積むのは常に完全一致。同じ文字列の前方一致の行は置き換えない。
+        var vm = await Page(WithModes);
+
+        vm.StageDecision("TOKYO FM", "ベルク", "土屋圭市のくるまの話", FilenameProgramTreatment.SameProgram);
+
+        Assert.Equal(FilenameProgramTreatment.SameProgram, vm.FilenamePrograms[0].Current.Treat);
+        Assert.Equal(FilenameProgramTreatment.OtherProgram, vm.FilenamePrograms[1].Current.Treat);
+        Assert.Equal(3, vm.FilenamePrograms.Count);
+    }
+
     // ---------- ホーム(W-159〜W-164)----------
 
     [Fact]

@@ -422,6 +422,29 @@ public sealed class ReapplyServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task 前方一致の判断は_ゲスト名の違う取り込み済みの回をまとめて判断のアルバムへ動かす()
+    {
+        // #240:ゲスト名の違いで組が分かれても、前方一致の判断 1 つで台帳の回の解決(再適用)に効く。
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName + "【ゲスト】甲");
+        PlaceSource(Folder1, Dec30At0830, program: SubstituteName + "【ゲスト】乙");
+        var ledger = Ledger();
+        var same = Decided(FilenameProgramTreatment.SameProgram);
+        same.FilenamePrograms[0].Match.Mode = FilenameProgramMatchMode.Prefix;
+        await Ingest(ledger, same).RunOnceAsync(dryRun: false);
+        Assert.Equal(2, ledger.ListAll().Count);
+
+        var other = Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組");
+        other.FilenamePrograms[0].Match.Mode = FilenameProgramMatchMode.Prefix;
+        var applied = await Reapply(ledger, other).RunAsync(dryRun: false);
+
+        Assert.Equal(2, applied.Items.Count);
+        Assert.All(applied.Items, i => Assert.Equal(ReapplyAction.Move, i.Action));
+        Assert.True(File.Exists(OutputOf("試験の別番組", "2024-12-23")));
+        Assert.True(File.Exists(OutputOf("試験の別番組", "2024-12-30")));
+        Assert.All(ledger.ListAll(), e => Assert.Equal("試験の別番組", e.Program));
+    }
+
+    [Fact]
     public async Task 取り込み済みの回を別の番組と判断すると_判断のアルバムへ動く()
     {
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);

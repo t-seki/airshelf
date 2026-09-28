@@ -16,7 +16,7 @@ namespace Radirec.Cli.Core.Output;
 /// <param name="SettingsDrift">番組の設定と食い違ったままの回のまとまり(再適用すれば消える)。</param>
 /// <param name="SubstituteSuspects">
 /// 差し替え放送の疑い(ADR-0021)。(局, フォルダ, ファイル名の番組名) の組ごとに、保留した回と取り込み済みの判断待ちの回の数。
-/// programs.json の <c>FilenamePrograms</c> に判断を書けば消える。
+/// programs.json の <c>FilenamePrograms</c> に判断を書けば消える(前方一致・部分一致〈<c>Match.Mode</c>。#240〉の判断なら、当たる組がまとめて消える)。
 /// </param>
 /// <param name="PendingRemovals">「取り込まない」と判断された取り込み済みの回のまとまり(再適用で出力先から消す。ADR-0021)。</param>
 public sealed record AttentionJson(

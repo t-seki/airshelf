@@ -119,6 +119,7 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
             console.WriteLine();
             console.MarkupLine(
                 "[bold]差し替え放送の疑い[/] [grey](programs.json の FilenamePrograms に判断を書くと消えます。" +
+                "Match.Mode を Prefix(前方一致)・Contains(部分一致)にすると、スポンサー名やゲスト名の違う組を 1 つの判断で扱えます。" +
                 "保留した回を取り込ませるには radirec reload で常駐に反映します)[/]");
             foreach (var suspect in items.SubstituteSuspects)
             {

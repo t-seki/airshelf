@@ -144,16 +144,17 @@
                               GridLinesVisibility="Horizontal" MinHeight="80"
                               MouseDoubleClick="OnProgramGridDoubleClick">
                         <!-- RowStyle は置かない(Fluent の行のスタイルを上書きするため。#171)。太字はセル(Cell / Wrapped)で出す -->
+                        <!-- 放送局・種類は固定、ほかは比率(既定幅〈表 約 840〉でメモに約 160。広げると比率の列が広がる。#240) -->
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="100"
+                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="80"
                                                 ElementStyle="{StaticResource Cell}" />
-                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folders}" Width="250"
+                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folders}" Width="3*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="230"
+                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="3*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
                             <DataGridTextColumn Header="種類" Binding="{Binding Kind}" Width="100"
                                                 ElementStyle="{StaticResource Cell}" />
-                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="*"
+                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="2*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -210,18 +211,20 @@
                               HeadersVisibility="Column" SelectionMode="Single"
                               GridLinesVisibility="Horizontal" MinHeight="80"
                               MouseDoubleClick="OnDecisionGridDoubleClick">
+                        <!-- 放送局・扱いは固定、ほかは比率(既定幅〈表 約 840〉でメモに約 120。広げると比率の列が広がる。#240) -->
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="100"
+                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="80"
                                                 ElementStyle="{StaticResource Cell}" />
-                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folder}" Width="190"
+                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folder}" Width="2*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <DataGridTextColumn Header="ファイル名の番組名" Binding="{Binding FilenameProgram}" Width="230"
+                            <!-- 前方一致・部分一致なら照合の種類を添える(W-235。#240) -->
+                            <DataGridTextColumn Header="ファイル名の番組名" Binding="{Binding FilenameProgramText}" Width="3*" MinWidth="130"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <DataGridTextColumn Header="扱い" Binding="{Binding Treat}" Width="100"
+                            <DataGridTextColumn Header="扱い" Binding="{Binding Treat}" Width="80"
                                                 ElementStyle="{StaticResource Cell}" />
-                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="170"
+                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="2*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="*"
+                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="1.5*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -254,12 +257,19 @@
                                    Text="{x:Static m:ProgramsPageViewModel.FoldersHint}" />
                     </StackPanel>
 
-                    <!-- ファイル名の番組名の判断(W-232〜W-233):フォルダ 1 つ・ファイル名の番組名・扱い・アルバム名 -->
+                    <!-- ファイル名の番組名の判断(W-232〜W-233・W-235〜W-236):フォルダ 1 つ・ファイル名の番組名・照合・扱い・アルバム名 -->
                     <StackPanel Visibility="{Binding IsDecisionFormMode, Converter={StaticResource Visible}}">
                         <TextBlock Style="{StaticResource Label}" Text="フォルダ" />
                         <TextBox Text="{Binding FormFolder, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Style="{StaticResource Label}" Text="ファイル名の番組名" />
                         <TextBox Text="{Binding FormFilenameProgram, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Style="{StaticResource Label}" Text="照合" />
+                        <ComboBox HorizontalAlignment="Left" MinWidth="200"
+                                  ItemsSource="{x:Static m:ProgramsPageViewModel.MatchModeOptions}"
+                                  DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding FormMatchMode, Mode=TwoWay}" />
+                        <TextBlock Style="{StaticResource Sub}" Margin="0,3,0,0" TextWrapping="Wrap"
+                                   Text="{x:Static m:ProgramsPageViewModel.MatchModeHint}" />
                         <TextBlock Style="{StaticResource Label}" Text="扱い" />
                         <ComboBox HorizontalAlignment="Left" MinWidth="200"
                                   ItemsSource="{x:Static m:ProgramsPageViewModel.TreatOptions}"

@@ -32,9 +32,10 @@ public sealed class SubstituteBroadcastTests : IDisposable
     }
 
     private static FilenameProgramDecision Decision(
-        FilenameProgramTreatment treat, string? album = null, string name = Substitute, string station = Lf, string folder = Folder) => new()
+        FilenameProgramTreatment treat, string? album = null, string name = Substitute, string station = Lf, string folder = Folder,
+        FilenameProgramMatchMode mode = FilenameProgramMatchMode.Exact) => new()
     {
-        Match = new FilenameProgramMatch { Station = station, Folder = folder, FilenameProgram = name },
+        Match = new FilenameProgramMatch { Station = station, Folder = folder, FilenameProgram = name, Mode = mode },
         Treat = treat,
         Album = album,
     };
@@ -94,6 +95,136 @@ public sealed class SubstituteBroadcastTests : IDisposable
 
         Assert.Contains("Album", ex.Message);
         Assert.Contains(Substitute, ex.Message);
+    }
+
+    // ---- 照合の種類(#240)----
+
+    private static FilenameProgramJudgement Judge(string name, params FilenameProgramDecision[] decisions)
+        => Resolver(decisions).JudgeFilenameProgram(Lf, Folder, name);
+
+    [Theory]
+    [InlineData("辛坊治郎 ズーム そこまで言うか！", FilenameProgramVerdict.Skip)]
+    [InlineData("辛坊治郎ズーム 特番", FilenameProgramVerdict.Skip)] // 照合キーの上で比べる(空白は吸収)
+    [InlineData("特番 辛坊治郎 ズーム", FilenameProgramVerdict.Unjudged)] // 前方一致は先頭だけ
+    public void 前方一致はファイル名の番組名の先頭で照合する(string name, FilenameProgramVerdict expected)
+    {
+        var prefix = Decision(FilenameProgramTreatment.Skip, name: "辛坊治郎 ズーム", mode: FilenameProgramMatchMode.Prefix);
+
+        Assert.Equal(expected, Judge(name, prefix).Verdict);
+    }
+
+    [Theory]
+    [InlineData("イースト駅前クリニック presents 川島明のねごと", FilenameProgramVerdict.SameProgram)]
+    [InlineData("ブレインスリープ presents 川島明の ねごと 特別編", FilenameProgramVerdict.SameProgram)]
+    [InlineData("川島明のそもそもの話", FilenameProgramVerdict.Unjudged)]
+    public void 部分一致はファイル名の番組名のどこでも照合する(string name, FilenameProgramVerdict expected)
+    {
+        var contains = Decision(FilenameProgramTreatment.SameProgram, name: "川島明のねごと", mode: FilenameProgramMatchMode.Contains);
+
+        Assert.Equal(expected, Judge(name, contains).Verdict);
+    }
+
+    [Fact]
+    public void 完全一致は前方一致と部分一致より優先する()
+    {
+        const string name = "野村萬斎のラジオで福袋【ゲスト】羽生結弦";
+        var decisions = new[]
+        {
+            Decision(FilenameProgramTreatment.SameProgram, name: "萬斎", mode: FilenameProgramMatchMode.Contains),
+            Decision(FilenameProgramTreatment.OtherProgram, "福袋", name: "野村萬斎のラジオで福袋", mode: FilenameProgramMatchMode.Prefix),
+            Decision(FilenameProgramTreatment.Skip, name: name),
+        };
+
+        Assert.Equal(FilenameProgramVerdict.Skip, Judge(name, decisions).Verdict);
+        Assert.Equal(FilenameProgramVerdict.Skip, Judge(name, [.. decisions.Reverse()]).Verdict); // 書いた順によらない
+    }
+
+    [Fact]
+    public void 前方一致は部分一致より優先し_照合キーが長い部分一致にも勝つ()
+    {
+        // 種類をまたいで長さは比べない。
+        var decisions = new[]
+        {
+            Decision(FilenameProgramTreatment.Skip, name: "野村萬斎のラジオで福袋【ゲスト】", mode: FilenameProgramMatchMode.Contains),
+            Decision(FilenameProgramTreatment.OtherProgram, "福袋", name: "野村", mode: FilenameProgramMatchMode.Prefix),
+        };
+
+        Assert.Equal(FilenameProgramVerdict.OtherProgram, Judge("野村萬斎のラジオで福袋【ゲスト】中越典子", decisions).Verdict);
+    }
+
+    [Theory]
+    [InlineData(FilenameProgramMatchMode.Prefix)]
+    [InlineData(FilenameProgramMatchMode.Contains)]
+    public void 同じ種類なら照合キーが長い方を優先する(FilenameProgramMatchMode mode)
+    {
+        var shorter = Decision(FilenameProgramTreatment.OtherProgram, "福袋", name: "野村萬斎のラジオで福袋", mode: mode);
+        var longer = Decision(FilenameProgramTreatment.Skip, name: "野村萬斎のラジオで福袋【ゲスト】羽生結弦", mode: mode);
+
+        Assert.Equal(FilenameProgramVerdict.Skip, Judge("野村萬斎のラジオで福袋【ゲスト】羽生結弦　パート１", shorter, longer).Verdict);
+        Assert.Equal(FilenameProgramVerdict.Skip, Judge("野村萬斎のラジオで福袋【ゲスト】羽生結弦　パート１", longer, shorter).Verdict);
+        Assert.Equal(FilenameProgramVerdict.OtherProgram, Judge("野村萬斎のラジオで福袋【ゲスト】中越典子", shorter, longer).Verdict);
+    }
+
+    [Fact]
+    public void 種類も照合キーも同じ判断は後に書いた方()
+    {
+        var first = Decision(FilenameProgramTreatment.Skip, name: "辛坊治郎", mode: FilenameProgramMatchMode.Prefix);
+        var second = Decision(FilenameProgramTreatment.SameProgram, name: "辛坊 治郎", mode: FilenameProgramMatchMode.Prefix);
+
+        Assert.Equal(FilenameProgramVerdict.SameProgram, Judge(Substitute, first, second).Verdict);
+    }
+
+    [Fact]
+    public void 同じ種類で照合キーの長さも同じ別々の判断が両方当たれば_後に書いた方()
+    {
+        // 部分一致の AB と CD が ABCD に当たる(前方一致は、両方当たる同じ長さの照合キーが同じ文字列しかないので起きない)。
+        var ab = Decision(FilenameProgramTreatment.Skip, name: "AB", mode: FilenameProgramMatchMode.Contains);
+        var cd = Decision(FilenameProgramTreatment.SameProgram, name: "CD", mode: FilenameProgramMatchMode.Contains);
+
+        Assert.Equal(FilenameProgramVerdict.SameProgram, Judge("ABCD", ab, cd).Verdict);
+        Assert.Equal(FilenameProgramVerdict.Skip, Judge("ABCD", cd, ab).Verdict);
+    }
+
+    [Fact]
+    public void 完全一致と前方一致に同じ文字列を書いても別の判断()
+    {
+        var exact = Decision(FilenameProgramTreatment.Skip, name: "辛坊治郎");
+        var prefix = Decision(FilenameProgramTreatment.SameProgram, name: "辛坊治郎", mode: FilenameProgramMatchMode.Prefix);
+
+        Assert.Equal(FilenameProgramVerdict.Skip, Judge("辛坊治郎", exact, prefix).Verdict);
+        Assert.Equal(FilenameProgramVerdict.SameProgram, Judge(Substitute, exact, prefix).Verdict);
+    }
+
+    [Fact]
+    public void 前方一致と部分一致は別の局_別のフォルダには効かない()
+    {
+        var prefix = Decision(FilenameProgramTreatment.Skip, name: "辛坊", mode: FilenameProgramMatchMode.Prefix);
+        var contains = Decision(FilenameProgramTreatment.Skip, name: "ズーム", mode: FilenameProgramMatchMode.Contains);
+        var resolver = Resolver(prefix, contains);
+
+        Assert.Equal(FilenameProgramVerdict.Unjudged, resolver.JudgeFilenameProgram("TBSラジオ", Folder, Substitute).Verdict);
+        Assert.Equal(FilenameProgramVerdict.Unjudged, resolver.JudgeFilenameProgram(Lf, "別のフォルダ", Substitute).Verdict);
+    }
+
+    [Theory]
+    [InlineData(FilenameProgramMatchMode.Prefix, "")]
+    [InlineData(FilenameProgramMatchMode.Contains, "　 ")]
+    public void 照合キーが空の前方一致と部分一致は設定の誤り(FilenameProgramMatchMode mode, string name)
+    {
+        // 空の照合キーはフォルダのすべての回に当たってしまう。
+        var ex = Assert.Throws<ProgramsConfigException>(() => Resolver(Decision(FilenameProgramTreatment.Skip, name: name, mode: mode)));
+
+        Assert.Contains(mode.ToString(), ex.Message);
+        Assert.Contains(Folder, ex.Message);
+    }
+
+    [Fact]
+    public void 解釈できない照合の種類は設定の誤り()
+    {
+        var ex = Assert.Throws<ProgramsConfigException>(
+            () => Resolver(Decision(FilenameProgramTreatment.Skip, mode: (FilenameProgramMatchMode)99)));
+
+        Assert.Contains("Mode", ex.Message);
     }
 
     [Fact]
@@ -203,6 +334,57 @@ public sealed class SubstituteBroadcastTests : IDisposable
         Assert.Contains("\"Treat\": \"Skip\"", written);
         Assert.DoesNotContain("\"Album\"", written); // null は書かない
         Assert.Equal(FilenameProgramTreatment.Skip, ProgramsFileWriter.Read(path).Config.FilenamePrograms.Single().Treat);
+    }
+
+    [Fact]
+    public void 照合の種類を名前で読み_省略したら完全一致()
+    {
+        var config = ConfigLoader.Parse<ProgramMasterConfig>("""
+            { "FilenamePrograms": [
+                { "Match": { "Station": "a", "Folder": "b", "FilenameProgram": "c" }, "Treat": "Skip" },
+                { "Match": { "Station": "a", "Folder": "b", "FilenameProgram": "d", "Mode": "Prefix" }, "Treat": "Skip" },
+                { "Match": { "Station": "a", "Folder": "b", "FilenameProgram": "e", "Mode": "Contains" }, "Treat": "Skip" } ] }
+            """);
+
+        Assert.Equal(
+            [FilenameProgramMatchMode.Exact, FilenameProgramMatchMode.Prefix, FilenameProgramMatchMode.Contains],
+            config.FilenamePrograms.Select(d => d.Match.Mode));
+    }
+
+    [Fact]
+    public void 解釈できない照合の種類は読めない()
+    {
+        Assert.ThrowsAny<JsonException>(() => ConfigLoader.Parse<ProgramMasterConfig>("""
+            { "FilenamePrograms": [ { "Match": { "Station": "a", "Folder": "b", "FilenameProgram": "c", "Mode": "Regex" }, "Treat": "Skip" } ] }
+            """));
+    }
+
+    [Fact]
+    public void 書き手は完全一致の照合の種類を書かず_ほかは名前で書く()
+    {
+        // 完全一致だけなら、Mode を知らない古い版でも読める。
+        var path = Path.Combine(_dir, "programs.json");
+        File.WriteAllText(path, "{}");
+
+        var config = new ProgramMasterConfig
+        {
+            FilenamePrograms =
+            [
+                Decision(FilenameProgramTreatment.Skip),
+                Decision(FilenameProgramTreatment.Skip, name: "辛坊", mode: FilenameProgramMatchMode.Prefix),
+                Decision(FilenameProgramTreatment.Skip, name: "ズーム", mode: FilenameProgramMatchMode.Contains),
+            ],
+        };
+        ProgramsFileWriter.Write(ProgramsFileWriter.Read(path), config, DateTime.Now);
+        var written = File.ReadAllText(path);
+
+        Assert.DoesNotContain("Exact", written);
+        Assert.Contains("\"Mode\": \"Prefix\"", written);
+        Assert.Contains("\"Mode\": \"Contains\"", written);
+        Assert.Equal(2, written.Split("\"Mode\"").Length - 1);
+        Assert.Equal(
+            [FilenameProgramMatchMode.Exact, FilenameProgramMatchMode.Prefix, FilenameProgramMatchMode.Contains],
+            ProgramsFileWriter.Read(path).Config.FilenamePrograms.Select(d => d.Match.Mode));
     }
 
     // ---- 保留のストア(SqliteLedger)----

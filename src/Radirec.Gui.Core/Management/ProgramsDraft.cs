@@ -1,8 +1,10 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Radirec.Core.Configuration;
 using Radirec.Core.Normalization;
+using Radirec.Hosting;
 
 namespace Radirec.Gui.Core.Management;
 
@@ -81,7 +83,7 @@ public sealed class FilenameProgramRow
         Original = original;
         Current = current;
         // 行は作り直して編集する(Current は書き換えない)ので、照合キーは一度だけ作る(ホームが 2 秒ごとに全組で引くため)。
-        Key = ProgramsDraft.DecisionKey(current.Match.Station, current.Match.Folder, current.Match.FilenameProgram);
+        Key = ProgramsDraft.DecisionKey(current.Match.Station, current.Match.Folder, current.Match.Mode, current.Match.FilenameProgram);
     }
 
     /// <summary>読み込んだときの判断。この画面で追加した(要対応から積んだ)行なら null。</summary>
@@ -95,6 +97,14 @@ public sealed class FilenameProgramRow
 
     public string FilenameProgram => Current.Match.FilenameProgram;
 
+    /// <summary>
+    /// 一覧の「ファイル名の番組名」の列に出す文字列(W-230 / W-235。#240)。前方一致・部分一致なら照合の種類を
+    /// <c>野村萬斎のラジオで福袋（前方一致）</c> の形で添え、完全一致には何も添えない。照合・同一性には <see cref="FilenameProgram"/> を使う。
+    /// </summary>
+    public string FilenameProgramText => Current.Match.Mode == FilenameProgramMatchMode.Exact
+        ? FilenameProgram
+        : $"{FilenameProgram}（{ProgramsDraft.MatchModeLabel(Current.Match.Mode)}）";
+
     /// <summary>W-231。</summary>
     public string Treat => ProgramsDraft.TreatLabel(Current.Treat);
 
@@ -105,14 +115,22 @@ public sealed class FilenameProgramRow
 
     public bool IsChanged => Original is null || !ProgramsDraft.Same(Original, Current);
 
-    /// <summary>判断する組(局・フォルダ・ファイル名の番組名)の照合キー。取り込みと同じ照合(<see cref="TextNormalizer.ToMatchKey"/>)。</summary>
-    public (string Station, string Folder, string FilenameProgram) Key { get; }
+    /// <summary>
+    /// 判断の同一性のキー(局・フォルダ・照合の種類・ファイル名の番組名)。取り込みと同じ照合(<see cref="TextNormalizer.ToMatchKey"/>)。
+    /// </summary>
+    public (string Station, string Folder, FilenameProgramMatchMode Mode, string FilenameProgram) Key { get; }
 }
 
 /// <summary>判断の編集フォームの「扱い」の選択肢 1 つ(W-231)。</summary>
 public sealed record TreatOption(FilenameProgramTreatment Value)
 {
     public string Label => ProgramsDraft.TreatLabel(Value);
+}
+
+/// <summary>判断の編集フォームの「照合」の選択肢 1 つ(W-235。#240)。</summary>
+public sealed record MatchModeOption(FilenameProgramMatchMode Value)
+{
+    public string Label => ProgramsDraft.MatchModeLabel(Value);
 }
 
 /// <summary>番組ページの編集中の設定を比べる・写す・見せるための部品(純粋)。</summary>
@@ -126,6 +144,8 @@ public static class ProgramsDraft
         WriteIndented = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // 日本語をそのまま見せる(programs.json の書き出しと同じ)
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // 完全一致の照合の種類(#240)は書かない(programs.json の書き出しと同じ形で見せる)。
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { ProgramsFileWriter.OmitDefaults } },
     };
 
     public static bool Same(ProgramAlias a, ProgramAlias b)
@@ -157,6 +177,7 @@ public static class ProgramsDraft
         => a.Match.Station == b.Match.Station
            && a.Match.Folder == b.Match.Folder
            && a.Match.FilenameProgram == b.Match.FilenameProgram
+           && a.Match.Mode == b.Match.Mode
            && a.Treat == b.Treat
            && a.Album == b.Album
            && a.Note == b.Note;
@@ -168,6 +189,7 @@ public static class ProgramsDraft
             Station = entry.Match.Station,
             Folder = entry.Match.Folder,
             FilenameProgram = entry.Match.FilenameProgram,
+            Mode = entry.Match.Mode,
         },
         Treat = entry.Treat,
         Album = entry.Album,
@@ -183,9 +205,22 @@ public static class ProgramsDraft
         _ => treat.ToString(),
     };
 
-    /// <summary>判断する組の照合キー(取り込みの判定と同じ <see cref="TextNormalizer.ToMatchKey"/>)。</summary>
-    public static (string Station, string Folder, string FilenameProgram) DecisionKey(string station, string folder, string filenameProgram)
-        => (TextNormalizer.ToMatchKey(station), TextNormalizer.ToMatchKey(folder), TextNormalizer.ToMatchKey(filenameProgram));
+    /// <summary>W-235。照合の種類の呼び名。</summary>
+    public static string MatchModeLabel(FilenameProgramMatchMode mode) => mode switch
+    {
+        FilenameProgramMatchMode.Exact => "完全一致",
+        FilenameProgramMatchMode.Prefix => "前方一致",
+        FilenameProgramMatchMode.Contains => "部分一致",
+        _ => mode.ToString(),
+    };
+
+    /// <summary>
+    /// 判断の同一性のキー(照合の種類と、取り込みの判定と同じ <see cref="TextNormalizer.ToMatchKey"/> の照合キー)。
+    /// 照合の種類が違えば、同じ文字列でも別の判断(#240)。
+    /// </summary>
+    public static (string Station, string Folder, FilenameProgramMatchMode Mode, string FilenameProgram) DecisionKey(
+        string station, string folder, FilenameProgramMatchMode mode, string filenameProgram)
+        => (TextNormalizer.ToMatchKey(station), TextNormalizer.ToMatchKey(folder), mode, TextNormalizer.ToMatchKey(filenameProgram));
 
     /// <summary>フォルダの欄(1 行に 1 フォルダ。W-222)を読む。前後の空白を落とし、空の行は捨てる。</summary>
     public static List<string> ParseFolders(string? text)
