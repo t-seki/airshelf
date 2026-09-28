@@ -17,7 +17,7 @@ public sealed class ProgramMasterConfig
 
     /// <summary>
     /// ファイル名の番組名の判断(CONTEXT.md「差し替え放送」。ADR-0021)。(局, フォルダ) の中で、ファイル名の番組名を完全一致・
-    /// 前方一致・部分一致(#240)で照合して当てる、利用者が決めた扱い。ファイル名の番組名がフォルダ名を含まない回は、ここに当たる
+    /// 前方一致・部分一致(#240)で照合して当てる、利用者が決めた扱い。ファイル名の番組名がフォルダ名も番組のアルバム名(#241)も含まない回は、ここに当たる
     /// 判断が無ければ取り込まずに保留する。空なら programs.json に書かない。
     /// </summary>
     public List<FilenameProgramDecision> FilenamePrograms { get; set; } = [];
