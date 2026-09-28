@@ -144,16 +144,17 @@
                               GridLinesVisibility="Horizontal" MinHeight="80"
                               MouseDoubleClick="OnProgramGridDoubleClick">
                         <!-- RowStyle は置かない(Fluent の行のスタイルを上書きするため。#171)。太字はセル(Cell / Wrapped)で出す -->
+                        <!-- 放送局・種類は固定、ほかは比率(既定幅〈表 約 840〉でメモに約 160。広げると比率の列が広がる。#240) -->
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="100"
+                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="80"
                                                 ElementStyle="{StaticResource Cell}" />
-                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folders}" Width="250"
+                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folders}" Width="3*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="230"
+                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="3*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
                             <DataGridTextColumn Header="種類" Binding="{Binding Kind}" Width="100"
                                                 ElementStyle="{StaticResource Cell}" />
-                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="*"
+                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="2*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -210,19 +211,20 @@
                               HeadersVisibility="Column" SelectionMode="Single"
                               GridLinesVisibility="Horizontal" MinHeight="80"
                               MouseDoubleClick="OnDecisionGridDoubleClick">
+                        <!-- 放送局・扱いは固定、ほかは比率(既定幅〈表 約 840〉でメモに約 120。広げると比率の列が広がる。#240) -->
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="100"
+                            <DataGridTextColumn Header="放送局" Binding="{Binding Station}" Width="80"
                                                 ElementStyle="{StaticResource Cell}" />
-                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folder}" Width="190"
+                            <DataGridTextColumn Header="フォルダ" Binding="{Binding Folder}" Width="2*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
                             <!-- 前方一致・部分一致なら照合の種類を添える(W-235。#240) -->
-                            <DataGridTextColumn Header="ファイル名の番組名" Binding="{Binding FilenameProgramText}" Width="230"
+                            <DataGridTextColumn Header="ファイル名の番組名" Binding="{Binding FilenameProgramText}" Width="3*" MinWidth="130"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <DataGridTextColumn Header="扱い" Binding="{Binding Treat}" Width="100"
+                            <DataGridTextColumn Header="扱い" Binding="{Binding Treat}" Width="80"
                                                 ElementStyle="{StaticResource Cell}" />
-                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="170"
+                            <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="2*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="*"
+                            <DataGridTextColumn Header="メモ" Binding="{Binding Note}" Width="1.5*" MinWidth="100"
                                                 ElementStyle="{StaticResource Wrapped}" />
                         </DataGrid.Columns>
                     </DataGrid>
