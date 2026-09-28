@@ -32,7 +32,7 @@ public sealed record ResolvedLedgerEntry(LedgerEntry Entry, RecordingFile Source
     public bool IsSkipDecided => Episode?.FilenameVerdict == FilenameProgramVerdict.Skip;
 
     /// <summary>
-    /// ファイル名の番組名がフォルダ名を含まず、判断も無い回か(差し替え放送の疑い。ADR-0021)。取り込み済みの判断待ちの回として
+    /// ファイル名の番組名がフォルダ名も番組のアルバム名(#241)も含まず、判断も無い回か(差し替え放送の疑い。ADR-0021)。取り込み済みの判断待ちの回として
     /// 要対応に出す。アルバムはフォルダのまま解決する。
     /// </summary>
     public bool IsUnjudged => Episode?.FilenameVerdict == FilenameProgramVerdict.Unjudged;
