@@ -4,7 +4,7 @@
 
 > 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M4-A**(radikool MP3 の
 > 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)/ 取込履歴の表示(`radirec history`。§3・ADR-0020)/ 要対応の表示(`radirec attention`。§3・ADR-0020)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
-> ソース跨ぎのアルバム統合(M4-C)/ 編集 GUI(M5)は未実装です。
+> ソース跨ぎのアルバム統合(M4-C)は未実装です。編集 GUI(M5)は作らないと決めました(#5、2026-09-28)。
 >
 > この §1–§5 は主に **CLI(`radirec.exe`)** の使い方。CLI は、普段の運用と AI エージェント・スクリプトの窓口です
 > ([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。取り込みそのものは常駐トレイが行い、`radirec ingest` も

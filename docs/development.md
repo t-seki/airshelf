@@ -144,7 +144,7 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core / Radire
 - `Radirec.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux CI でビルド/テスト可能)、
   `Cli` は `net10.0-windows`、`Gui` は `net10.0-windows10.0.x`。ワーカーが Windows 専用 API
   (`SystemEvents.PowerModeChanged`)に依存するため、ワーカーは Hosting ではなく Gui に置いてある。
-- 将来の編集 UI(M5)は `Radirec.Gui` へ後載せ(§[roadmap](roadmap.md) 軸C・保留中)。
+- 編集 UI(M5)は作らないと決めた(#5、2026-09-28。§[roadmap](roadmap.md) 軸C)。
 
 ### Radirec.Core の主な型
 
