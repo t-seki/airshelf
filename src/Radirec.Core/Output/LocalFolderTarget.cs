@@ -43,12 +43,21 @@ public sealed class LocalFolderTarget(
 
         // 1) 同一ディレクトリへ非破壊コピー(クロスボリューム move を避けアトミック性を担保)
         fileSystem.File.Copy(source.FilePath, partialPath, overwrite: false);
+        try
+        {
+            // 2) コピー先にタグを書く(不完全タグの最終ファイルを残さないためリネーム前に書く)
+            tagWriter.Write(partialPath, tags);
 
-        // 2) コピー先にタグを書く(不完全タグの最終ファイルを残さないためリネーム前に書く)
-        tagWriter.Write(partialPath, tags);
-
-        // 3) 同一ディレクトリ内リネームで確定(アトミック)
-        fileSystem.File.Move(partialPath, finalPath);
+            // 3) 同一ディレクトリ内リネームで確定(アトミック)
+            fileSystem.File.Move(partialPath, finalPath);
+        }
+        catch
+        {
+            // 確定できなかった .partial は残さない。失敗した録音は走査のたびに再試行され、そのたびに作り直すので、
+            // 起動時の掃除だけでは出力先(Jellyfin のライブラリ)に残り続ける(#249)。
+            TryDelete(partialPath);
+            throw;
+        }
 
         await Task.CompletedTask;
         return finalPath;
