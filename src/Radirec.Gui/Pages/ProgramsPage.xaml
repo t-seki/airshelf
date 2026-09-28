@@ -215,11 +215,9 @@
                                                 ElementStyle="{StaticResource Cell}" />
                             <DataGridTextColumn Header="フォルダ" Binding="{Binding Folder}" Width="190"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <DataGridTextColumn Header="ファイル名の番組名" Binding="{Binding FilenameProgram}" Width="230"
+                            <!-- 前方一致・部分一致なら照合の種類を添える(W-235。#240) -->
+                            <DataGridTextColumn Header="ファイル名の番組名" Binding="{Binding FilenameProgramText}" Width="230"
                                                 ElementStyle="{StaticResource Wrapped}" />
-                            <!-- W-235(照合の種類。#240) -->
-                            <DataGridTextColumn Header="照合" Binding="{Binding MatchMode}" Width="80"
-                                                ElementStyle="{StaticResource Cell}" />
                             <DataGridTextColumn Header="扱い" Binding="{Binding Treat}" Width="100"
                                                 ElementStyle="{StaticResource Cell}" />
                             <DataGridTextColumn Header="アルバム名" Binding="{Binding Album}" Width="170"

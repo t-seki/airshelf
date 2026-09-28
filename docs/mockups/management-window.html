@@ -508,16 +508,16 @@
         </div>
       </div>
       <table class="grid">
-        <colgroup><col style="width:100px"><col style="width:190px"><col style="width:230px"><col style="width:80px"><col style="width:100px"><col style="width:170px"><col></colgroup>
-        <tr class="an" data-w="W-230"><th>放送局</th><th>フォルダ</th><th>ファイル名の番組名</th><th>照合</th><th>扱い</th><th>アルバム名</th><th>メモ</th></tr>
-        <tr><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(1)</td><td class="wrap">パンサー向井の#ふらっと (1)</td><td class="an" data-w="W-235">完全一致</td><td class="an" data-w="W-231">この番組の回</td><td></td><td></td></tr>
-        <tr><td>文化放送</td><td class="wrap">日向坂46の「ひ」</td><td class="wrap">文化放送スポーツスペシャル プロ野球日本シリーズ2024 第2戦 横浜DeNAベイスターズ 対 福岡ソフトバンクホークス 実況中継</td><td class="an" data-w="W-235">完全一致</td><td class="an" data-w="W-231">取り込まない</td><td></td><td class="wrap">実況中継</td></tr>
-        <tr><td>TOKYO FM</td><td class="wrap">ベルクpresents日向坂46の余計な事までやりましょう</td><td class="wrap">土屋圭市のくるまの話</td><td class="an" data-w="W-235">前方一致</td><td class="an" data-w="W-231">別の番組</td><td class="wrap">土屋圭市のくるまの話</td><td class="wrap">番組の終了後も予約が残っていた</td></tr>
-        <tr class="changed" data-if="prog:dirty"><td>ニッポン放送</td><td class="wrap">パンサー向井のチャリで30分</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td class="an" data-w="W-235">完全一致</td><td class="an" data-w="W-231">別の番組</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td>(要対応から積んだ・未保存)</td></tr>
-        <tr class="changed" data-if="prog:dirty"><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(2)</td><td class="wrap">パンサー向井の#ふらっと (2)</td><td class="an" data-w="W-235">完全一致</td><td class="an" data-w="W-231">この番組の回</td><td></td><td>(要対応から積んだ・未保存)</td></tr>
+        <colgroup><col style="width:100px"><col style="width:190px"><col style="width:230px"><col style="width:100px"><col style="width:170px"><col></colgroup>
+        <tr class="an" data-w="W-230"><th>放送局</th><th>フォルダ</th><th>ファイル名の番組名</th><th>扱い</th><th>アルバム名</th><th>メモ</th></tr>
+        <tr><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(1)</td><td class="wrap">パンサー向井の#ふらっと (1)</td><td class="an" data-w="W-231">この番組の回</td><td></td><td></td></tr>
+        <tr><td>文化放送</td><td class="wrap">日向坂46の「ひ」</td><td class="wrap">文化放送スポーツスペシャル プロ野球日本シリーズ2024 第2戦 横浜DeNAベイスターズ 対 福岡ソフトバンクホークス 実況中継</td><td class="an" data-w="W-231">取り込まない</td><td></td><td class="wrap">実況中継</td></tr>
+        <tr><td>TOKYO FM</td><td class="wrap">ベルクpresents日向坂46の余計な事までやりましょう</td><td class="wrap">土屋圭市のくるまの話<span class="an" data-w="W-235">（前方一致）</span></td><td class="an" data-w="W-231">別の番組</td><td class="wrap">土屋圭市のくるまの話</td><td class="wrap">番組の終了後も予約が残っていた</td></tr>
+        <tr class="changed" data-if="prog:dirty"><td>ニッポン放送</td><td class="wrap">パンサー向井のチャリで30分</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td class="an" data-w="W-231">別の番組</td><td class="wrap">辛坊治郎 ズーム そこまで言うか！</td><td>(要対応から積んだ・未保存)</td></tr>
+        <tr class="changed" data-if="prog:dirty"><td>TBSラジオ</td><td class="wrap">パンサー向井のふらっと(2)</td><td class="wrap">パンサー向井の#ふらっと (2)</td><td class="an" data-w="W-231">この番組の回</td><td></td><td>(要対応から積んだ・未保存)</td></tr>
       </table>
       <div class="mocknote">ADR-0021・#235。ホームの要対応の「この番組の回」「取り込まない」「別の番組…」(W-159)で積んだ判断は、ここに保存していない行(太字)として出る。
-        「アルバム名」は「別の番組」の行だけ。「照合」(W-235。#240)は完全一致・前方一致・部分一致で、要対応から積んだ行は完全一致。保存すると programs.json の <code>FilenamePrograms</code> に書き、設定リロードの後の走査で、保留していた回が判断どおりに取り込まれる。
+        「アルバム名」は「別の番組」の行だけ。「ファイル名の番組名」には、前方一致・部分一致の判断だけ照合の種類を添える(W-235。#240。完全一致には添えない。要対応から積んだ行は完全一致)。保存すると programs.json の <code>FilenamePrograms</code> に書き、設定リロードの後の走査で、保留していた回が判断どおりに取り込まれる。
         取り込み済みの回は「保存して適用」の再適用で揃う(「別の番組」は判断のアルバムへ移り、「取り込まない」は出力先から消える。取込元は残る)。</div>
 
       <div class="row" style="justify-content: flex-end; margin-top: 14px;">

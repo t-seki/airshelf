@@ -97,8 +97,13 @@ public sealed class FilenameProgramRow
 
     public string FilenameProgram => Current.Match.FilenameProgram;
 
-    /// <summary>W-235。照合の種類(#240)。</summary>
-    public string MatchMode => ProgramsDraft.MatchModeLabel(Current.Match.Mode);
+    /// <summary>
+    /// 一覧の「ファイル名の番組名」の列に出す文字列(W-230 / W-235。#240)。前方一致・部分一致なら照合の種類を
+    /// <c>野村萬斎のラジオで福袋（前方一致）</c> の形で添え、完全一致には何も添えない。照合・同一性には <see cref="FilenameProgram"/> を使う。
+    /// </summary>
+    public string FilenameProgramText => Current.Match.Mode == FilenameProgramMatchMode.Exact
+        ? FilenameProgram
+        : $"{FilenameProgram}（{ProgramsDraft.MatchModeLabel(Current.Match.Mode)}）";
 
     /// <summary>W-231。</summary>
     public string Treat => ProgramsDraft.TreatLabel(Current.Treat);

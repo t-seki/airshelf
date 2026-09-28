@@ -393,12 +393,16 @@ public sealed class SubstituteDecisionUiTests : IDisposable
         """;
 
     [Fact]
-    public async Task Lists_the_match_mode_of_each_decision_W235()
+    public async Task Lists_the_match_mode_beside_the_filename_program_W235()
     {
         var vm = await Page(WithModes);
 
-        // 完全一致と前方一致に同じ文字列を書いても、別の判断として並ぶ。
-        Assert.Equal(["完全一致", "前方一致", "部分一致"], vm.FilenamePrograms.Select(r => r.MatchMode));
+        // 完全一致と前方一致に同じ文字列を書いても、別の判断として並ぶ。前方一致・部分一致だけ全角の括弧で照合の種類を添える。
+        Assert.Equal(
+            ["土屋圭市のくるまの話", "土屋圭市のくるまの話（前方一致）", "川島明のねごと（部分一致）"],
+            vm.FilenamePrograms.Select(r => r.FilenameProgramText));
+        // 照合・同一性に使う値には添えない。
+        Assert.Equal(["土屋圭市のくるまの話", "土屋圭市のくるまの話", "川島明のねごと"], vm.FilenamePrograms.Select(r => r.FilenameProgram));
         Assert.All(vm.FilenamePrograms, r => Assert.False(r.IsChanged));
     }
 
@@ -418,7 +422,7 @@ public sealed class SubstituteDecisionUiTests : IDisposable
 
         var row = Assert.Single(vm.FilenamePrograms);
         Assert.Equal(FilenameProgramMatchMode.Prefix, row.Current.Match.Mode);
-        Assert.Equal("前方一致", row.MatchMode);
+        Assert.Equal("辛坊治郎（前方一致）", row.FilenameProgramText);
         await vm.ConfirmCommand.ExecuteAsync(null);
         Assert.Contains("\"Mode\": \"Prefix\"", vm.DiffAfter); // W-241 も書き出す形で見せる
         await vm.SaveOnlyCommand.ExecuteAsync(null);
