@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>t-seki/renovate-config"],
+  "pin": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "GitHub Actions は自動マージ対象外。release.yml は self-hosted runner + contents:write で動き、タグ push でしかトリガーされないため PR の CI では検証されない。SHA pin の妥当性は人が確認する(README/dependabot.yml時代の運用を踏襲)。",
+      "matchManagers": ["github-actions"],
+      "automerge": false,
+      "pinDigests": true
+    }
+  ]
+}
