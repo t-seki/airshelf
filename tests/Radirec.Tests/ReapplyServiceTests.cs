@@ -305,6 +305,63 @@ public sealed class ReapplyServiceTests : IDisposable
     private const string RemovedPlaceReason = "この再適用で出力先から消す回と同じ場所です。次の再適用で動きます";
 
     [Fact]
+    public async Task 消す回より先に処理される回も_消す回の場所へ台帳だけ直さず_確認と実行で同じく対象外にする()
+    {
+        // #243:回 B は台帳の番組名が A より前に並ぶので、A より先に処理される。B は自分の出力ファイルを失っていて、今の設定での
+        // 行き先が、まだ消えていない A の出力先と同じ(放送時刻が違うのでキーは別。ファイル名に時刻は入らない)。A の場所を
+        // 処理の前に覚えないと、B は A のファイルを自分のものとみなして「台帳だけ直す」になり、その後 A がそのファイルを消すので、
+        // B の台帳は存在しないファイルを指したまま、次の再適用でも記録どおりとして素通りされる。
+        const string earlierFolder = "アの番組"; // 「パンサー向井の…」より前に並ぶ
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var bSource = Path.Combine(RadioRoot, Station, earlierFolder, $"[{Station}]{earlierFolder}(TimeFree)_{Dec23At1000}.m4a");
+        CopyWithDifferentAudio(bSource); // 内容の指紋で同じ回と見なされないよう、中身を変える(ADR-0014)
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        Assert.Equal(2, ledger.ListAll().Count);
+        var aPath = OutputOf(Folder1, "2024-12-23");
+        var bPath = OutputOf(earlierFolder, "2024-12-23");
+        Assert.True(File.Exists(aPath));
+        File.Delete(bPath); // B は出力ファイルを失っている
+
+        var settings = Decided(FilenameProgramTreatment.Skip);
+        settings.Programs =
+        [
+            new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Station, Folders = [earlierFolder] },
+                Canonical = new ProgramCanonical { Album = Folder1 },
+            },
+        ];
+
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+
+        foreach (var report in new[] { plan, applied })
+        {
+            Assert.Equal(earlierFolder, report.Items[0].FromAlbum); // B が先に処理される
+            Assert.Equal(ReapplyAction.Remove, report.Items.Single(i => i.FromAlbum == Folder1).Action);
+            var b = report.Items.Single(i => i.FromAlbum == earlierFolder);
+            Assert.Equal(ReapplyAction.Excluded, b.Action);
+            Assert.Equal(aPath, b.ToPath);
+            Assert.Equal(RemovedPlaceReason, b.Reason);
+        }
+        Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(applied));
+        Assert.True(plan.HasSamePlanAs(applied));
+        Assert.False(File.Exists(aPath));
+
+        // B の台帳は元の場所(失われたファイル)のまま。A の場所を指していない。
+        var bEntry = Assert.Single(ledger.ListAll());
+        Assert.Equal(earlierFolder, bEntry.Program);
+        Assert.Equal(bPath, bEntry.OutputPath);
+
+        // 次の再適用でも素通りされず、ファイルが無い回として見える。
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: true);
+        var nextB = Assert.Single(next.Items);
+        Assert.Equal(ReapplyAction.Excluded, nextB.Action);
+        Assert.Equal("出力ファイルが見つかりません", nextB.Reason);
+    }
+
+    [Fact]
     public async Task 消す回と台帳のキーが同じ回は_確認と実行で同じく対象外にし_次の再適用で動かす()
     {
         // 回 B の台帳のキー(同一性キー・放送時刻・パート)が、消す回 A と同じ。場所は重ならない(A は別の名前に置かれている。

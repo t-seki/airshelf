@@ -59,15 +59,29 @@ public sealed class ReapplyService(
             .ThenBy(e => e.BroadcastDate)
             .ThenBy(e => e.BroadcastTime)
             .ThenBy(e => e.PartIndex)
-            .ThenBy(e => e.SourcePath, StringComparer.Ordinal);
+            .ThenBy(e => e.SourcePath, StringComparer.Ordinal)
+            // らじれこの回だけ。radikool は番組名がファイル名由来で、凍結したアーカイブなので対象外(ADR-0016)。
+            .SelectMany(e => _episodes.Resolve(e) is { } resolved
+                ? [(Entry: e, Resolved: resolved)]
+                : Array.Empty<(LedgerEntry Entry, ResolvedLedgerEntry Resolved)>())
+            .ToList();
 
-        foreach (var entry in entries)
+        // 消す回の場所と台帳のキーは、どの回を処理するより前にまとめて覚える。実行は 1 回ずつその場で消すので、覚えないと、
+        // 同じ場所・同じキーを目指す回が確認と実行で予定と違うことをする(消す回より後の回は #213)。消す回より先に処理される回
+        // では、まだ消えていない消す回のファイルを自分のものとみなして台帳だけを向け直し、その後そのファイルが消えて、台帳が
+        // 存在しないファイルを指したまま残る(#243)。覚えればどちらも専用の理由の対象外に揃う。
+        foreach (var (entry, resolved) in entries)
+        {
+            if (resolved.Episode is not null && resolved.IsSkipDecided)
+            {
+                claims.RemovedPaths.Add(entry.OutputPath);
+                claims.RemovedKeys.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
+            }
+        }
+
+        foreach (var (entry, resolved) in entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            // らじれこの回だけ。radikool は番組名がファイル名由来で、凍結したアーカイブなので対象外(ADR-0016)。
-            if (_episodes.Resolve(entry) is not { } resolved)
-                continue;
 
             if (resolved.Episode is not { } episode)
             {
@@ -84,11 +98,7 @@ public sealed class ReapplyService(
             // 放送局の変更を再適用しない理由が当てはまらない。要対応の「出力先から消す予定」と同じ回を扱う)。
             if (resolved.IsSkipDecided)
             {
-                // 消す回の場所と台帳のキーを覚える。実行は 1 回ずつその場で消すので、覚えないと、後に処理する回が同じ場所・
-                // 同じキーを目指したとき、確認では「移動先にある・台帳にある」で対象外や重複、実行では消えた後なので移動、と
-                // 予定と違うことをしてしまう(#213)。覚えればどちらも専用の理由の対象外に揃い、次の再適用で動く。
-                claims.RemovedPaths.Add(entry.OutputPath);
-                claims.RemovedKeys.Add((entry.IdentityKey, entry.BroadcastTime, entry.PartIndex));
+                // 場所と台帳のキーは、ループの前に覚えてある。
                 var removal = PlanRemoval(entry);
                 if (!dryRun)
                     removal = ApplyRemoval(removal, entry, vacatedDirectories);
