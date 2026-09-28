@@ -231,6 +231,9 @@ public sealed class ReapplyService(
 
     private const string RemovedPlaceReason = "この再適用で出力先から消す回と同じ場所です。次の再適用で動きます";
 
+    private const string RemovedPlaceWithoutFileReason =
+        "この再適用で出力先から消す回と同じ場所です。この回の出力ファイルが見つからないため、次の再適用でも動きません";
+
     // この再適用の中で使われた場所と台帳の主キー。移動などで行き先になったもの(Paths / Keys)と、消す回のもの
     // (RemovedPaths / RemovedKeys)を分けて覚え、対象外の理由を言い分ける。
     private sealed class Claims
@@ -261,10 +264,20 @@ public sealed class ReapplyService(
         var newKey = (updated.IdentityKey, updated.BroadcastTime, updated.PartIndex);
         var sameKey = newKey == (entry.IdentityKey, entry.BroadcastTime, entry.PartIndex);
 
-        // この再適用で消す回の場所・主キーと重なる。確認の時点ではまだ台帳とファイルがあり、実行では消えた後なので、
-        // ほかの判定より先に見て、確認と実行のどちらでも対象外にする(#213)。消えた後の次の再適用で動く。
+        // この再適用で消す回の場所・主キーと重なる。消す回は処理した時点でその場で消えるので、ほかの判定に任せると、
+        // この回が消す回より後なら、確認(まだ台帳とファイルがある)と実行(消えた後)で判定が食い違う(#213)。この回が
+        // 消す回より先なら、まだ消えていない消す回のファイルや記録を自分のものとみなして台帳を向け直し、その後それが消えて、
+        // 台帳が存在しないファイルを指したまま残る(#243)。消す回の場所・主キーは処理の前にすべて覚えてあるので、
+        // ほかの判定より先に見て、どちらでも確認と実行で同じく対象外にする。
+        // 次の再適用での扱いは、この回が自分の出力ファイルを持っているかで変わる:持っていれば、消す回が消えた後なので動く。
+        // 失っていれば、行き先にも(消す回が消えた後なので)無く、「出力ファイルが見つかりません」の対象外になる。
+        // 自分の出力先が消す回の場所なら、この再適用でそのファイルは消えるので、失っている方に数える(確認と実行で揃える)。
         if ((!sameKey && claims.RemovedKeys.Contains(newKey)) || claims.RemovedPaths.Contains(newPath))
-            return Item(entry, ReapplyAction.Excluded, episode.Program, newPath, RemovedPlaceReason);
+        {
+            var keepsOwnFile = !claims.RemovedPaths.Contains(entry.OutputPath) && fileSystem.File.Exists(entry.OutputPath);
+            return Item(entry, ReapplyAction.Excluded, episode.Program, newPath,
+                keepsOwnFile ? RemovedPlaceReason : RemovedPlaceWithoutFileReason);
+        }
 
         // 新しい主キーが既に別の回で使われている(同じ放送が別のフォルダからも取り込まれている等)。
         // 台帳を書き換えると記録が 1 つ消えるので動かさない。主キーが変わらない回(正規名の空白だけの変更等)は自分自身なので除く。

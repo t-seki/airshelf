@@ -304,6 +304,9 @@ public sealed class ReapplyServiceTests : IDisposable
 
     private const string RemovedPlaceReason = "この再適用で出力先から消す回と同じ場所です。次の再適用で動きます";
 
+    private const string RemovedPlaceWithoutFileReason =
+        "この再適用で出力先から消す回と同じ場所です。この回の出力ファイルが見つからないため、次の再適用でも動きません";
+
     [Fact]
     public async Task 消す回より先に処理される回も_消す回の場所へ台帳だけ直さず_確認と実行で同じく対象外にする()
     {
@@ -343,7 +346,7 @@ public sealed class ReapplyServiceTests : IDisposable
             var b = report.Items.Single(i => i.FromAlbum == earlierFolder);
             Assert.Equal(ReapplyAction.Excluded, b.Action);
             Assert.Equal(aPath, b.ToPath);
-            Assert.Equal(RemovedPlaceReason, b.Reason);
+            Assert.Equal(RemovedPlaceWithoutFileReason, b.Reason); // 次の再適用でも動かない(「次の再適用で動きます」は偽になる)
         }
         Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(applied));
         Assert.True(plan.HasSamePlanAs(applied));
@@ -359,6 +362,64 @@ public sealed class ReapplyServiceTests : IDisposable
         var nextB = Assert.Single(next.Items);
         Assert.Equal(ReapplyAction.Excluded, nextB.Action);
         Assert.Equal("出力ファイルが見つかりません", nextB.Reason);
+    }
+
+    [Fact]
+    public async Task 消す回より先に処理される回が_消す回と台帳のキーだけ同じときも_確認と実行で同じく対象外にし_次の再適用で動かす()
+    {
+        // #243 のキーの側:回 B は A より先に処理され、今の設定での台帳のキー(同一性キー・放送時刻・パート)が、消す回 A と同じ。
+        // 場所は重ならない(A は別の名前に置かれている)。消す回のキーを処理の前に覚えないと、B は「台帳に同じ放送回の記録が
+        // 既にあります」の対象外になり、消す回と重なることが分からない。
+        const string earlierFolder = "アの番組"; // 「パンサー向井の…」より前に並ぶ
+        PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
+        var bSource = Path.Combine(RadioRoot, Station, earlierFolder, $"[{Station}]{earlierFolder}(TimeFree)_{Dec23At0830}.m4a");
+        CopyWithDifferentAudio(bSource); // 内容の指紋で同じ回と見なされないよう、中身を変える(ADR-0014)
+        var ledger = Ledger();
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        Assert.Equal(2, ledger.ListAll().Count);
+        var aPath = OutputOf(Folder1, "2024-12-23");
+        var bPath = OutputOf(earlierFolder, "2024-12-23");
+
+        // A を別の名前へ置き直し、台帳もそちらへ向ける(B の移動先 = aPath とは重ならない)。
+        var aEntry = ledger.ListAll().Single(e => e.Program == Folder1);
+        var aRenamed = Path.Combine(Path.GetDirectoryName(aPath)!, $"{Folder1} 2024-12-23 0830.m4a");
+        File.Move(aPath, aRenamed);
+        Assert.True(ledger.Replace(aEntry, aEntry with { OutputPath = aRenamed }));
+
+        var settings = Decided(FilenameProgramTreatment.Skip);
+        settings.Programs =
+        [
+            new ProgramAlias
+            {
+                Match = new ProgramMatch { Station = Station, Folders = [earlierFolder] },
+                Canonical = new ProgramCanonical { Album = Folder1 },
+            },
+        ];
+
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+
+        foreach (var report in new[] { plan, applied })
+        {
+            Assert.Equal(earlierFolder, report.Items[0].FromAlbum); // B が先に処理される
+            Assert.Equal(ReapplyAction.Remove, report.Items.Single(i => i.FromAlbum == Folder1).Action);
+            var b = report.Items.Single(i => i.FromAlbum == earlierFolder);
+            Assert.Equal(ReapplyAction.Excluded, b.Action);
+            Assert.Equal(RemovedPlaceReason, b.Reason); // B は自分の出力ファイルを持っているので、次の再適用で動く
+            Assert.Equal(aPath, b.ToPath); // 移動先は A の今の場所(aRenamed)とは違う
+        }
+        Assert.Equal(ReapplyPlanId.Of(plan), ReapplyPlanId.Of(applied));
+        Assert.True(plan.HasSamePlanAs(applied));
+        Assert.False(File.Exists(aRenamed));
+        Assert.True(File.Exists(bPath)); // B はまだ動いていない
+
+        // 次の再適用で B が動き、A のキーで台帳に記録される。
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
+        Assert.True(File.Exists(aPath));
+        var moved = Assert.Single(ledger.ListAll());
+        Assert.Equal(Folder1, moved.Program);
+        Assert.Equal(new TimeOnly(8, 30), moved.BroadcastTime);
     }
 
     [Fact]
