@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
+using CommunityToolkit.WinUI.Notifications;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -61,6 +62,13 @@ internal static class Program
         // 別スレッドの未捕捉例外はプロセスの終了を止められないので、ログに残すだけ。
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             TrayLog.Error($"捕まえていない例外(IsTerminating={e.IsTerminating}): {e.ExceptionObject}");
+
+        // 保留・取込失敗のトーストのクリック(#237)。管理画面のホームを開く。トレイが動いていないときにアクションセンターの
+        // トーストをクリックすると、この exe がトーストの起動(-ToastActivated)として立ち上がり、普段どおりトレイとして常駐して、
+        // 起動の途中にクリックが届く。管理画面の窓口ができるまでは預かる(下の Attach)。受け取りは起動の最初に始める。
+        var openHomeRequests = new PendingOpenRequests();
+        var uiDispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        ListenToastClicks(openHomeRequests);
 
         // 起動シーケンス(自己登録・ホスト構築・トレイ生成)は WinExe でコンソールが無く、失敗すると
         // 無痕跡でトレイが現れないだけになる。ログに残して初回起動失敗を診断可能にする。
@@ -196,6 +204,9 @@ internal static class Program
                 updateChecker is null ? null : updateService, updateChecker);
             managementHost = windowHost;
             trayIcon.DoubleClick += (_, _) => windowHost.Show();
+            // クリックはバックグラウンドのスレッドで届くので、UI スレッドへ回して開く。起動の途中に届いていたら、ここで開く
+            // (メッセージループが回り始めてから)。
+            openHomeRequests.Attach(() => uiDispatcher.BeginInvoke(new Action(windowHost.ShowHome)));
 
             // 制御(rescan/status)を in-process でトレイメニューに載せる(ADR-0012。reload と再適用は管理画面。#152 / #154)。
             // control が null(縮退)なら理由を表示し、設定修正後に復帰できるよう再起動導線を出す。
@@ -237,6 +248,33 @@ internal static class Program
         updateCoordinator?.Dispose();
         StopControlServer(controlServer);
         StopHost(host);
+    }
+
+    // トーストのクリックを受け取る(#237)。管理画面のホームを開く引数(ToastClick)の付いたトーストだけを開く要求にする。
+    // 受け取りを始められなくても(トースト基盤の初期化の失敗)、トレイと取り込みは続ける(クリックしても開かないだけ)。
+    private static void ListenToastClicks(PendingOpenRequests openHomeRequests)
+    {
+        try
+        {
+            ToastNotificationManagerCompat.OnActivated += e =>
+            {
+                try
+                {
+                    var arguments = ToastArguments.Parse(e.Argument);
+                    var action = arguments.TryGetValue(ToastClick.ArgumentKey, out var value) ? value : null;
+                    if (ToastClick.OpensHome(action))
+                        openHomeRequests.Request();
+                }
+                catch (Exception ex)
+                {
+                    TrayLog.Warn($"トーストのクリックを処理できませんでした: {ex}");
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            TrayLog.Warn($"トーストのクリックの受け取りを始められませんでした(クリックしても管理画面は開きません): {ex}");
+        }
     }
 
     // 制御チャネルの受け口を止める(処理中の要求が終わるのを最大 5 秒待つ)。失敗しても終了は続ける。

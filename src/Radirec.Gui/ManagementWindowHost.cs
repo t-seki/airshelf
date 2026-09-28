@@ -31,6 +31,7 @@ internal sealed class ManagementWindowHost
     private readonly IAppUpdater? _updater;
     private readonly UpdateChecker? _updateChecker;
     private ManagementWindow? _window;
+    private ManagementViewModel? _viewModel; // 開いている管理画面の ViewModel(_window と対)
     private bool _closingAfterError;
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
@@ -92,9 +93,13 @@ internal sealed class ManagementWindowHost
             window.Closed += (_, _) =>
             {
                 if (ReferenceEquals(_window, window))
+                {
                     _window = null;
+                    _viewModel = null;
+                }
             };
             _window = window;
+            _viewModel = viewModel;
             // WinForms のループ(Application.Run)の上でモードレスに開く WPF ウィンドウには WM_CHAR が届かず、
             // 半角英数字を入力できない(IME の確定入力だけが入る)。キーボードのメッセージを WPF へ回す(#169)。
             System.Windows.Forms.Integration.ElementHost.EnableModelessKeyboardInterop(window);
@@ -107,11 +112,24 @@ internal sealed class ManagementWindowHost
             TrayLog.Warn($"管理画面を開けませんでした: {ex}");
             var broken = _window;
             _window = null;
+            _viewModel = null;
             TryClose(broken);
             _tray.ShowBalloonTip(4000, "Radirec", "管理画面を開けませんでした(gui.log 参照)", ToolTipIcon.Warning); // W-005
         }
     }
 
+    /// <summary>
+    /// 管理画面を開いてホーム(要対応)を出す(保留・取込失敗のトーストのクリック。#237)。閉じていれば開く(開いた画面はホームから
+    /// 始まり、要対応を計算する)。開いていれば前面に出し(最小化していれば戻す)、ホームへ移る。
+    /// </summary>
+    public void ShowHome()
+    {
+        var open = _viewModel;
+        Show();
+        // 開いたばかりの画面はホームで、要対応も計算を始めている(もう 1 度頼まない)。Show が開いていた画面を閉じた(失敗)ときは何もしない。
+        if (open is not null && ReferenceEquals(open, _viewModel))
+            open.ShowHome();
+    }
     /// <summary>
     /// UI スレッドの未捕捉例外(WinForms の <c>Application.ThreadException</c> / WPF の <c>Dispatcher.UnhandledException</c>)
     /// の受け口。gui.log に書き、管理画面が開いていればそれだけを閉じてバルーンで知らせる。トレイとワーカーは生かす。
@@ -128,6 +146,7 @@ internal sealed class ManagementWindowHost
         try
         {
             _window = null;
+            _viewModel = null;
             TryClose(window);
         }
         finally

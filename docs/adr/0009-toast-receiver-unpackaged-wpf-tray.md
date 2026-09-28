@@ -1,6 +1,22 @@
 # 取込通知の受け手は非パッケージ WPF トレイアプリ + 従来 WinRT トーストにする
 
-Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#19 の受け手 GUI / #5 の tracer slice。#36・#37 でマージ済み)。**ADR-0012 でトレイは「受け手(subscriber)」から「取り込みワーカーを内包する常駐本体」へ**。WPF トレイ + WinRT トースト選定は維持。不在中サマリの機構は変質(EventLog bookmark → 起動時 catch-up スキャン結果の集約)、bookmark / RecordId 単調ガード / catch-up 参加は削除。
+Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#19 の受け手 GUI / #5 の tracer slice。#36・#37 でマージ済み)。**ADR-0012 でトレイは「受け手(subscriber)」から「取り込みワーカーを内包する常駐本体」へ**。WPF トレイ + WinRT トースト選定は維持。不在中サマリの機構は変質(EventLog bookmark → 起動時 catch-up スキャン結果の集約)、bookmark / RecordId 単調ガード / catch-up 参加は削除。**#237(2026-09-28)で保留・取込失敗のトーストはクリックを受け取るようになった — 下の追記を参照**
+
+> **追記(#237、2026-09-28。本文は決定当時の記録なので直さない)**:「表示専用に割り切る」を、保留と取込失敗のトーストについて外した。
+> どちらも管理画面の要対応に載る事柄の知らせで、トーストから判断へすぐ行けると、判断まで(保留なら Jellyfin に回が来るまで)が短くなるため。
+> 新規取込のトーストは今までどおりクリックしても何もしない(深リンクは引き続き見送り。roadmap)。
+>
+> - **起動引数**: 保留・取込失敗のトーストに `action=openHome`(`ToastContentBuilder.AddArgument`)を載せる。どのトーストに
+>   載せるか・受け取った引数の解釈は `Radirec.Gui.Core` の `ToastClick`(テスト可能)。
+> - **受け取り**: `ToastNotificationManagerCompat.OnActivated` を起動の最初に購読する。トレイが動いていればクリックは
+>   このプロセスに届き(COM activator。`ToastNotificationManagerCompat` が非パッケージ Win32 向けに HKCU へ自動で登録する)、
+>   バックグラウンドのスレッドから UI スレッドへ回して管理画面のホームを開く(開いていれば前面へ。同時に 1 つ)。
+> - **トレイが動いていないとき**: アクションセンターのトーストをクリックすると、Windows がこの exe を `-ToastActivated` 付きで
+>   起動する。起動の分岐は作らず、普段どおりトレイとして常駐し(単一インスタンスの Mutex も普段どおり)、起動の途中に届いた
+>   クリックを管理画面の窓口ができるまで預かってから開く(`PendingOpenRequests`)。新規取込のトーストのクリックで起動したときは、
+>   トレイが起動するだけ。
+> - **要実機検証(Windows)**: 開いている・閉じている・最小化している管理画面、トレイ停止中のアクションセンターからのクリック、
+>   新規取込のトーストが反応しないこと、前面に出ること(フォーカスの奪取)。
 
 [ADR-0008](0008-ingest-notification-via-eventlog-signal.md) でサービスは取込要約シグナルを EventLog(EventID 1001)へ発行するようにした。その**受け手**(ユーザーセッションでネイティブトーストを出す常駐アプリ)を、#5(M5 デスクトップ編集アプリ・保留中)の**最初の tracer slice** として実装する。編集グリッド等の本体は保留のまま、まず「1001 を購読しトースト表示するだけ」の最小 GUI を作る。
 
