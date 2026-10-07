@@ -8,7 +8,7 @@ WPF の実物ではない(WSL で WPF を起動できないため、見た目と
 - 「根拠」の列:
   - `ファイル:行` … **このモックを作った時点(`243358e`)のコードにある文言**(トレイ・ダイアログ・トースト)。そのまま使うか、
     場所だけ画面の中に移す。当時の記録なので、後でファイルが消えても書き換えない(例:旧取込履歴ウィンドウの
-    `IngestHistoryWindow.cs` は #151 で退役した。`git show 243358e:src/Radirec.Gui/IngestHistoryWindow.cs` で読める)
+    `IngestHistoryWindow.cs` は #151 で退役した。`git show 243358e:src/Airshelf.Gui/IngestHistoryWindow.cs` で読める)
   - `§10.3` / `ADR-0017` / `ADR-0018` / `CONTEXT.md` / `#5 Q10` … 設計の docs・issue に書かれた語
   - **案** … 根拠が無く、このモックで決めた文言。**人が見て了承するまでは確定ではない**
   - **案** → #N で確定 … 案として決め、issue #N で了承された文言(確定)

@@ -45,8 +45,8 @@
 # (相対パスは radirec.json のあるディレクトリ基準で解決される)。
 
 # まず dry-run(副作用なしで取り込み予定を確認)→ 実行
-dotnet run --project src/Radirec.Cli -- ingest --dry-run
-dotnet run --project src/Radirec.Cli -- ingest   # 常駐トレイに走査を頼み、終わるまで待つ(トレイが動いていなければ終了コード 2)
+dotnet run --project src/Airshelf.Cli -- ingest --dry-run
+dotnet run --project src/Airshelf.Cli -- ingest   # 常駐トレイに走査を頼み、終わるまで待つ(トレイが動いていなければ終了コード 2)
 ```
 
 詳しくは [利用ガイド](docs/usage.md)。

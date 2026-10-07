@@ -65,7 +65,7 @@ radirec ingest --dry-run   # 取り込み予定(台帳を読むだけ。トレ�
 radirec ingest             # 実行(コピー + タグ付与)。常駐トレイに走査を頼み、終わるまで待って結果を出す
 
 # 開発時(SDK から)
-dotnet run --project src/Radirec.Cli -- ingest --dry-run
+dotnet run --project src/Airshelf.Cli -- ingest --dry-run
 ```
 
 **`ingest`(`--dry-run` なし)は CLI が自分では取り込みません**。制御チャネルで常駐トレイに**走査の実行**を頼み、
@@ -842,12 +842,12 @@ radirec reload          # radirec.json などを直した後に(管理画面の�
 SDK から直接動かす場合(`radirec.exe` を publish せずに):
 
 ```powershell
-dotnet run --project src/Radirec.Cli -- ingest --dry-run
+dotnet run --project src/Airshelf.Cli -- ingest --dry-run
 ```
 
 設定は常に `%LOCALAPPDATA%\RadirecData\radirec.json` を使います(§3。別の場所を指すオプションは無い)。
 
-単一 exe を手元で作るには `dotnet publish src/Radirec.Cli -c Release`(win-x64 自己完結)。配布(常駐トレイの
+単一 exe を手元で作るには `dotnet publish src/Airshelf.Cli -c Release`(win-x64 自己完結)。配布(常駐トレイの
 Setup.exe・更新フィード)は CI がタグ push で **`vpk`(Velopack)** により Release へ発行します(§6・ADR-0013)。
 
 ## 8. 旧環境からの移行
