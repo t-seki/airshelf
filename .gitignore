@@ -42,9 +42,9 @@ records/
 *.m4a
 *.mp3
 # ただしテストフィクスチャ(著作権フリーの無音)は追跡する
-!tests/Radirec.Tests/Fixtures/
-!tests/Radirec.Tests/Fixtures/*.m4a
-!tests/Radirec.Tests/Fixtures/*.mp3
+!tests/Airshelf.Tests/Fixtures/
+!tests/Airshelf.Tests/Fixtures/*.m4a
+!tests/Airshelf.Tests/Fixtures/*.mp3
 
 # --- Claude Code(/supervise の worktree) ---
 .claude/worktrees/
