@@ -332,7 +332,7 @@ public sealed class HomeAttentionTests : IDisposable
         var vm = CreateNow(compute: Blocking);
         // 計算が始まるのを待つ。待っている間は呼び出し元のスレッドが塞がるので、計算は別のスレッドで走る
         // (xunit v3 ではテストがプールのスレッドで動き、待たずに await で抜けると同じスレッドで計算が走りうる)。
-        Assert.True(started.Wait(TimeSpan.FromSeconds(5)), "計算が始まらなかった");
+        Assert.True(started.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken), "計算が始まらなかった");
         Assert.Null(vm.Home.AttentionState); // 計算し終えるまでは「要対応はありません」を出さない
         Assert.False(vm.Home.IsAttentionEmpty);
 
