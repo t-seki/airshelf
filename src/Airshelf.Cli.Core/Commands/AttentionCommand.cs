@@ -17,7 +17,7 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
 {
     public const string Name = "attention";
 
-    protected override int Execute(CommandContext context, CliSettings settings, CancellationToken cancellationToken)
+    public override int Execute(CommandContext context, CliSettings settings, CancellationToken cancellationToken)
     {
         var config = CommandSupport.LoadConfig(configSource, console, Name, settings.Json);
         if (config is null)

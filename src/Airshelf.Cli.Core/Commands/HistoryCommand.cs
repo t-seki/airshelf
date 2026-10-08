@@ -30,7 +30,7 @@ public sealed class HistoryCommand(IAnsiConsole console, ICliConfigSource config
         public string? Since { get; init; }
     }
 
-    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         if (settings.Limit < 0)
             return CommandSupport.Fail(console, Name, settings.Json, ExitCodes.UsageOrConfig,
