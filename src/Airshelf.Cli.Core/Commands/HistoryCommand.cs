@@ -65,7 +65,7 @@ public sealed class HistoryCommand(IAnsiConsole console, ICliConfigSource config
 
     /// <summary>
     /// <see cref="TryParseSince(string, out DateTimeOffset)"/> の、時差の無い値を読むタイムゾーンを渡せる形
-    /// (テストで UTC 以外のゾーンを確かめるため。CI のローカルは UTC)。
+    /// (テストを動かす環境のローカルのゾーンに依らず、UTC として読む誤りを見逃さないため)。
     /// </summary>
     public static bool TryParseSince(string value, TimeZoneInfo zone, out DateTimeOffset since)
     {

@@ -71,7 +71,7 @@ public sealed class HistoryCommandTests : IDisposable
         Assert.Equal(["p0", "p1"], HistoryCommand.Select(entries, limit: 2, since: Base.AddMinutes(-25)).Entries.Select(e => e.Program));
     }
 
-    // CI のローカルは UTC なので、UTC として読む誤りでも通ってしまわないよう、UTC 以外のゾーンで確かめる。
+    // テストを動かす環境のローカルのゾーンに依らず、UTC として読む誤りを見逃さないよう、UTC 以外のゾーンで確かめる。
     private static readonly TimeZoneInfo Tokyo =
         TimeZoneInfo.CreateCustomTimeZone("Test+09", TimeSpan.FromHours(9), "Test+09", "Test+09");
 
