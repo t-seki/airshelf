@@ -10,7 +10,7 @@ namespace Airshelf.Core.Attention;
 /// 要対応(CONTEXT.md)の計算に使う番組の設定。
 /// </summary>
 /// <param name="Programs">
-/// <c>programs.json</c> の中身。<c>radirec.json</c> で programs.json を使わない設定(<c>ProgramsFile</c> が空)なら null。
+/// <c>programs.json</c> の中身。<c>airshelf.json</c> で programs.json を使わない設定(<c>ProgramsFile</c> が空)なら null。
 /// </param>
 public sealed record AttentionPrograms(ProgramMasterConfig? Programs)
 {
@@ -54,7 +54,7 @@ public sealed record AttentionItems
 
     /// <summary>
     /// 要対応の件数。兄弟フォルダの組・失敗・食い違いのまとまり・差し替え放送の疑いの組・消す予定のまとまりを 1 件ずつ数えた合計
-    /// (ホームの見出し・<c>radirec attention</c> の件数)。
+    /// (ホームの見出し・<c>airshelf attention</c> の件数)。
     /// </summary>
     public int Count => UnintegratedSiblings.Count + UnresolvedFailures.Count + SettingsDrift.Count
         + SubstituteSuspects.Count + PendingRemovals.Count;

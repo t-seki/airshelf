@@ -10,7 +10,7 @@ namespace Airshelf.Tests;
 public sealed class TagLibAudioContentComparerTests : IDisposable
 {
     private readonly string _work =
-        Path.Combine(Path.GetTempPath(), "radirec-test-" + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "airshelf-test-" + Guid.NewGuid().ToString("N"));
 
     private readonly TagLibAudioContentComparer _sut = new();
 

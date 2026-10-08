@@ -4,24 +4,24 @@
   トレイ常駐(ADR-0012)の E2E スモークテストを、実録音なし・本番資産に触れず行う。
 
 .DESCRIPTION
-  本番 radirec.json を退避し、隔離テスト config(RadioRoot/OutputRoot/LedgerPath を %TEMP% の絶対パスに、
+  本番 airshelf.json を退避し、隔離テスト config(RadioRoot/OutputRoot/LedgerPath を %TEMP% の絶対パスに、
   Jellyfin 空)へ差し替える。管理画面の設定 gui-settings.json(新規取込のトーストの切り替え。#152・ADR-0019)も
   退避し、新規取込のトーストを出す設定で試す(本番に gui-settings.json が無ければ、その旨を記録しておき、
-  -Cleanup で試験が作ったものを消す)。ffmpeg があれば有効な無音 M4A を らじれこ命名で生成し、トレイ(Radirec.Gui)を
+  -Cleanup で試験が作ったものを消す)。ffmpeg があれば有効な無音 M4A を らじれこ命名で生成し、トレイ(Airshelf.Gui)を
   起動して「新規取込 1件」トーストが 1 回出ることを確認する。本番の NAS・Jellyfin・台帳には一切触れない。
   旧 Windows サービスが在れば停止する(同じ config を読む競合防止)。
 
-  検証後は -Cleanup で本番 config(radirec.json・gui-settings.json)を復元し、テスト作業ディレクトリを削除する。
+  検証後は -Cleanup で本番 config(airshelf.json・gui-settings.json)を復元し、テスト作業ディレクトリを削除する。
 
   ※ これは検証用ハーネスであり、通常の配置(Velopack Setup.exe)とは別。データルートは
-     %LOCALAPPDATA%\RadirecData(ADR-0013 / S5。Velopack 導入先 %LOCALAPPDATA%\Radirec とは別)。
+     %LOCALAPPDATA%\AirshelfData(ADR-0013 / S5。Velopack 導入先 %LOCALAPPDATA%\Airshelf とは別)。
 
 .PARAMETER GuiExe
-  トレイ実行体のパス。既定は deploy/ の 1 つ上の Radirec.Gui.exe。Velopack 導入版を試すなら
-  %LOCALAPPDATA%\Radirec\current\Radirec.Gui.exe を -GuiExe で指す。
+  トレイ実行体のパス。既定は deploy/ の 1 つ上の Airshelf.Gui.exe。Velopack 導入版を試すなら
+  %LOCALAPPDATA%\Airshelf\current\Airshelf.Gui.exe を -GuiExe で指す。
 
 .PARAMETER Cleanup
-  テスト config を本番へ復元し(radirec.json・gui-settings.json)、作業ディレクトリを削除する。
+  テスト config を本番へ復元し(airshelf.json・gui-settings.json)、作業ディレクトリを削除する。
 #>
 [CmdletBinding()]
 param(
@@ -38,25 +38,25 @@ $SourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $GuiExe) { $GuiExe = Join-Path $SourceRoot $GuiExeName }
 
 $ServiceName = 'Radirec'
-$dataDir = Join-Path $env:LOCALAPPDATA 'RadirecData'  # ADR-0013 / S5: データは %LOCALAPPDATA%\RadirecData
-$realCfg = Join-Path $dataDir 'radirec.json'
-$bakCfg  = Join-Path $dataDir 'radirec.json.e2e-bak'
+$dataDir = Join-Path $env:LOCALAPPDATA 'AirshelfData'  # ADR-0013 / S5: データは %LOCALAPPDATA%\AirshelfData
+$realCfg = Join-Path $dataDir 'airshelf.json'
+$bakCfg  = Join-Path $dataDir 'airshelf.json.e2e-bak'
 # 管理画面の設定(#152・ADR-0019)。本番に無かったときは「無かった」印を置き、-Cleanup で試験が作ったものを消す。
 $realGui   = Join-Path $dataDir 'gui-settings.json'
 $bakGui    = Join-Path $dataDir 'gui-settings.json.e2e-bak'
 $absentGui = Join-Path $dataDir 'gui-settings.json.e2e-absent'
-$base    = Join-Path $env:TEMP 'radirec-e2e'
+$base    = Join-Path $env:TEMP 'airshelf-e2e'
 $inRoot  = Join-Path $base 'in'
 $outRoot = Join-Path $base 'out'
 $ledger  = Join-Path $base 'ledger.db'
-$guiLog  = Join-Path $env:LOCALAPPDATA 'RadirecData\gui.log'
+$guiLog  = Join-Path $env:LOCALAPPDATA 'AirshelfData\gui.log'
 
 if ($Cleanup) {
     Write-Host '== E2E クリーンアップ ==' -ForegroundColor Cyan
     Stop-Tray
     if (Test-Path $bakCfg) {
         Move-Item -Force $bakCfg $realCfg
-        Write-Host '[OK] 本番 radirec.json を復元しました'
+        Write-Host '[OK] 本番 airshelf.json を復元しました'
     } else {
         Write-Warning "バックアップ($bakCfg)が無いため config は変更しません"
     }
@@ -72,7 +72,7 @@ if ($Cleanup) {
         Write-Warning "gui-settings.json のバックアップ($bakGui)も無かった印も無いため、gui-settings.json は変更しません"
     }
     if (Test-Path $base) { Remove-Item -Recurse -Force $base; Write-Host '[OK] テスト作業ディレクトリを削除' }
-    Write-Host '本番運用に戻すには通常の Velopack 導入トレイを起動してください(%LOCALAPPDATA%\Radirec\current)' -ForegroundColor Yellow
+    Write-Host '本番運用に戻すには通常の Velopack 導入トレイを起動してください(%LOCALAPPDATA%\Airshelf\current)' -ForegroundColor Yellow
     return
 }
 
@@ -89,7 +89,7 @@ if ($svc -and $svc.Status -ne 'Stopped') {
 # 本番 config を退避(初回のみ)。
 if ((Test-Path $realCfg) -and -not (Test-Path $bakCfg)) {
     Copy-Item $realCfg $bakCfg
-    Write-Host "[OK] 本番 radirec.json を退避: $bakCfg"
+    Write-Host "[OK] 本番 airshelf.json を退避: $bakCfg"
 }
 
 # 本番 gui-settings.json を退避(初回のみ)。無ければ「無かった」印を置く(-Cleanup で試験が作ったものを消すため)。
@@ -149,7 +149,7 @@ Stop-Tray
 Start-Process -FilePath $GuiExe
 Write-Host ''
 Write-Host '== 観察ポイント ==' -ForegroundColor Cyan
-Write-Host ' 1) タスクトレイに Radirec アイコンが出る(NAS 未接続でも数十秒待たされない)'
+Write-Host ' 1) タスクトレイに Airshelf アイコンが出る(NAS 未接続でも数十秒待たされない)'
 Write-Host ' 2) トーストが「ちょうど 1 回」出る(成功=新規取込1件 / ffmpeg無=取込失敗1件)'
 Write-Host " 3) gui.log に unhandled 例外が無い: $guiLog"
 Write-Host " 4) 成功時、出力先に整形済みファイル: $outRoot"

@@ -1,7 +1,7 @@
 namespace Airshelf.Cli.Core;
 
 /// <summary>
-/// radirec.exe の終了コード(ADR-0020)。エージェントやスクリプトが、終了コードだけで次にすることを決められるように、
+/// airshelf.exe の終了コード(ADR-0020)。エージェントやスクリプトが、終了コードだけで次にすることを決められるように、
 /// 意味をここ 1 か所で決める。値を変えると呼び出し側のスクリプトが黙って壊れるので、変えない。
 /// </summary>
 public static class ExitCodes

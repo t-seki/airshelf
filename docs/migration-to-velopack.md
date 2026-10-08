@@ -1,5 +1,8 @@
 # 移行 runbook: 旧 admin 配置 → Velopack per-user(一度きり)
 
+> 名前は [ADR-0022](adr/0022-rename-product-to-airshelf.md)(#256)で Airshelf に変わった。本書は改名前の当時の記録で、名前(`Radirec`・`RadirecData`・`radirec.json`)は当時のまま。
+> 本書の手順を終えたら、続けて [Airshelf への移行の手順書](migration-to-airshelf.md) で Airshelf へ移す。
+
 S5(ADR-0013)で配布が **Velopack per-user(Setup.exe・非 admin)** に変わり、データが
 `%ProgramData%\radirec\` → **`%LOCALAPPDATA%\RadirecData\`** へ移る。既存の box を新モデルへ移す**一度きり**の
 手順。**新規ユーザーはこの runbook 不要**(Setup.exe を実行するだけ。`%ProgramData%` に何も無い)。

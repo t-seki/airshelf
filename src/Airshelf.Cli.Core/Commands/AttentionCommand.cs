@@ -103,7 +103,7 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
         if (items.SettingsDrift.Count > 0 || items.PendingRemovals.Count > 0)
         {
             console.WriteLine();
-            console.MarkupLine("[bold]再適用が要る番組[/] [grey](radirec reapply --dry-run で確かめる)[/]");
+            console.MarkupLine("[bold]再適用が要る番組[/] [grey](airshelf reapply --dry-run で確かめる)[/]");
             foreach (var drift in items.SettingsDrift)
             {
                 console.MarkupLineInterpolated($"  {DriftLine(drift)}");
@@ -120,7 +120,7 @@ public sealed class AttentionCommand(IAnsiConsole console, ICliConfigSource conf
             console.MarkupLine(
                 "[bold]差し替え放送の疑い[/] [grey](programs.json の FilenamePrograms に判断を書くと消えます。" +
                 "Match.Mode を Prefix(前方一致)・Contains(部分一致)にすると、スポンサー名やゲスト名の違う組を 1 つの判断で扱えます。" +
-                "保留した回を取り込ませるには radirec reload で常駐に反映します)[/]");
+                "保留した回を取り込ませるには airshelf reload で常駐に反映します)[/]");
             foreach (var suspect in items.SubstituteSuspects)
             {
                 console.MarkupLineInterpolated($"  {SuspectLine(suspect)}");

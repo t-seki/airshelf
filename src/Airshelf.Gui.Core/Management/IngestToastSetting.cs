@@ -28,8 +28,8 @@ public sealed class IngestToastSetting
 
     /// <summary>
     /// 起動時に読む。設定ファイルに値があればそれを使う。無ければ <paramref name="legacyNotificationsEnabled"/>
-    /// (<c>radirec.json</c> の旧設定 <c>NotificationsEnabled</c>)を初期値にして設定ファイルへ書く(以後は設定ファイルの値だけを使う)。
-    /// <c>radirec.json</c> を読めなかった(<paramref name="legacyNotificationsEnabled"/> が null)ときは、書かずに「出す」で始める
+    /// (<c>airshelf.json</c> の旧設定 <c>NotificationsEnabled</c>)を初期値にして設定ファイルへ書く(以後は設定ファイルの値だけを使う)。
+    /// <c>airshelf.json</c> を読めなかった(<paramref name="legacyNotificationsEnabled"/> が null)ときは、書かずに「出す」で始める
     /// (旧設定が分からないうちに値を固めない。次に読めた起動で引き継ぐ)。
     /// </summary>
     /// <param name="logWarn">gui.log への記録(初期値を書けなかったとき)。</param>

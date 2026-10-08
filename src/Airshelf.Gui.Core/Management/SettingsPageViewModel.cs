@@ -28,7 +28,7 @@ public interface ISettingsPageActions
 }
 
 /// <summary>
-/// 設定ページの 1 つの設定ファイルの段(radirec.json / stations.json)。programs.json は中身を出さず、起動の失敗のパネル(W-409)で
+/// 設定ページの 1 つの設定ファイルの段(airshelf.json / stations.json)。programs.json は中身を出さず、起動の失敗のパネル(W-409)で
 /// 開く場所にだけ使う。
 /// </summary>
 public sealed class SettingsFileRow : ObservableObject
@@ -83,11 +83,11 @@ public sealed class SettingsFileRow : ObservableObject
 /// 管理画面の設定ページ(requirements §10.3・#152)。
 /// <list type="bullet">
 ///   <item>新規取込のトーストの切り替え(W-301〜W-303)。値は管理画面用の設定ファイルに持つ(ADR-0019)</item>
-///   <item>radirec.json・stations.json を読み取り専用で見せ、「ファイルを開く」を付ける(W-304〜W-308)。
-///     radirec.json には「再読み込み」(設定リロード。W-309 / W-310)も付ける。stations.json の「再読み込み」は、設定リロードの後に
+///   <item>airshelf.json・stations.json を読み取り専用で見せ、「ファイルを開く」を付ける(W-304〜W-308)。
+///     airshelf.json には「再読み込み」(設定リロード。W-309 / W-310)も付ける。stations.json の「再読み込み」は、設定リロードの後に
 ///     保存済みの設定で再適用を確かめ、揃える回があれば番組ページの確認の画面へ進む(W-311・W-312。#164)</item>
-///   <item>radirec.json を読めない(縮退)ときは、代わりに縮退パネル(W-401〜W-405)</item>
-///   <item>radirec.json は読めたが取り込みを起動できなかった(W-104)ときは、ページの先頭に起動の失敗のパネル(W-406〜W-409。#168)。
+///   <item>airshelf.json を読めない(縮退)ときは、代わりに縮退パネル(W-401〜W-405)</item>
+///   <item>airshelf.json は読めたが取り込みを起動できなかった(W-104)ときは、ページの先頭に起動の失敗のパネル(W-406〜W-409。#168)。
 ///     原因になりうる programs.json・stations.json を開いて直し、「再読み込みして再起動」で戻れるようにする</item>
 /// </list>
 /// 中身はページを開くたびに読み直す(<see cref="RefreshAsync"/>)。ファイルを保存しただけでは取り込みに反映しないので、
@@ -118,7 +118,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     public const string SecretHidden = "(設定済み・表示しません)";
 
     /// <summary>W-307。</summary>
-    public const string FileNotUsed = "radirec.json でこのファイルを使わない設定になっています";
+    public const string FileNotUsed = "airshelf.json でこのファイルを使わない設定になっています";
 
     /// <summary>W-309。</summary>
     public const string ReloadConfirm = "設定を再読み込みします。取り込みは一時停止し、再構築されます。よろしいですか?";
@@ -130,7 +130,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     public const string ProgramsNoteUsed = "programs.json は「番組」ページで編集します";
 
     /// <summary>W-212(設定ページでは W-313 の代わりに出す)。</summary>
-    public const string ProgramsNoteUnused = "radirec.json で programs.json を使わない設定になっています";
+    public const string ProgramsNoteUnused = "airshelf.json で programs.json を使わない設定になっています";
 
     /// <summary>W-316。取り込みが止まっていて、設定リロードを受け付けられないときの「再読み込み」の横。</summary>
     public const string ReloadUnavailable = "取り込みが止まっているため、再読み込みできません";
@@ -154,7 +154,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     public const string StartFailedNote =
         "取り込みは止まっています。原因の設定ファイル(programs.json・stations.json など)を直して保存してから「再読み込みして再起動」を押してください。";
 
-    // 伏せる秘密のキー(radirec.json)。値が空でない文字列のときだけ伏せる(空なら「未設定」と分かるようにそのまま)。
+    // 伏せる秘密のキー(airshelf.json)。値が空でない文字列のときだけ伏せる(空なら「未設定」と分かるようにそのまま)。
     [GeneratedRegex(@"(""(?:JellyfinApiKey|UpdateToken)""\s*:\s*)""((?:[^""\\]|\\.)*)""", RegexOptions.IgnoreCase)]
     private static partial Regex SecretPattern();
 
@@ -172,14 +172,14 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     private bool _stationsChecking; // stations.json の「再読み込み」で確かめている途中
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
-    /// <param name="configPath">radirec.json の絶対パス(読めなかったときも渡す。直すために開く)。</param>
+    /// <param name="configPath">airshelf.json の絶対パス(読めなかったときも渡す。直すために開く)。</param>
     /// <param name="startupConfig">起動時に読めた設定。読めなかった(縮退パネルを出す)なら null。</param>
-    /// <param name="configError">radirec.json を読めなかった理由(W-402)。読めたなら null。</param>
+    /// <param name="configError">airshelf.json を読めなかった理由(W-402)。読めたなら null。</param>
     /// <param name="toastSetting">新規取込のトーストの設定(W-302)。</param>
     /// <param name="actions">シェルに頼むこと(開く・読む・確認・再起動)。</param>
     /// <param name="logWarn">gui.log への記録。</param>
     /// <param name="startError">
-    /// radirec.json は読めたが、取り込みワーカーを起動できなかった(W-104)ときの例外のメッセージ(W-407)。起動できたなら null。
+    /// airshelf.json は読めたが、取り込みワーカーを起動できなかった(W-104)ときの例外のメッセージ(W-407)。起動できたなら null。
     /// </param>
     public SettingsPageViewModel(
         IServiceControl? control,
@@ -201,11 +201,11 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         IsDegraded = startupConfig is null;
         DegradedReason = configError ?? "";
         ConfigPath = configPath ?? "";
-        // 縮退(radirec.json を読めない)なら縮退パネルが代わりに出るので、起動の失敗のパネルは出さない。
+        // 縮退(airshelf.json を読めない)なら縮退パネルが代わりに出るので、起動の失敗のパネルは出さない。
         IsStartFailed = !IsDegraded && startError is not null;
         StartFailedReason = IsStartFailed ? startError! : "";
 
-        Airshelf = new SettingsFileRow(ConfigFile.Airshelf, "radirec.json") { Path = configPath };
+        Airshelf = new SettingsFileRow(ConfigFile.Airshelf, "airshelf.json") { Path = configPath };
         Stations = new SettingsFileRow(ConfigFile.Stations, "stations.json");
         Programs = new SettingsFileRow(ConfigFile.Programs, "programs.json");
 
@@ -221,7 +221,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         UpdateLocations();
     }
 
-    /// <summary>radirec.json を読めていない(縮退パネル W-401〜W-405 を出す)。</summary>
+    /// <summary>airshelf.json を読めていない(縮退パネル W-401〜W-405 を出す)。</summary>
     public bool IsDegraded { get; }
 
     /// <summary>縮退していない(通常の設定ページを出す)。</summary>
@@ -230,10 +230,10 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// <summary>W-402(読み込みの戻り値をそのまま)。</summary>
     public string DegradedReason { get; }
 
-    /// <summary>radirec.json のフルパス(縮退パネルに出す)。</summary>
+    /// <summary>airshelf.json のフルパス(縮退パネルに出す)。</summary>
     public string ConfigPath { get; }
 
-    /// <summary>radirec.json は読めたが、取り込みを起動できなかった(W-104)。ページの先頭に W-406〜W-409 のパネルを出す。</summary>
+    /// <summary>airshelf.json は読めたが、取り込みを起動できなかった(W-104)。ページの先頭に W-406〜W-409 のパネルを出す。</summary>
     public bool IsStartFailed { get; }
 
     /// <summary>W-407(起動に失敗した例外のメッセージをそのまま)。</summary>
@@ -282,7 +282,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// <summary>切り替えの結果(W-314)。何も出さないときは null。</summary>
     public string? ToastMessage { get => _toastMessage; private set => SetProperty(ref _toastMessage, value); }
 
-    /// <summary>radirec.json の「再読み込み」(設定リロード)を押せるか。取り込みが止まっていれば押せない。</summary>
+    /// <summary>airshelf.json の「再読み込み」(設定リロード)を押せるか。取り込みが止まっていれば押せない。</summary>
     public bool CanReload
     {
         get => _canReload;
@@ -359,7 +359,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
     /// <summary>
     /// ページを開いたときに呼ぶ。開く場所(設定リロードの反映に追従する)と「再読み込み」を押せるかを計算し直し、
-    /// radirec.json・stations.json の中身を読み直す。ファイルの読み込みはワーカースレッドで行う(NAS を指していても
+    /// airshelf.json・stations.json の中身を読み直す。ファイルの読み込みはワーカースレッドで行う(NAS を指していても
     /// UI スレッドを塞がない)。
     /// </summary>
     public async Task RefreshAsync()
@@ -372,7 +372,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject
         await LoadContentAsync(Stations, mask: false);
     }
 
-    /// <summary>radirec.json の中身の秘密(<c>JellyfinApiKey</c>・<c>UpdateToken</c>)を W-306 に置き換える。</summary>
+    /// <summary>airshelf.json の中身の秘密(<c>JellyfinApiKey</c>・<c>UpdateToken</c>)を W-306 に置き換える。</summary>
     public static string MaskSecrets(string json) =>
         SecretPattern().Replace(json, m => m.Groups[2].Value.Length == 0 ? m.Value : m.Groups[1].Value + SecretHidden);
 

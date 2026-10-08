@@ -19,7 +19,7 @@ public static class ControlProtocol
     public const int Version = 1;
 
     /// <summary>名前の先頭。ユーザーごとの名前(<see cref="PipeNameFor"/>)にする。</summary>
-    public const string PipeNamePrefix = "radirec-control-";
+    public const string PipeNamePrefix = "airshelf-control-";
 
     public const string StatusCommand = "status";
     public const string ReloadCommand = "reload";
@@ -47,7 +47,7 @@ public static class ControlProtocol
     public static readonly Encoding LineEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
     /// <summary>
-    /// 今のユーザーのパイプ名 <c>radirec-control-&lt;ユーザーの SID&gt;</c>(SID が取れない環境ではユーザー名)。
+    /// 今のユーザーのパイプ名 <c>airshelf-control-&lt;ユーザーの SID&gt;</c>(SID が取れない環境ではユーザー名)。
     /// 固定名だと、同じ PC で 2 人がそれぞれトレイを起動したときにぶつかる(#179)。
     /// </summary>
     public static string DefaultPipeName() => PipeNameFor(CurrentUserId());
@@ -156,7 +156,7 @@ public sealed record ControlStatus
     /// <summary>取り込みワーカーの起動時刻(UTC)。縮退なら null。</summary>
     public DateTimeOffset? StartedUtc { get; init; }
 
-    /// <summary>常駐が使っている設定ファイル(radirec.json)の場所。</summary>
+    /// <summary>常駐が使っている設定ファイル(airshelf.json)の場所。</summary>
     public string? ConfigPath { get; init; }
 
     /// <summary>監視ルート。縮退なら null。</summary>

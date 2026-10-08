@@ -78,7 +78,7 @@ public sealed class HomeAttentionTests : IDisposable
         public bool TryCopy(string path) => true;
     }
 
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-attention-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-attention-").FullName;
     private readonly List<string> _log = [];
     private readonly List<LedgerEntry> _ledger = [];
     private readonly FakeControl _control = new();

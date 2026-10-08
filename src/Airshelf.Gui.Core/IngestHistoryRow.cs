@@ -48,5 +48,5 @@ public sealed record IngestHistoryRow
     /// 同日別放送の区別(時刻 or part)を1列で読めるようにする。
     /// </summary>
     public static string FormatBroadcast(DateOnly date, TimeOnly? time, int partIndex) =>
-        BroadcastLabel.Format(date, time, partIndex); // CLI の radirec history と共有(#182)
+        BroadcastLabel.Format(date, time, partIndex); // CLI の airshelf history と共有(#182)
 }

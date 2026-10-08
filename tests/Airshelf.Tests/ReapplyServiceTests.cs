@@ -27,7 +27,7 @@ public sealed class ReapplyServiceTests : IDisposable
     private const string Dec23At1000 = "20241223100000";
 
     private readonly string _work =
-        Path.Combine(Path.GetTempPath(), "radirec-test-" + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "airshelf-test-" + Guid.NewGuid().ToString("N"));
 
     private readonly List<IDisposable> _ledgers = [];
 

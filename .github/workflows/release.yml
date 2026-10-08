@@ -57,7 +57,7 @@ jobs:
         shell: pwsh
         run: dotnet test Airshelf.slnx -c Release --nologo
 
-      # トレイ(Radirec.Gui.exe)と単発 CLI(radirec.exe)を **1 フォルダ**へ publish する。
+      # トレイ(Airshelf.Gui.exe)と単発 CLI(airshelf.exe)を **1 フォルダ**へ publish する。
       # Velopack は「フォルダ一式」を配布物として扱うため、単一 exe ではなく self-contained の
       # 通常 publish にする(PublishSingleFile を明示 off で csproj の Release 既定を上書き)。ADR-0013。
       - name: Publish app folder
@@ -103,6 +103,6 @@ jobs:
           VPK_PRE: ${{ contains(github.ref_name, '-') }}
         run: |
           $repo = "${{ github.server_url }}/${{ github.repository }}"
-          vpk pack -u Radirec -v $env:VERSION -p publish -e Radirec.Gui.exe `
-            --packTitle "Radirec" --icon src/Airshelf.Gui/Assets/radirec.ico
-          vpk upload github --repoUrl $repo --tag $env:TAG --releaseName "Radirec $env:VERSION"
+          vpk pack -u Airshelf -v $env:VERSION -p publish -e Airshelf.Gui.exe `
+            --packTitle "Airshelf" --icon src/Airshelf.Gui/Assets/airshelf.ico
+          vpk upload github --repoUrl $repo --tag $env:TAG --releaseName "Airshelf $env:VERSION"

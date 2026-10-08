@@ -1,5 +1,7 @@
 # 制御チャネル Windows 実機検証ランブック(ADR-0010 / #33・#50)
 
+> 名前は [ADR-0022](adr/0022-rename-product-to-airshelf.md)(#256)で Airshelf に変わった。本書は改名前の当時の記録で、名前(`radirec`・`radirec-control-`・`Radirec.Gui`)は当時のまま(今の CLI は `airshelf`、パイプ名は `airshelf-control-<SID>`)。
+
 > **⚠ OBSOLETE([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) / #64)**: トレイ常駐移行で
 > named pipe 制御チャネルは退役し、制御(rescan/reload/status)はトレイメニューからの in-process 呼び出しに
 > なった。本ランブックと `deploy/verify-control-channel.ps1`(削除済み)が検証する pipe/ACL/`radirec.exe status`

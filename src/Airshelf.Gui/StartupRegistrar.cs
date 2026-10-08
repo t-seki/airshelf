@@ -12,7 +12,7 @@ namespace Airshelf.Gui;
 public static class StartupRegistrar
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "RadirecTray";
+    private const string ValueName = "AirshelfTray";
 
     /// <summary>現在の実行ファイルを自動起動に登録する(冪等)。</summary>
     public static void Register(string exePath)

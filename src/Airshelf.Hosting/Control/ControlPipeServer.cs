@@ -16,7 +16,7 @@ namespace Airshelf.Hosting.Control;
 /// <param name="pipeName">パイプ名。既定は <see cref="ControlProtocol.DefaultPipeName"/>(テストでは一意の名前を渡す)。</param>
 /// <param name="control">取り込みワーカーの制御面。縮退なら null。</param>
 /// <param name="degradedReason">縮退の理由(W-104 / W-105)。動いていれば null。</param>
-/// <param name="configPath">常駐が使っている radirec.json の場所。</param>
+/// <param name="configPath">常駐が使っている airshelf.json の場所。</param>
 /// <param name="trayVersion">トレイのアプリの版。</param>
 /// <param name="logWarning">受け口の失敗を残す(gui.log)。</param>
 public sealed class ControlPipeServer(

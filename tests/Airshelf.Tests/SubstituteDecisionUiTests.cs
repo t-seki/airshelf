@@ -73,7 +73,7 @@ public sealed class SubstituteDecisionUiTests : IDisposable
         public bool TryCopy(string path) => true;
     }
 
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-substitute-ui-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-substitute-ui-").FullName;
     private readonly List<string> _log = [];
     private readonly List<LedgerEntry> _ledger = [];
     private readonly FakeControl _control = new();

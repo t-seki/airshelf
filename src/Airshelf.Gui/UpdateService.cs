@@ -15,7 +15,7 @@ namespace Airshelf.Gui;
 internal sealed class UpdateService : IAppUpdater
 {
     // 更新フィード = 本アプリ自身の GitHub リポジトリ(Release アセットを Velopack フィードにする)。
-    private const string RepoUrl = "https://github.com/t-seki/radirec-tool";
+    private const string RepoUrl = "https://github.com/t-seki/airshelf";
 
     private readonly UpdateManager _manager;
     private readonly ApplyGuard _applyGuard = new(); // トレイとバージョン情報ページの 2 つの入口の再入を、ここで防ぐ(#157)

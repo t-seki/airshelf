@@ -13,12 +13,12 @@ using Spectre.Console;
 namespace Airshelf.Tests;
 
 /// <summary>
-/// <c>radirec attention</c>(#183)。管理画面のホームの要対応と同じ計算(<see cref="AttentionLoader"/>)を呼ぶこと。
+/// <c>airshelf attention</c>(#183)。管理画面のホームの要対応と同じ計算(<see cref="AttentionLoader"/>)を呼ぶこと。
 /// 台帳は実物の SQLite、設定は一時フォルダのファイル。
 /// </summary>
 public sealed class AttentionCommandTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-attention-cli-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-attention-cli-").FullName;
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
@@ -171,7 +171,7 @@ public sealed class AttentionCommandTests : IDisposable
     public void 窓より長いファイル名_理由_取込元も_それぞれの失敗の塊の中に見分けられる()
     {
         // 空白の無い長い塊。Spectre.Console に任せると、下げた分だけの行を作ってから行頭から折り返していた(#218)。
-        const string dir = @"C:\Users\Public\radirec-rc4-test\RADIO\TBSラジオ\とても長い番組名のフォルダ\";
+        const string dir = @"C:\Users\Public\airshelf-rc4-test\RADIO\TBSラジオ\とても長い番組名のフォルダ\";
         const string first = "[TBSラジオ]とても長い番組名その一(TimeFree)_20240923083000.m4a";
         const string second = "[TBSラジオ]とても長い番組名その二(TimeFree)_20240930083000.m4a";
         var failures = new[]
@@ -431,7 +431,7 @@ public sealed class AttentionCommandTests : IDisposable
         public bool TryLoad(out AirshelfConfig? config, out string? error)
         {
             config = null;
-            error = "radirec.json を読めません";
+            error = "airshelf.json を読めません";
             return false;
         }
     }

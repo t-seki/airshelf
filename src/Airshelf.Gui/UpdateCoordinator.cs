@@ -39,7 +39,7 @@ internal sealed class UpdateCoordinator : IDisposable
             // 手動の確認と重なったら(Busy)黙って諦める(次回 tick で拾う)。失敗は UpdateChecker が gui.log に書く。
             var result = await _checker.CheckAsync(manual: false);
             if (result.NotifyBalloon)
-                _tray.ShowBalloonTip(5000, "Radirec", UpdateTexts.FoundBalloon(result.Version), ToolTipIcon.Info);
+                _tray.ShowBalloonTip(5000, "Airshelf", UpdateTexts.FoundBalloon(result.Version), ToolTipIcon.Info);
         }
         catch (Exception ex)
         {

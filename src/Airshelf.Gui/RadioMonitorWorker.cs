@@ -73,7 +73,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
     private readonly ConcurrentQueue<ReapplyJob> _reapplyJobs = new();
 
     // 直近の設定リロードの反映に失敗した理由(成功なら null)。書き手・読み手とも直列ループ。
-    // TryLoad は radirec.json しか見ないので、programs.json / stations.json の読み込み失敗はここで初めて判る。
+    // TryLoad は airshelf.json しか見ないので、programs.json / stations.json の読み込み失敗はここで初めて判る。
     private string? _lastReloadError;
 
     // 直近の反映の失敗が、台帳を開けなかった(LedgerUnreachableException)ためか。再適用の終了コードを分ける(#228)。
@@ -306,7 +306,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 
     private void StartLoop()
     {
-        _log.LogInformation("Radirec 常駐取り込みの起動処理を始めます。監視ルート: {Root}", _config.RadioRoot);
+        _log.LogInformation("Airshelf 常駐取り込みの起動処理を始めます。監視ルート: {Root}", _config.RadioRoot);
 
         var orphans = _ingest.CleanupOrphans();
         if (orphans > 0)
@@ -317,7 +317,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         Request("起動時");
-        _log.LogInformation("Radirec 常駐取り込みを開始しました");
+        _log.LogInformation("Airshelf 常駐取り込みを開始しました");
     }
 
     private async Task ConsumeAsync(CancellationToken stoppingToken)
@@ -343,7 +343,7 @@ public sealed class RadioMonitorWorker : BackgroundService, IServiceControl
 
             // 走査の実行(#180)。積まれた分をまとめて 1 回の走査で処理する(新規取込のトーストは出さない)。
             // 再適用と同じく、取り出した**後**に保留中の reload を反映する(頼む側は「reload の Set → 走査の実行の Enqueue」の
-            // 順に行うので、取り出せた走査の実行より前に置かれた reload は必ず見える。radirec reload → radirec ingest 等)。
+            // 順に行うので、取り出せた走査の実行より前に置かれた reload は必ず見える。airshelf reload → airshelf ingest 等)。
             if (_scanRuns.TakePending() is { } scanRuns)
             {
                 if (_pendingReload.Take() is { } configBeforeScanRun)

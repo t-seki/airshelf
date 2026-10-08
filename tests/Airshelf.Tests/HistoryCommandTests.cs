@@ -9,12 +9,12 @@ using Spectre.Console;
 namespace Airshelf.Tests;
 
 /// <summary>
-/// <c>radirec history</c>(#182)と、管理画面と共有する台帳の読み出し(<see cref="IngestHistoryReader"/>)。
+/// <c>airshelf history</c>(#182)と、管理画面と共有する台帳の読み出し(<see cref="IngestHistoryReader"/>)。
 /// 台帳は実物の SQLite を一時フォルダに作る。
 /// </summary>
 public sealed class HistoryCommandTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-history-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-history-").FullName;
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
@@ -277,7 +277,7 @@ public sealed class HistoryCommandTests : IDisposable
         public bool TryLoad(out AirshelfConfig? config, out string? error)
         {
             config = null;
-            error = "radirec.json を読めません";
+            error = "airshelf.json を読めません";
             return false;
         }
     }

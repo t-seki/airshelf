@@ -147,13 +147,13 @@ public sealed class ReapplyJobsTests
         var host = new FakeHost { Items = [Item(@"Z:\a.m4a")] };
         var jobs = new ReapplyJobs(host);
         var planId = (await Run(jobs, ReapplyJobKind.PlanForCli)).PlanId!;
-        host.ConfigError = "radirec.json の JSON が壊れています";
+        host.ConfigError = "airshelf.json の JSON が壊れています";
 
         var applied = await Run(jobs, ReapplyJobKind.ApplyPlanId, planId: planId);
 
         Assert.Null(applied.Report);
         Assert.False(applied.IsStale);
-        Assert.Contains("radirec.json の JSON が壊れています", applied.Error);
+        Assert.Contains("airshelf.json の JSON が壊れています", applied.Error);
         Assert.Contains("取り込みは前の設定のまま", applied.Error);
         Assert.Equal(0, host.Executions);
         Assert.Same(host.InitialConfig, host.Config);
@@ -291,7 +291,7 @@ public sealed class ReapplyJobsTests
     }
     // 読み直した設定の台帳の場所。親フォルダがまだ無い(届く場所でも、反映が作る前はこうなる)。
     private static string NotYetCreatedLedgerPath() =>
-        Path.Combine(Path.GetTempPath(), $"radirec-notyet-{Guid.NewGuid():N}", "ledger.db");
+        Path.Combine(Path.GetTempPath(), $"airshelf-notyet-{Guid.NewGuid():N}", "ledger.db");
     // 反映が台帳を開けなかった(LedgerFile.OpenWritable の LedgerUnreachableException。RadioMonitorWorker.ApplyReload が記録する)。
     private static void FailReloadAtLedger(FakeHost host)
     {

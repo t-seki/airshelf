@@ -6,7 +6,7 @@ namespace Airshelf.Tests;
 public sealed class SqliteLedgerTests : IDisposable
 {
     private readonly string _dir =
-        Path.Combine(Path.GetTempPath(), "radirec-ledger-" + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "airshelf-ledger-" + Guid.NewGuid().ToString("N"));
 
     public SqliteLedgerTests() => Directory.CreateDirectory(_dir);
 

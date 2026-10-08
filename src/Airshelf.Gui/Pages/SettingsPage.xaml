@@ -68,7 +68,7 @@
         <StackPanel Margin="18,14">
             <TextBlock Style="{DynamicResource PageHeading}" Text="設定" />
 
-            <!-- ========== 縮退パネル(radirec.json を読めない)W-401〜W-405 ========== -->
+            <!-- ========== 縮退パネル(airshelf.json を読めない)W-401〜W-405 ========== -->
             <Border Style="{StaticResource Card}" Visibility="{Binding IsDegraded, Converter={StaticResource Visible}}">
                 <StackPanel>
                     <!-- W-401 -->
@@ -96,7 +96,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- ========== 起動の失敗のパネル(radirec.json は読めたが取り込みを起動できない。W-104)W-406〜W-409(#168) ==========
+            <!-- ========== 起動の失敗のパネル(airshelf.json は読めたが取り込みを起動できない。W-104)W-406〜W-409(#168) ==========
                  ページを置き換えず、通常の設定ページの上に出す。 -->
             <Border Style="{StaticResource Card}" Visibility="{Binding IsStartFailed, Converter={StaticResource Visible}}">
                 <StackPanel>
@@ -137,7 +137,7 @@
                 <TextBlock Style="{DynamicResource Sub}" TextWrapping="Wrap" Margin="0,0,0,10"
                            Text="{x:Static m:SettingsPageViewModel.FilesNote}" />
 
-                <!-- radirec.json -->
+                <!-- airshelf.json -->
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <DockPanel>

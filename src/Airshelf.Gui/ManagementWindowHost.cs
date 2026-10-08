@@ -41,7 +41,7 @@ internal sealed class ManagementWindowHost
     /// 今の状態の台帳の場所を使う(設定リロードに追従する。#196)。
     /// </param>
     /// <param name="settings">
-    /// 設定ページ(#152)に渡すもの。radirec.json の場所と起動時に読めた設定は、番組ページ(#154)の programs.json の場所の
+    /// 設定ページ(#152)に渡すもの。airshelf.json の場所と起動時に読めた設定は、番組ページ(#154)の programs.json の場所の
     /// 計算にも使う。
     /// </param>
     /// <param name="updateSupport">バージョン情報ページで更新の項目を出せるか。出せないときの理由(W-510 / W-511。#157)。</param>
@@ -114,7 +114,7 @@ internal sealed class ManagementWindowHost
             _window = null;
             _viewModel = null;
             TryClose(broken);
-            _tray.ShowBalloonTip(4000, "Radirec", "管理画面を開けませんでした(gui.log 参照)", ToolTipIcon.Warning); // W-005
+            _tray.ShowBalloonTip(4000, "Airshelf", "管理画面を開けませんでした(gui.log 参照)", ToolTipIcon.Warning); // W-005
         }
     }
 
@@ -153,7 +153,7 @@ internal sealed class ManagementWindowHost
         {
             _closingAfterError = false;
         }
-        _tray.ShowBalloonTip(5000, "Radirec", ClosedAfterErrorBalloon, ToolTipIcon.Warning);
+        _tray.ShowBalloonTip(5000, "Airshelf", ClosedAfterErrorBalloon, ToolTipIcon.Warning);
     }
 
     // 番組ページ(#154)の programs.json の場所。ワーカーがあれば status(設定リロードの反映に追従する)、無ければ起動時に

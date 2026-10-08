@@ -6,7 +6,7 @@ public enum RefreshStatus
     /// <summary>ライブラリ更新を起動した(サーバ側で非同期に走る。完了は待たない)。</summary>
     Started,
 
-    /// <summary>Jellyfin が未設定(radirec.json の JellyfinUrl / JellyfinApiKey が空)。</summary>
+    /// <summary>Jellyfin が未設定(airshelf.json の JellyfinUrl / JellyfinApiKey が空)。</summary>
     NotConfigured,
 
     /// <summary>設定が不正(JellyfinUrl の形式が不正)で呼べない。</summary>

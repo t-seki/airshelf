@@ -23,7 +23,7 @@ public static class ServiceStatusText
     /// </summary>
     public const string DegradedStartFailed = "取り込みの起動に失敗しました(設定ページ参照)";
 
-    /// <summary><c>radirec.json</c> を読めなかったときの理由(W-105 の括弧の中)。</summary>
+    /// <summary><c>airshelf.json</c> を読めなかったときの理由(W-105 の括弧の中)。</summary>
     public const string DegradedConfigUnreadable = "設定を読み込めませんでした";
 
     /// <summary>

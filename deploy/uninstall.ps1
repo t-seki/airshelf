@@ -30,6 +30,11 @@ $ErrorActionPreference = 'Stop'
 
 # 取込通知トレイ(Radirec.Gui)の定数・ヘルパ(ADR-0009)。
 . (Join-Path $PSScriptRoot '_TrayCommon.ps1')
+# このスクリプトが片付けるのは改名前の旧環境なので、_TrayCommon.ps1 の現行の名前(ADR-0022 で Airshelf)を
+# 旧名で上書きする。現行の Airshelf のトレイと自動起動の登録には触れない。
+$GuiProcessName = 'Radirec.Gui'
+$GuiExeName = 'Radirec.Gui.exe'
+$GuiRunValue = 'RadirecTray'
 
 $ServiceName = 'Radirec'
 $GuiExePath = Join-Path $InstallDir $GuiExeName

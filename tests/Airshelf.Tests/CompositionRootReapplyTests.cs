@@ -8,7 +8,7 @@ namespace Airshelf.Tests;
 public sealed class CompositionRootReapplyTests : IDisposable
 {
     private readonly string _work =
-        Path.Combine(Path.GetTempPath(), "radirec-test-" + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "airshelf-test-" + Guid.NewGuid().ToString("N"));
 
     public CompositionRootReapplyTests() => Directory.CreateDirectory(_work);
 

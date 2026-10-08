@@ -7,7 +7,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <RootNamespace>Airshelf.Gui</RootNamespace>
-    <AssemblyName>Radirec.Gui</AssemblyName>
+    <AssemblyName>Airshelf.Gui</AssemblyName>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -17,7 +17,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- exe の Win32 アイコン(Explorer / タスクバー / Alt-Tab)。トレイ表示は同じ ico を
          EmbeddedResource からロードする(Program.cs。PublishSingleFile では loose file が使えない)。 -->
-    <ApplicationIcon>Assets/radirec.ico</ApplicationIcon>
+    <ApplicationIcon>Assets/airshelf.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- 配布は Cli と同じく単一自己完結 exe(ADR-0005 / 0009)。Release 時のみ重い publish 設定。 -->
@@ -39,13 +39,13 @@
 
   <ItemGroup>
     <!-- トレイアイコン(NotifyIcon)用。LogicalName を明示して Program.cs のロード名と固定で一致させる。 -->
-    <EmbeddedResource Include="Assets/radirec.ico" LogicalName="Airshelf.Gui.Assets.radirec.ico" />
+    <EmbeddedResource Include="Assets/airshelf.ico" LogicalName="Airshelf.Gui.Assets.airshelf.ico" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- 初回起動時の設定 seeding 用 sample(ADR-0013 / S5)。install.ps1 が配布していた sample を
-         アプリに埋め込み、初回にデータルート(%LOCALAPPDATA%\RadirecData\)へ生成する(既存は温存)。 -->
-    <EmbeddedResource Include="..\..\config\radirec.sample.json" LogicalName="Airshelf.Gui.Samples.radirec.sample.json" />
+         アプリに埋め込み、初回にデータルート(%LOCALAPPDATA%\AirshelfData\)へ生成する(既存は温存)。 -->
+    <EmbeddedResource Include="..\..\config\airshelf.sample.json" LogicalName="Airshelf.Gui.Samples.airshelf.sample.json" />
     <EmbeddedResource Include="..\..\config\stations.sample.json" LogicalName="Airshelf.Gui.Samples.stations.sample.json" />
     <EmbeddedResource Include="..\..\config\programs.sample.json" LogicalName="Airshelf.Gui.Samples.programs.sample.json" />
   </ItemGroup>

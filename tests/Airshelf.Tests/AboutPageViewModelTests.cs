@@ -144,7 +144,7 @@ public sealed class AboutPageViewModelTests
     [Fact]
     public void Page_ShowsVersion()
     {
-        Assert.Equal("Radirec 0.12.0", Page(new FakeUpdater()).VersionText); // W-501
+        Assert.Equal("Airshelf 0.12.0", Page(new FakeUpdater()).VersionText); // W-501
     }
 
     [Fact]
@@ -330,7 +330,7 @@ public sealed class AboutPageViewModelTests
     public void FoundBalloon_MatchesMock()
     {
         Assert.Equal(
-            "更新があります(v0.13.0)。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。",
+            "更新があります(v0.13.0)。Airshelf を開いて「バージョン情報」か、トレイメニューから適用できます。",
             UpdateTexts.FoundBalloon("0.13.0")); // W-609
     }
 
@@ -356,7 +356,7 @@ public sealed class AboutPageViewModelTests
             new NoActions(), _log.Add);
 
         Assert.False(vm.About.CanUpdate);
-        Assert.StartsWith("Radirec ", vm.About.VersionText);
+        Assert.StartsWith("Airshelf ", vm.About.VersionText);
     }
 
     private sealed class NoActions : IHistoryPathActions

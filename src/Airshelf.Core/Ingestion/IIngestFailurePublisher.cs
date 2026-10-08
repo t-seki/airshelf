@@ -11,7 +11,7 @@ public interface IIngestFailurePublisher
 }
 
 /// <summary>
-/// 何もしない実装(dry-run / publisher を注入しない経路)。非 dry-run の <c>radirec ingest</c> は常駐に頼むので(#203)、
+/// 何もしない実装(dry-run / publisher を注入しない経路)。非 dry-run の <c>airshelf ingest</c> は常駐に頼むので(#203)、
 /// 常駐の publisher を通る。常駐の失敗の発行は、新規取込の
 /// トーストの設定に左右されない(止めても失敗は発行し、失敗のストアにも記録する。#152・ADR-0019)。
 /// </summary>

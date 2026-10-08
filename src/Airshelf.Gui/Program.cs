@@ -41,7 +41,7 @@ internal static class Program
 
         // 単一インスタンス化。トレイがワーカー(台帳オープン・I: 監視)を内包するため、二重起動すると
         // 台帳ロックで片方が縮退したり、最悪二重取り込み + 重複トーストになる。既に起動済みなら黙って終了。
-        using var singleInstance = new Mutex(initiallyOwned: true, @"Local\Radirec.Gui.SingleInstance", out var isNew);
+        using var singleInstance = new Mutex(initiallyOwned: true, @"Local\Airshelf.Gui.SingleInstance", out var isNew);
         if (!isNew)
             return;
 
@@ -78,7 +78,7 @@ internal static class Program
         string? ledgerPath = null;     // 管理画面の取込履歴(S4 / #151)。設定が読めていれば worker 起動可否に依らず参照可。
         string? configPath = null;          // 設定ページで開く(#143 / #152)。読めなかったときも開ける(直すため)。
         AirshelfConfig? startupConfig = null; // 同上。ワーカーが無いときの programs/stations の場所の出どころ。
-        string? configError = null;          // radirec.json を読めなかった理由(設定ページの縮退パネル W-402。#152)。
+        string? configError = null;          // airshelf.json を読めなかった理由(設定ページの縮退パネル W-402。#152)。
         string? startError = null;           // 設定は読めたがワーカーを起動できなかった理由(設定ページの先頭のパネル W-407。#168)。
         var toastSetting = IngestToastSetting.Fixed(true); // 新規取込のトースト(#152)。下で設定ファイルから読む。
         UpdateService? updateService = null;       // 自己更新(S6)。設定が読めたときだけ。
@@ -93,14 +93,14 @@ internal static class Program
 
             // 設定を読み、取り込みワーカーをこのプロセスでホストする。設定が読めない/ワーカー起動に失敗
             // したときは取り込みを起動せず、トレイ(版表示・終了・再起動)だけを出す縮退にする。
-            // 初回起動時はデータルート(%LOCALAPPDATA%\RadirecData\)に設定を sample から生成する
-            // (既存は温存。ADR-0013 / S5)。Velopack のインストール先 %LOCALAPPDATA%\Radirec ではない。
+            // 初回起動時はデータルート(%LOCALAPPDATA%\AirshelfData\)に設定を sample から生成する
+            // (既存は温存。ADR-0013 / S5)。Velopack のインストール先 %LOCALAPPDATA%\Airshelf ではない。
             ConfigSeeder.SeedIfAbsent(ConfigPaths.DataRoot);
 
             configPath = ConfigPaths.Resolve(null);
             var loaded = ConfigLoading.TryLoad(configPath, out var config, out var error);
-            // 新規取込のトーストを出すか(#152・ADR-0019)。管理画面用の設定ファイル(radirec.json と同じフォルダ)に持ち、
-            // まだ値が無ければ radirec.json の旧設定 NotificationsEnabled を初期値にする。読めない・書けないときも起動は続ける。
+            // 新規取込のトーストを出すか(#152・ADR-0019)。管理画面用の設定ファイル(airshelf.json と同じフォルダ)に持ち、
+            // まだ値が無ければ airshelf.json の旧設定 NotificationsEnabled を初期値にする。読めない・書けないときも起動は続ける。
             var guiSettingsPath = System.IO.Path.Combine(
                 System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(configPath)) ?? ConfigPaths.DataRoot,
                 GuiSettingsStore.FileName);
@@ -161,7 +161,7 @@ internal static class Program
             trayIcon = new NotifyIcon
             {
                 Icon = LoadTrayIcon(),
-                Text = "Radirec",
+                Text = "Airshelf",
                 Visible = true,
             };
             // 自己更新の自動チェック(起動時 + 24h。S6)。**Velopack インストール時のみ**実働する
@@ -194,9 +194,9 @@ internal static class Program
             if (updateService is not null)
                 updateService.DrainBeforeRestart = drainWorker; // 管理画面から適用するとき(#157)
 
-            // 管理画面(#151)。トレイの「Radirec を開く」とアイコンのダブルクリックで開く。縮退時も開ける。
+            // 管理画面(#151)。トレイの「Airshelf を開く」とアイコンのダブルクリックで開く。縮退時も開ける。
             // バージョン情報ページ(#157)は、更新の確認が作れたとき(Velopack で入れた版)だけ更新の項目を出す。
-            // 番組ページ(#154)は、設定ページと同じ radirec.json の場所と起動時に読めた設定から programs.json の場所を求める。
+            // 番組ページ(#154)は、設定ページと同じ airshelf.json の場所と起動時に読めた設定から programs.json の場所を求める。
             var windowHost = new ManagementWindowHost(
                 trayIcon, control, degradedReason, ledgerPath,
                 new SettingsPageContext(configPath, startupConfig, configError, toastSetting, startError),
@@ -213,7 +213,7 @@ internal static class Program
             trayIcon.ContextMenuStrip = new ControlTrayMenu(
                 trayIcon, windowHost.Show, control, degradedReason, updateService, drainWorker).Menu;
 
-            // CLI(radirec status / reload)の受け口(ADR-0020 / #179)。取り込みが止まっている(縮退)ときも起動し、
+            // CLI(airshelf status / reload)の受け口(ADR-0020 / #179)。取り込みが止まっている(縮退)ときも起動し、
             // 理由を答える。受け口の失敗ではトレイと取り込みを止めない。
             try
             {
@@ -228,7 +228,7 @@ internal static class Program
                 controlServer = null;
             }
 
-            TrayLog.Info("Radirec トレイを起動");
+            TrayLog.Info("Airshelf トレイを起動");
         }
         catch (Exception ex)
         {
@@ -382,7 +382,7 @@ internal static class Program
         try
         {
             using var stream = typeof(Program).Assembly
-                .GetManifestResourceStream("Airshelf.Gui.Assets.radirec.ico");
+                .GetManifestResourceStream("Airshelf.Gui.Assets.airshelf.ico");
             if (stream is null)
             {
                 TrayLog.Warn("トレイアイコン資産が見つかりません。既定アイコンで継続します");

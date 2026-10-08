@@ -1,13 +1,13 @@
-# 利用ガイド(radirec ingest)
+# 利用ガイド(airshelf ingest)
 
 らじれこで録音した M4A を、Jellyfin 音楽ライブラリ向けに整理・取り込みする CLI の使い方。
 
 > 実装済み: **M1**(コア + CLI 取り込み)/ **M2**(Jellyfin 自動リフレッシュ)/ **M4-A**(radikool MP3 の
-> 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`radirec reapply`。§3・ADR-0016)/ 取込履歴の表示(`radirec history`。§3・ADR-0020)/ 要対応の表示(`radirec attention`。§3・ADR-0020)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
+> 一括移行。移行用の `ingest --root` は ADR-0020 で CLI から削除済み)/ 統合設定の再適用(`airshelf reapply`。§3・ADR-0016)/ 取込履歴の表示(`airshelf history`。§3・ADR-0020)/ 要対応の表示(`airshelf attention`。§3・ADR-0020)。常駐・通知・制御・取込履歴・自己更新は **トレイ常駐 per-user モデル**(§6。ADR-0012/0013)。
 > ソース跨ぎのアルバム統合(M4-C)は未実装です。編集 GUI(M5)は作らないと決めました(#5、2026-09-28)。
 >
-> この §1–§5 は主に **CLI(`radirec.exe`)** の使い方。CLI は、普段の運用と AI エージェント・スクリプトの窓口です
-> ([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。取り込みそのものは常駐トレイが行い、`radirec ingest` も
+> この §1–§5 は主に **CLI(`airshelf.exe`)** の使い方。CLI は、普段の運用と AI エージェント・スクリプトの窓口です
+> ([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。取り込みそのものは常駐トレイが行い、`airshelf ingest` も
 > トレイに頼みます(§3)。常駐運用は §6 を参照。
 
 ## 1. 前提
@@ -19,18 +19,18 @@
 
 ## 2. セットアップ
 
-設定は常に **`%LOCALAPPDATA%\RadirecData\`**(データルート)に置きます。CLI も常駐トレイもここを読み、
+設定は常に **`%LOCALAPPDATA%\AirshelfData\`**(データルート)に置きます。CLI も常駐トレイもここを読み、
 別の場所を指すオプションはありません([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
 常駐トレイを一度起動すると、無いファイルは見本から作られます。手で置くなら、見本をそこへコピーして
 自分の環境に合わせて編集します。
 
 ```
-config/radirec.sample.json   → %LOCALAPPDATA%\RadirecData\radirec.json   (環境設定)
-config/stations.sample.json  → %LOCALAPPDATA%\RadirecData\stations.json  (放送局マスタ)
-config/programs.sample.json  → %LOCALAPPDATA%\RadirecData\programs.json  (番組 alias)
+config/airshelf.sample.json   → %LOCALAPPDATA%\AirshelfData\airshelf.json   (環境設定)
+config/stations.sample.json  → %LOCALAPPDATA%\AirshelfData\stations.json  (放送局マスタ)
+config/programs.sample.json  → %LOCALAPPDATA%\AirshelfData\programs.json  (番組 alias)
 ```
 
-`radirec.json` の主な項目:
+`airshelf.json` の主な項目:
 
 | キー | 意味 | 例 |
 |------|------|----|
@@ -52,8 +52,8 @@ config/programs.sample.json  → %LOCALAPPDATA%\RadirecData\programs.json  (番�
 > 設定ファイルは JSON ですが、`//` コメントと末尾カンマを許容します。
 >
 > **パスの解決基準(ADR-0006)**: `LedgerPath` / `StationsFile` / `ProgramsFile`(および `RadioRoot` /
-> `OutputRoot`)の**相対パスは `radirec.json` のあるディレクトリ基準**で解決されます。常駐トレイのデータルートは
-> `%LOCALAPPDATA%\RadirecData\` で、これらが同居するため裸のファイル名(`ledger.db` 等)で足ります(ADR-0013)。
+> `OutputRoot`)の**相対パスは `airshelf.json` のあるディレクトリ基準**で解決されます。常駐トレイのデータルートは
+> `%LOCALAPPDATA%\AirshelfData\` で、これらが同居するため裸のファイル名(`ledger.db` 等)で足ります(ADR-0013)。
 > 絶対パス(`C:\...`、UNC `\\host\share\...`)はそのまま使われます。
 
 ## 3. 実行
@@ -61,8 +61,8 @@ config/programs.sample.json  → %LOCALAPPDATA%\RadirecData\programs.json  (番�
 まず必ず **`--dry-run`** で、何がどこへ取り込まれるかを副作用なしに確認します。
 
 ```powershell
-radirec ingest --dry-run   # 取り込み予定(台帳を読むだけ。トレイが動いていなくても使える)
-radirec ingest             # 実行(コピー + タグ付与)。常駐トレイに走査を頼み、終わるまで待って結果を出す
+airshelf ingest --dry-run   # 取り込み予定(台帳を読むだけ。トレイが動いていなくても使える)
+airshelf ingest             # 実行(コピー + タグ付与)。常駐トレイに走査を頼み、終わるまで待って結果を出す
 
 # 開発時(SDK から)
 dotnet run --project src/Airshelf.Cli -- ingest --dry-run
@@ -78,12 +78,12 @@ dotnet run --project src/Airshelf.Cli -- ingest --dry-run
 - トレイの状態の「最終スキャン」には `CLI` と出ます
 - **トレイが動いていない・取り込みが止まっている(縮退)ときは終了コード 2** で終わります。CLI が代わりに取り込むことも、
   トレイを起動することもしません。トレイを起動してからやり直してください
-- 使う設定はトレイが読み込んでいるもの(`radirec.json` を直したら、先に `radirec reload` か管理画面の設定リロード)。
-  `--dry-run` は CLI が既定の `radirec.json` を読んで計算します
+- 使う設定はトレイが読み込んでいるもの(`airshelf.json` を直したら、先に `airshelf reload` か管理画面の設定リロード)。
+  `--dry-run` は CLI が既定の `airshelf.json` を読んで計算します
 - 開発機でトレイを動かさずに取り込みを試せるのは `--dry-run` までです(`refresh`・`history`・`attention` はトレイなしでも動きます。
   `reapply` は確認(dry-run)も含めてトレイに頼むので、トレイが要ります。§3「統合設定を取り込み済みの回へ再適用する」)
 
-設定は常に **`%LOCALAPPDATA%\RadirecData\radirec.json`**(常駐トレイと同じデータルート。ADR-0006)を使います。
+設定は常に **`%LOCALAPPDATA%\AirshelfData\airshelf.json`**(常駐トレイと同じデータルート。ADR-0006)を使います。
 別の場所の設定を指すオプションはありません([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
 
 > ⚠️ `--config` と `ingest --root` は ADR-0020 で削りました。付けて呼ぶと `Error: Unknown option 'config'.` の
@@ -127,7 +127,7 @@ dotnet run --project src/Airshelf.Cli -- ingest --dry-run
 |------|------|------|
 | 0 | 成功(失敗した回は 0 件。差し替え放送の疑いで保留した回は失敗に数えない) | 次へ進む(`ingest` で保留があれば §5「差し替え放送」) |
 | 1 | 使い方の誤り(知らないオプション・コマンド)・設定を読めない・Jellyfin が未設定か URL の形式が不正(`refresh`。`ingest` / `reapply` は URL の形式不正だけ)。想定外の例外(内部エラー)も 1 | 引数か設定を直す。想定外の例外なら、理由は `gui.log` ではなく出力(`--json` なら `error`)にある |
-| 2 | 常駐が動いていない・取り込みが止まっている・常駐から応答を得られない(`ingest`・`reapply`・`reload` など常駐に頼むコマンド。`status` は答えとして 0。§6「CLI から状態を見る」) | トレイを起動する(縮退なら設定を直してトレイを再起動する)。`ingest` / `reapply` の時間切れ・途中で切れたときは、走査・再適用がトレイで続いていることがあるので、先に `radirec status` / `gui.log` で確かめる |
+| 2 | 常駐が動いていない・取り込みが止まっている・常駐から応答を得られない(`ingest`・`reapply`・`reload` など常駐に頼むコマンド。`status` は答えとして 0。§6「CLI から状態を見る」) | トレイを起動する(縮退なら設定を直してトレイを再起動する)。`ingest` / `reapply` の時間切れ・途中で切れたときは、走査・再適用がトレイで続いていることがあるので、先に `airshelf status` / `gui.log` で確かめる |
 | 3 | 確かめた予定が変わった(`reapply --apply` の予定 ID が、実行の直前に計算し直した予定と違う。実行していない。#181) | 出力の新しい予定を確かめ、その予定 ID(`planId`)で `--apply` し直す |
 | 4 | 完了したが、一部の回が失敗した | 明細(`items[]` の `failed`)を調べる |
 | 5 | 外部との接続に失敗した(Jellyfin に繋がらない・エラー・時間切れ、NAS に届かない) | 時間をおいて再試行する |
@@ -136,7 +136,7 @@ dotnet run --project src/Airshelf.Cli -- ingest --dry-run
   Jellyfin が未設定なのは失敗にしません(0)。`JellyfinUrl` の形式が不正で更新できなかったときは、再試行では直らないので
   `refresh` と同じ 1 です(`libraryRefresh.status` は `misconfigured`。#191。以前は 5 でした)。
 - `ingest` は、トレイでの走査そのものが途中で失敗したとき(取込元・出力先に届かない)も 5 です。走査が時間内に
-  終わらなかった・トレイとの接続が切れたときは 2 です(走査はトレイで続いていることがあります。`radirec status` で確かめる)。
+  終わらなかった・トレイとの接続が切れたときは 2 です(走査はトレイで続いていることがあります。`airshelf status` で確かめる)。
 - `reapply` は、確認(dry-run)も実行(`--apply`)もトレイに頼みます。トレイが動いていなければ 2 です。
   設定を読めない・反映できない(実行の前の設定リロード)ときは実行せず 1、予定 ID が合わなければ実行せず 3 です(#181)。
 - 以前は、取り込みの一部が失敗しても 0 を返していました(#178 で 4 に変わった)。
@@ -172,7 +172,7 @@ Jellyfin の全ライブラリスキャンを起動**します(`POST /Library/Re
 手動で更新だけ起動したいときは `refresh` コマンド(疎通確認にも便利):
 
 ```powershell
-radirec refresh
+airshelf refresh
 ```
 
 ### 取込履歴を見る(`history`)
@@ -181,9 +181,9 @@ radirec refresh
 開くだけなので、常駐(トレイ)が動いていなくても使え、取り込みの邪魔もしません(#182)。
 
 ```powershell
-radirec history                               # 新しい方から 5 件(管理画面のホームと同じ)
-radirec history --limit 20                    # 20 件。--limit 0 は全件
-radirec history --since 2026-09-01 --json     # 取込日時が 9/1 以降のものを JSON で
+airshelf history                               # 新しい方から 5 件(管理画面のホームと同じ)
+airshelf history --limit 20                    # 20 件。--limit 0 は全件
+airshelf history --since 2026-09-01 --json     # 取込日時が 9/1 以降のものを JSON で
 ```
 
 - `--since` は取込日時で絞ります。`2026-09-01` や `2026-09-01T12:00` のように時差の無い値はローカル時刻として
@@ -197,46 +197,46 @@ radirec history --since 2026-09-01 --json     # 取込日時が 9/1 以降のも
 `programs.json` / `stations.json` から毎回計算し直すので、常駐(トレイ)が動いていなくても使えます(#183)。
 
 ```powershell
-radirec attention           # 統合設定の無い兄弟フォルダ・解決していない取込失敗・再適用が要る番組・差し替え放送の疑い
-radirec attention --json    # エージェント・スクリプト向け(result の形は上の表)
+airshelf attention           # 統合設定の無い兄弟フォルダ・解決していない取込失敗・再適用が要る番組・差し替え放送の疑い
+airshelf attention --json    # エージェント・スクリプト向け(result の形は上の表)
 ```
 
 - 何も無ければ「要対応はありません」(`--json` なら `count` が 0 で配列が空)で、成功(0)で終わります。
   あるときも終了コードは 0 です(要対応は失敗ではないため)。件数は `count` か表の見出しで見ます
 - 要対応を CLI から解決する操作(「統合する」「分けておく」)はありません。`programs.json` を直してから
-  `radirec reapply` で確かめます(§5)。再適用が要る番組は、`radirec reapply --apply <予定 ID>` で揃えると消えます
+  `airshelf reapply` で確かめます(§5)。再適用が要る番組は、`airshelf reapply --apply <予定 ID>` で揃えると消えます
 - 差し替え放送の疑いは、`programs.json` の `FilenamePrograms` に判断を書くと消えます(`attention` は毎回 `programs.json` を
   読み直すので、書いた時点で消えます。§5「差し替え放送」)。`Match.Mode` を `Prefix`(前方一致)・`Contains`(部分一致)に
-  すれば、スポンサー名やゲスト名の違う組を 1 つの判断でまとめて消せます(§5「照合の種類」)。保留していた回を常駐に取り込ませるには、`radirec reload` で反映します。
+  すれば、スポンサー名やゲスト名の違う組を 1 つの判断でまとめて消せます(§5「照合の種類」)。保留していた回を常駐に取り込ませるには、`airshelf reload` で反映します。
   取り込み済みの回を「取り込まない」と判断すると、「再適用が要る番組」に「出力先から消す予定」として出ます
 - 台帳・`programs.json` / `stations.json` を読めない(壊れた JSON など)ときは 1 です
 - 台帳のあるフォルダ(NAS など)に届かないときは、「要対応はありません」とは答えず 5 で終わります。以前は 0 で空(`count` 0)を返していました(#216)
 
 ### 統合設定を取り込み済みの回へ再適用する(`reapply`)
 
-`programs.json`(`radirec.json` と同じフォルダ。既定は `%LOCALAPPDATA%\RadirecData\`)の正規名・統合は、新しく取り込む回にだけ効きます。あとから統合設定を足した(外した・
+`programs.json`(`airshelf.json` と同じフォルダ。既定は `%LOCALAPPDATA%\AirshelfData\`)の正規名・統合は、新しく取り込む回にだけ効きます。あとから統合設定を足した(外した・
 正規名を変えた)ときは、`reapply` で**取り込み済みの回を今の設定に揃えます**
 ([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))。ソースから取り込み直すのではなく、
 出力済みのファイルを動かし、台帳の記録を書き換えます。
 
 ```powershell
 # まず確認(どのアルバムの何回が動くかを副作用なしに確かめる。最後に予定 ID が出る)
-radirec reapply
+airshelf reapply
 # 問題なければ、出た予定 ID を添えて実行
-radirec reapply --apply 3f9c0a1b2d4e5f67
+airshelf reapply --apply 3f9c0a1b2d4e5f67
 ```
 
 **確認も実行も常駐トレイに頼みます**([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) / #181)。
 トレイの取り込みと同じ順番待ちの列に並ぶので、取り込みと並んで台帳や出力先を書き換えることはありません。
 
-- **`radirec reapply`**(`--dry-run` を付けても同じ)は確認だけを行い、予定と**予定 ID**(16 文字の 16 進)を出します。
+- **`airshelf reapply`**(`--dry-run` を付けても同じ)は確認だけを行い、予定と**予定 ID**(16 文字の 16 進)を出します。
   番組・放送局の設定は、ディスクの `programs.json` / `stations.json` を読みます(トレイの設定リロードはしません。
-  管理画面の番組ページで開いている確認を古くしないため)。`radirec.json` 本体は、トレイが今読み込んでいるものを使います
-- **`radirec reapply --apply <予定 ID>`** は、トレイが設定リロード → 確認し直し → **予定 ID が一致したときだけ**実行します。
+  管理画面の番組ページで開いている確認を古くしないため)。`airshelf.json` 本体は、トレイが今読み込んでいるものを使います
+- **`airshelf reapply --apply <予定 ID>`** は、トレイが設定リロード → 確認し直し → **予定 ID が一致したときだけ**実行します。
   確認の後に `programs.json` を直した・取り込みで台帳が変わった等で予定が変わっていれば、実行せずに終了コード 3 で終わり、
   新しい予定と予定 ID を出します。見直して、その予定 ID で頼み直してください
-- `radirec.json`(出力先など)を直したときは、先に `radirec reload` してから確認してください。確認はトレイが今読み込んでいる
-  `radirec.json` で計算し、実行は読み直した `radirec.json` で計算し直すので、そのままだと予定がずれて 3 になります
+- `airshelf.json`(出力先など)を直したときは、先に `airshelf reload` してから確認してください。確認はトレイが今読み込んでいる
+  `airshelf.json` で計算し、実行は読み直した `airshelf.json` で計算し直すので、そのままだと予定がずれて 3 になります
 - 設定を読めない・反映できないときは実行せず 1(取り込みは前の設定のまま)、トレイが動いていなければ 2 です。
   `LedgerPath` をまだ無いフォルダに変えたときに `programs.json` なども壊れていると、反映は台帳を開く前に止まりますが、
   これも 1 です(台帳に届かない 5 とは分ける。#228)
@@ -246,7 +246,7 @@ radirec reapply --apply 3f9c0a1b2d4e5f67
   (以前は 1。#228)。管理画面の再適用の確認も、同じときは「再適用の準備に失敗しました: 台帳のあるフォルダに
   届きません: …」になります
 - 確認・実行とも、トレイが取り込み中なら終わるのを待ちます(最長 1 時間)
-- ⚠️ 以前の `radirec reapply`(オプションなし)は**実行**していました。今は確認だけです(ADR-0020 / #181)。
+- ⚠️ 以前の `airshelf reapply`(オプションなし)は**実行**していました。今は確認だけです(ADR-0020 / #181)。
   以前はトレイなしでも動きましたが、今はトレイが要ります
 
 常駐からは、管理画面の **番組** ページ(§6)で番組の設定を編集すると、保存する前に同じ処理の dry-run で
@@ -267,12 +267,12 @@ radirec reapply --apply 3f9c0a1b2d4e5f67
   | 台帳のみ | ファイルは既に今の設定の場所にあり、タグも揃っている(手作業で統合済み)。台帳だけを直す |
   | 重複 | 移動先に**同じ内容**のファイルが既にある。台帳をそちらへ向け、**元の場所のファイルは消さずに残す**(確かめて手で消す)。移動先のファイルの `album` / `title` / `track` が今の設定と違えば(手作業で統合先へコピーした回)、そのタグも書き換える(明細の詳細にその旨が出る) |
   | 対象外 | 移動先に**違う内容**のファイルがある・放送局が変わった・出力ファイルが無い・タグを読み取れない・この再適用で出力先から消す回と同じ場所や同じ放送回の記録を目指している(自分の出力ファイルがあれば、消えた後の次の再適用で動く。無ければ次の再適用でも動かず、明細の詳細にその旨が出る)等。動かさない |
-  | 失敗 | 実行中に失敗した。移動の回は、止まった段階により元のファイルか移動先のファイルのどちらかが残っている。タグを直す回(台帳とタグ・タグも直す重複の移動先)は、ファイルは同じ場所にあり、確定の前なら元のタグのまま、確定の後ならタグだけ揃っている。消す回は、ファイルを消せなければファイルも台帳の記録も残り、ファイルを消した後に台帳の記録を消せなければ台帳の記録だけが残る(次は「台帳の記録だけを消す」回になる)。いずれも、もう一度 `radirec reapply` で確かめて `--apply <予定 ID>` すれば揃う |
+  | 失敗 | 実行中に失敗した。移動の回は、止まった段階により元のファイルか移動先のファイルのどちらかが残っている。タグを直す回(台帳とタグ・タグも直す重複の移動先)は、ファイルは同じ場所にあり、確定の前なら元のタグのまま、確定の後ならタグだけ揃っている。消す回は、ファイルを消せなければファイルも台帳の記録も残り、ファイルを消した後に台帳の記録を消せなければ台帳の記録だけが残る(次は「台帳の記録だけを消す」回になる)。いずれも、もう一度 `airshelf reapply` で確かめて `--apply <予定 ID>` すれば揃う |
 
 - 移動は取り込みと同じく `.partial` に書いてから確定し、確定してから元を消し、最後に台帳を書き換えます。
-  どこで止まっても元のファイルは壊れず、もう一度 `radirec reapply` で確かめて `--apply <予定 ID>` すれば揃います。
+  どこで止まっても元のファイルは壊れず、もう一度 `airshelf reapply` で確かめて `--apply <予定 ID>` すれば揃います。
   空になった移動元フォルダは消します。
-- 消す回は、出力先のファイルを消してから台帳の記録を消します。途中で止まっても、もう一度 `radirec reapply` で確かめて
+- 消す回は、出力先のファイルを消してから台帳の記録を消します。途中で止まっても、もう一度 `airshelf reapply` で確かめて
   `--apply <予定 ID>` すれば、残った台帳の記録を消して揃います。消す回がある予定は「揃っています」になりません。
 - 台帳とタグを直す回(タグも直す重複の回の移動先も)は、同じフォルダの `.partial` にコピーしてタグを書き、元の名前へ
   置き換えて確定してから台帳を書き換えます(確定までは元のファイルに触れません)。タグを読むのは、台帳を今の設定の
@@ -342,7 +342,7 @@ radikool 固有の扱い:
   `stations.json` の別名で正規名へ寄せる。
 - **表示名の整形 / 複数フォルダの統合**を `programs.json` で行う(任意)。
 
-どちらも `radirec.json` と同じフォルダ(既定は `%LOCALAPPDATA%\RadirecData\`。§2)に置きます。
+どちらも `airshelf.json` と同じフォルダ(既定は `%LOCALAPPDATA%\AirshelfData\`。§2)に置きます。
 
 ```jsonc
 // stations.json
@@ -387,18 +387,18 @@ radikool 固有の扱い:
   ([ADR-0017](adr/0017-management-window-owns-programs-json.md))。
 - `KeepSeparate`:**分けておく兄弟フォルダ** — 兄弟フォルダ(§6)の組のうち、統合せず別々の番組として扱うと決めたもの。
   1 件は局とフォルダの組(`Match`。`Programs` と同じ形)と `Note`。ここに記録した組は、管理画面のホームの要対応
-  ([ADR-0018](adr/0018-attention-items-derived-from-state.md))と `radirec reapply` の「統合設定の無い兄弟フォルダ」に
+  ([ADR-0018](adr/0018-attention-items-derived-from-state.md))と `airshelf reapply` の「統合設定の無い兄弟フォルダ」に
   出なくなります。記録した後に組へ新しいフォルダが加わったら、要対応にもう一度出ます。ふつうは要対応の「分けておく」で
   書きます(§6)。
 - **古い版では読めなくなります**:`Note` / `KeepSeparate` を知らない版(更新を戻したトレイ・古い CLI)は、
   知らない項目のある設定を拒みます。トレイは起動しても取り込みを始めず、状態が「取り込み停止中(取り込みの起動に
   失敗しました(gui.log 参照))」になります。動いているトレイで設定リロードをしても(管理画面の番組ページで保存した
   とき等)、新しい設定には切り替わらず、前の設定のまま動き続けます(理由は `gui.log` に出ます)。
-  CLI(`radirec ingest` / `reapply`)は設定を読めずに終わります。古い版に戻すときは、`Note` と `KeepSeparate` を
+  CLI(`airshelf ingest` / `reapply`)は設定を読めずに終わります。古い版に戻すときは、`Note` と `KeepSeparate` を
   消してください(使っていなければ何もしなくて構いません)。
 
 > `programs.json` の変更は新しく取り込む回にだけ効きます。取り込み済みの回へ効かせるには、変更後に
-> **`radirec reapply`** で予定を確かめ、**`radirec reapply --apply <予定 ID>`** で実行します(§3「統合設定を取り込み済みの回へ再適用する」)。
+> **`airshelf reapply`** で予定を確かめ、**`airshelf reapply --apply <予定 ID>`** で実行します(§3「統合設定を取り込み済みの回へ再適用する」)。
 
 ### 差し替え放送(フォルダの番組と違う番組の回)
 
@@ -417,7 +417,7 @@ radikool 固有の扱い:
    `…おかしば 10時～10時55分` はフォルダ名を含みませんが、アルバム名 `…おかしば` を含むので取り込まれます(#241)。
    判断は 2 で先に見るので、アルバム名を含む名前にも「取り込まない」「別の番組」の判断を書けます
 4. どれでもない → **取り込まずに保留**する。初めて保留したときにトースト「判断待ち N件（差し替え放送の疑い）」が出て、
-   管理画面のホームと `radirec attention` の要対応に「差し替え放送の疑い」として出る
+   管理画面のホームと `airshelf attention` の要対応に「差し替え放送の疑い」として出る
 
 判断は 3 択で、組ごとに `FilenamePrograms` に書きます。一度書けば、同じファイル名の番組名の回は次から自動でその判断どおりに
 扱われます。
@@ -438,13 +438,13 @@ radikool 固有の扱い:
 ```
 
 - `Station` は正規名(`stations.json` で寄せた後の名前)、`Folder` はらじれこの番組フォルダ名 1 つ、`FilenameProgram` は
-  ファイル名の番組名です(前方一致・部分一致の判断では、その先頭・一部。下の「照合の種類」)。`radirec attention --json` の `substituteSuspects[]` の `station`・`folder`・`filenameProgram` を
-  そのまま写せば足ります(`radirec ingest --json` の `items[].filenameProgram` にも出ます)。
+  ファイル名の番組名です(前方一致・部分一致の判断では、その先頭・一部。下の「照合の種類」)。`airshelf attention --json` の `substituteSuspects[]` の `station`・`folder`・`filenameProgram` を
+  そのまま写せば足ります(`airshelf ingest --json` の `items[].filenameProgram` にも出ます)。
 - `Treat` は省略できません(省略すると JSON の誤りとして読めません)。`OtherProgram` に `Album` が無い設定は、壊れた `programs.json`
   と同じ扱いです:トレイは起動しても取り込みを始めず、動いているトレイで設定リロードをしても新しい設定には切り替わらず、前の設定のまま
-  動き続けます(理由は `gui.log`)。`radirec ingest --dry-run` は「設定の読み込みに失敗しました: …」で 1 を返します。
-- 書いたら `radirec reload` で反映します。保留していた回は、反映の後の走査で判断どおりに取り込まれます(または取り込まれません。
-  結果を見たいときは `radirec ingest` で走査を頼みます)。要対応からは、書いた時点で消えます。
+  動き続けます(理由は `gui.log`)。`airshelf ingest --dry-run` は「設定の読み込みに失敗しました: …」で 1 を返します。
+- 書いたら `airshelf reload` で反映します。保留していた回は、反映の後の走査で判断どおりに取り込まれます(または取り込まれません。
+  結果を見たいときは `airshelf ingest` で走査を頼みます)。要対応からは、書いた時点で消えます。
 - 管理画面からは、ホームの要対応の「この番組の回」「取り込まない」「別の番組…」で番組ページの下書きに積み、番組ページで
   保存します(§6「ホーム」・「番組」)。番組ページの「ファイル名の番組名の判断」の一覧で、書いた判断を見る・直す・消すこともできます。
 - **取り込み済みの回**(この仕組みを入れる前に取り込んだ回)も、判断待ちなら要対応に「取り込み済み N 回」と出ます。
@@ -500,7 +500,7 @@ radikool 固有の扱い:
 
 ### 既に取り込み済みアルバムを手作業で統合する(再適用で扱えない回の予備の手順)
 
-取り込み済みの回を統合するには、まず `radirec reapply`(確認)と `radirec reapply --apply <予定 ID>`(実行)を使います(§3)。次の手順は、再適用で**対象外**になった回
+取り込み済みの回を統合するには、まず `airshelf reapply`(確認)と `airshelf reapply --apply <予定 ID>`(実行)を使います(§3)。次の手順は、再適用で**対象外**になった回
 (移動先に内容の違うファイルがある等)や、radikool の回を、人が個別に判断して手作業で束ねるときの予備です。
 
 **前提となる Jellyfin の挙動(重要)**: Jellyfin(本ライブラリ構成)は**アルバムを「フォルダ単位」でグルーピング**します。
@@ -536,12 +536,12 @@ radikool 固有の扱い:
      `MMDD*10+N` で取り込まれている。統合先が統合番組**でない**ときは、その N をファイル名・`title`・`track` に
      そのまま残す。統合先が統合番組で、移動元に重複マーカー由来の `-N` があるときは、パートと番号がぶつかるので
      手作業統合しない。そういう回が出たら、実物を見て個別に判断する(パートと重複マーカーを両方持てるモデルは、
-     らじれこ MP3 の `(N)` を扱う [#86](https://github.com/t-seki/radirec-tool/issues/86) で検討したが、
+     らじれこ MP3 の `(N)` を扱う [#86](https://github.com/t-seki/airshelf/issues/86) で検討したが、
      らじれこ側の取り込み対象が無くなったため not planned で閉じた。radikool のこのケースを直す予定は無い)。
 3. 統合先フォルダへ移動し、ファイル名を手順 2 の表の形にリネームする。パート番号の無いケースでは、
    統合先に同じ放送日のファイルが無いことを事前に確認する。
 4. 空になった移動元フォルダを削除する。
-5. `radirec refresh`(または Jellyfin の通常ライブラリスキャン)を実行する。これで**アルバムの統合(所属)**は反映される。
+5. `airshelf refresh`(または Jellyfin の通常ライブラリスキャン)を実行する。これで**アルバムの統合(所属)**は反映される。
    ただし**書き換えたタグ(`title`/`track`/`disc` 等)が各トラックに反映されない**場合は、統合先アルバムに対して
    **メタデータの FullRefresh**(`POST /Items/{albumId}/Refresh?metadataRefreshMode=FullRefresh&replaceAllMetadata=true`)を
    実行する。移動でファイルは Jellyfin から「新規」として拾われるが、既存メタデータが残ってタグ由来値(パート番号 `(N)` や
@@ -549,21 +549,21 @@ radikool 固有の扱い:
 
 > **台帳は手で触らない**: 手作業の手順は台帳を書き換えません。import-once は `source_path` でも再取込をガードするため、
 > 出力側フォルダを動かしても元ソースの再取込は起きません(台帳の `output_path` と、アルバム名・パートの記録は古いまま残ります)。
-> 手作業で束ねた番組に対応する統合設定を `programs.json` に足したら、続けて **`radirec reapply`** で確かめ、
-> **`radirec reapply --apply <予定 ID>`** で実行してください。
+> 手作業で束ねた番組に対応する統合設定を `programs.json` に足したら、続けて **`airshelf reapply`** で確かめ、
+> **`airshelf reapply --apply <予定 ID>`** で実行してください。
 > ファイルが既に今の設定の場所にあり、タグも揃っている回は「台帳のみ」として、台帳の `identity_key`・アルバム名・パート・`output_path` が
 > 揃います(統合設定だけを足して台帳を古いままにすると、`identity_key` がずれて、アーカイブの再スキャン時に重複取込を招くことがあります)。
 > ファイル名だけを直してタグを直していない回は「台帳とタグ」として、`album` / `title` / `track` も揃います。
 
 ## 6. 常駐トレイ(自動取り込み)
 
-`Radirec.Gui`(トレイ常駐)を起動すると、録音を検知して自動で取り込み + Jellyfin 更新まで行います。
+`Airshelf.Gui`(トレイ常駐)を起動すると、録音を検知して自動で取り込み + Jellyfin 更新まで行います。
 **取り込みワーカーをトレイプロセスが内包**し、ユーザーセッションで動きます
 ([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)。旧 Windows サービスは退役)。
 らじれこは録音後 ~30 秒で強制スリープするため、**取りこぼしゼロはスリープ復帰時のキャッチアップ +
 import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-race.md))。トリガは①録音検知
 (FileSystemWatcher)②スリープ復帰 ③起動時 ④定期(安全網)⑤手動(トレイメニュー)。このほか、CLI の
-`radirec ingest` が頼む**走査の実行**でも走査します(§3。結果は CLI に返り、新規取込のトーストは出ません)。最終スキャンの
+`airshelf ingest` が頼む**走査の実行**でも走査します(§3。結果は CLI に返り、新規取込のトーストは出ません)。最終スキャンの
 きっかけが「再走査」と出るのは、走査の実行を頼まれたときに束ねられた①〜⑤の要求を、後から通常の走査としてまとめて走らせたときです。新規取込時は
 トレイが **in-process でトースト表示**します。**新規取込のトーストは管理画面の設定ページで止められます**。
 **取込失敗のトーストは、この設定に関係なく常に出ます**(#152)。差し替え放送の疑いで録音を**初めて保留した**ときの
@@ -576,9 +576,9 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
 管理画面のホームの**要対応**に出ます(下記。#155 より前は、初めて取り込んだときに新規取込のトーストの最後の 1 行で
 知らせていました)。
 
-### 管理画面(Radirec を開く)
+### 管理画面(Airshelf を開く)
 
-トレイメニューの **Radirec を開く**(太字の既定の項目)か、トレイアイコンの**ダブルクリック**で開きます
+トレイメニューの **Airshelf を開く**(太字の既定の項目)か、トレイアイコンの**ダブルクリック**で開きます
 (requirements §10.3・#151)。保留と取込失敗のトーストのクリックでも、ホームを出して開きます(上記。#237)。同時に開けるのは 1 つだけで、開いているときにもう一度選ぶと、その画面を前面に出します
 (最小化していれば元の大きさに戻します)。**閉じてもトレイに常駐し、取り込みは続きます**。設定を読み込めずに
 取り込みが止まっているときも開けます。左の一覧でページを切り替えます(ホーム / 取込履歴 / 番組 / 設定 / バージョン情報)。
@@ -608,7 +608,7 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
         押せません(書くと、番組ページの変更が保存できなくなるため)。`programs.json` に `//` コメントがあるときは、その場では
         書かずに番組ページの「分けておく兄弟フォルダを追加」の下書きへ移ります(保存するとコメントが消えるので、
         番組ページの保存の確認を通すため)。
-      - `radirec.json` の `ProgramsFile` が空(`programs.json` を使わない設定)のときは、統合も分けておくことも記録できない
+      - `airshelf.json` の `ProgramsFile` が空(`programs.json` を使わない設定)のときは、統合も分けておくことも記録できない
         ので、兄弟フォルダを出しません。
     - **解決していない取込失敗**:取り込みに失敗して、まだ取り込めていない録音ファイル。1 件ずつ、ファイル名・失敗の理由
       (取込失敗のトーストと同じ文言)・失敗した日時を出します。理由と日時を記録するようになる前(#172 より前)に失敗した
@@ -706,21 +706,21 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
       変わっていなければ読み直さず、「確認」からその再適用を続けられます)。
     - 番組ページで `programs.json` を読めないときは、その理由と「読み込み直す」を出します。
     - 書き込みに失敗したときは、`programs.json` は元のままです(理由を画面に出し、`gui.log` にも書きます)。
-  - 設定を読み込めていないときは一覧を出しません。`radirec.json` の `ProgramsFile` を空にして `programs.json` を
+  - 設定を読み込めていないときは一覧を出しません。`airshelf.json` の `ProgramsFile` を空にして `programs.json` を
     使わない設定のときは、その旨と使い方を出します。
 - **設定**(#152): ページを開くたびに、ディスクにある今の中身を読み直して見せます。
   - **取り込みの知らせ**:「新規取込のトーストを出す」のチェックで、新規取込のトーストを出すかを切り替えます。
-    切り替えはすぐ効き(設定リロードは要りません)、`radirec.json` と同じフォルダの **`gui-settings.json`** に保存します
-    (`radirec.json` は書き換えません。[ADR-0019](adr/0019-gui-settings-file-for-ingest-toast.md))。取込失敗のトーストは、
+    切り替えはすぐ効き(設定リロードは要りません)、`airshelf.json` と同じフォルダの **`gui-settings.json`** に保存します
+    (`airshelf.json` は書き換えません。[ADR-0019](adr/0019-gui-settings-file-for-ingest-toast.md))。取込失敗のトーストは、
     このチェックに関係なく出ます。`gui-settings.json` にまだ値が無いとき(このページができる前から使っていたとき)は、
-    `radirec.json` の旧設定 `NotificationsEnabled` を初期値として引き継ぎ、以後は `gui-settings.json` の値だけを使います。
-  - **設定ファイル**: `radirec.json` と `stations.json` の中身を**読み取り専用で**見せます(`JellyfinApiKey`・`UpdateToken` は
+    `airshelf.json` の旧設定 `NotificationsEnabled` を初期値として引き継ぎ、以後は `gui-settings.json` の値だけを使います。
+  - **設定ファイル**: `airshelf.json` と `stations.json` の中身を**読み取り専用で**見せます(`JellyfinApiKey`・`UpdateToken` は
     「(設定済み・表示しません)」と伏せます)。直すときは **ファイルを開く** で Windows で `.json` に関連付けたアプリ(エディタ)で
     開き(関連付けが無ければ「このファイルを開く方法」が出ます)、保存してから、直したファイルの段の **再読み込み** を押します。
-    **ファイルを保存しただけでは反映しません**。`radirec.json` の段の「再読み込み」は設定リロードです(確認のあと、取り込みを
+    **ファイルを保存しただけでは反映しません**。`airshelf.json` の段の「再読み込み」は設定リロードです(確認のあと、取り込みを
     一時停止して作り直します)。`stations.json` の段の「再読み込み」は、設定リロードに続けて再適用を確かめます(下記)。
-    - 開く場所は**今読み込んでいる設定**から求めます。`stations.json` は `radirec.json` の `StationsFile` で場所を変えていれば
-      その場所(相対パスは `radirec.json` のフォルダ基準)で、変えたのを「再読み込み」で反映すると開く場所も変わります。
+    - 開く場所は**今読み込んでいる設定**から求めます。`stations.json` は `airshelf.json` の `StationsFile` で場所を変えていれば
+      その場所(相対パスは `airshelf.json` のフォルダ基準)で、変えたのを「再読み込み」で反映すると開く場所も変わります。
     - ファイルが無ければ、初回起動時と同じ見本から作ってから開きます。開けなかったときは、その段の中に知らせます(理由は `gui.log`)。
     - `StationsFile` を空(`""`)にして `stations.json` を使わない設定にしているときは、その旨を出して開けません。
     - `stations.json` を直したら、保存してから `stations.json` の段の **再読み込み** を押します(#164)。設定リロードをしてから、
@@ -739,10 +739,10 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
       - 放送局が変わる回(`stations.json` の正規名を変えた等)は、再適用では**対象外**です(§3)。
     - 取り込みが止まっているときは「再読み込み」を押せません。
   - `programs.json` は番組ページで編集します(上記。#154)。
-  - **設定を読めないとき**(`radirec.json` が無い・壊れている): 設定ページの代わりに、読めない理由(読み込みのエラーそのまま)と
-    `radirec.json` の場所、**ファイルを開く** と **再読み込みして再起動** を出します。直して保存してから「再読み込みして再起動」を
+  - **設定を読めないとき**(`airshelf.json` が無い・壊れている): 設定ページの代わりに、読めない理由(読み込みのエラーそのまま)と
+    `airshelf.json` の場所、**ファイルを開く** と **再読み込みして再起動** を出します。直して保存してから「再読み込みして再起動」を
     押します。`programs.json` / `stations.json` は場所が分からないので開けません。JSON のエディタは内蔵しません。
-  - **取り込みを起動できないとき**(`radirec.json` は読めたが、`programs.json` / `stations.json` の JSON が壊れている等。
+  - **取り込みを起動できないとき**(`airshelf.json` は読めたが、`programs.json` / `stations.json` の JSON が壊れている等。
     状態が「取り込み停止中(取り込みの起動に失敗しました(設定ページ参照))」): 設定ページの先頭に、起動に失敗した理由
     (JSON が壊れているときは `programs.json を読めません(JSON が壊れています): …` のようにファイル名付き)と、
     **programs.json を開く** / **stations.json を開く** / **再読み込みして再起動** を出します。直して保存してから
@@ -752,16 +752,16 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
   適用します(トレイメニューにも同じ項目が出ます)。更新の項目を出せないときは、その理由を出します:
   開発版・portable(Velopack で入れていない版)では「この版は自己更新の対象外です(開発版・portable)」、
   Velopack で入れた版で設定を読み込めていないときは「設定を読めないため、更新を確認できません」(更新用のトークンは
-  `radirec.json` にあるため)。
+  `airshelf.json` にあるため)。
 - 管理画面の中でエラーが起きたときは、管理画面だけを閉じてバルーンで知らせます(トレイと取り込みは止めません。理由は `gui.log`)。
 
 ### 制御・更新(トレイメニュー)
 
-トレイアイコンの右クリックから(かつての `radirec status/rescan/reload`〔named pipe〕は in-process 化で
+トレイアイコンの右クリックから(かつての `airshelf status/rescan/reload`〔named pipe〕は in-process 化で
 **メニューに統合**。ADR-0012 で pipe は退役。`status` / `reload` は ADR-0020 で CLI から頼めるよう戻した。下の
 「CLI から状態を見る・設定リロードを頼む」。CLI の `ingest` も走査の実行をトレイに頼む。§3):
 
-- **Radirec を開く**: 管理画面を開きます(上記)。
+- **Airshelf を開く**: 管理画面を開きます(上記)。
 - **今すぐ再スキャン**: 自動トリガを待たず今すぐ 1 回スキャン(受理まで。バルーンで知らせます)。
 - 次の項目は、トレイから管理画面へ移りました:取込履歴(取込履歴ページ。#151)、設定リロードと設定ファイルを開く
   (設定ページ。#152)、統合設定の再適用(番組ページの「確認」→「保存して適用」。保存 → 設定リロード → 再適用の順に
@@ -770,22 +770,22 @@ import-once 冪等で担保**します([ADR-0003](adr/0003-catchup-over-sleep-ra
     トレイと一緒に退役しました。兄弟フォルダは管理画面のホームの要対応に出ます(#155。「統合する」「分けておく」)。
   - `programs.json` は番組ページで編集して保存するのが本来の使い方です(ADR-0017。エディタは設定が壊れて読めないときの
     逃げ道)。エディタで直した `programs.json` を取り込み済みの回へ効かせるには、設定ページの `stations.json` の段の
-    **再読み込み**(#164。設定リロードの後、`programs.json` と `stations.json` の両方で確かめます)か、`radirec reapply` で確かめて `radirec reapply --apply <予定 ID>`(§3)を使います。
+    **再読み込み**(#164。設定リロードの後、`programs.json` と `stations.json` の両方で確かめます)か、`airshelf reapply` で確かめて `airshelf reapply --apply <予定 ID>`(§3)を使います。
 - **状態 / 最終スキャン**: 稼働状態・監視ルート・最終スキャン時刻/件数。
 - **更新 vX を適用して再起動**: 更新が保留中のときだけ出ます。アプリ内更新(下記)。更新の確認は管理画面の
   バージョン情報ページで行います(#157)。
 
-### CLI から状態を見る・設定リロードを頼む(`radirec status` / `radirec reload`)
+### CLI から状態を見る・設定リロードを頼む(`airshelf status` / `airshelf reload`)
 
 トレイを起動していれば、CLI からも常駐の状態を見たり、設定リロードを頼んだりできます(AI エージェントやスクリプト向け。
 [ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) / #179)。CLI はトレイの**制御チャネル**(named pipe)へ
-頼み、トレイが答えます。パイプはユーザーごとの名前(`radirec-control-<ユーザーの SID>`)で、同じユーザーからしか繋げません。
-`radirec ingest`(`--dry-run` なし)も同じ経路でトレイに走査の実行を頼みます(§3。#180)。
+頼み、トレイが答えます。パイプはユーザーごとの名前(`airshelf-control-<ユーザーの SID>`)で、同じユーザーからしか繋げません。
+`airshelf ingest`(`--dry-run` なし)も同じ経路でトレイに走査の実行を頼みます(§3。#180)。
 
 ```powershell
-radirec status          # 稼働中か・版・監視ルート・最終スキャン・設定ファイルの場所
-radirec status --json
-radirec reload          # radirec.json などを直した後に(管理画面の設定ページの「設定リロード」と同じ)
+airshelf status          # 稼働中か・版・監視ルート・最終スキャン・設定ファイルの場所
+airshelf status --json
+airshelf reload          # airshelf.json などを直した後に(管理画面の設定ページの「設定リロード」と同じ)
 ```
 
 | コマンド | 状況 | 終了コード |
@@ -809,50 +809,53 @@ radirec reload          # radirec.json などを直した後に(管理画面の�
 
 ### 導入(Velopack Setup.exe・非 admin)
 
-[Releases](https://github.com/t-seki/radirec-tool/releases) の **`Radirec-win-Setup.exe`** を実行するだけ
+[Releases](https://github.com/t-seki/airshelf/releases) の **`Airshelf-win-Setup.exe`** を実行するだけ
 (**管理者不要**。[ADR-0013](adr/0013-velopack-per-user-updates.md)):
 
-- 実行体: `%LOCALAPPDATA%\Radirec\`(Velopack 管理・更新で差し替わる)
-- データ: `%LOCALAPPDATA%\RadirecData\`(`radirec.json` / `ledger.db` / `stations.json` / `programs.json` / `gui.log` /
+- 実行体: `%LOCALAPPDATA%\Airshelf\`(Velopack 管理・更新で差し替わる)
+- データ: `%LOCALAPPDATA%\AirshelfData\`(`airshelf.json` / `ledger.db` / `stations.json` / `programs.json` / `gui.log` /
   `gui-settings.json`〔管理画面の設定。#152〕)
 
-初回起動時に設定を sample から生成します。`%LOCALAPPDATA%\RadirecData\radirec.json` を編集
+初回起動時に設定を sample から生成します。`%LOCALAPPDATA%\AirshelfData\airshelf.json` を編集
 (`RadioRoot` / `OutputRoot` / Jellyfin / 更新用 `UpdateToken`。管理画面の設定ページの「ファイルを開く」からも開けます)。トレイはログオン自動起動に自己登録されます。
-動作ログは `%LOCALAPPDATA%\RadirecData\gui.log`。
+動作ログは `%LOCALAPPDATA%\AirshelfData\gui.log`。
 
 ### 更新(アプリ内・Velopack)
 
 管理画面のバージョン情報ページの「**今すぐ更新を確認**」→ 新版があれば「**更新 vX を適用して再起動**」
 (保留中はトレイメニューにも同じ項目が出ます)。起動時・24h ごとに自動でも確認し、新版を初めて見つけたときだけ
 バルーンで知らせます。適用は確認(既定はキャンセル)→ DL → ワーカーを graceful 停止 → 差し替え → 自動再起動。
-**private repo のため**、更新フィード読取用の fine-grained PAT(contents:read)を `radirec.json` の `UpdateToken`
+**private repo のため**、更新フィード読取用の fine-grained PAT(contents:read)を `airshelf.json` の `UpdateToken`
 に設定します。RC(prerelease)を試すときは `"UpdatePrerelease": true`。
 
 ### アンインストール
 
-設定 → アプリ →「Radirec」→ アンインストール、または `%LOCALAPPDATA%\Radirec\Update.exe --uninstall`。
-ログオン自動起動も解除されます。データ(`%LOCALAPPDATA%\RadirecData`)は残ります(消すと import-once 履歴が
+設定 → アプリ →「Airshelf」→ アンインストール、または `%LOCALAPPDATA%\Airshelf\Update.exe --uninstall`。
+ログオン自動起動も解除されます。データ(`%LOCALAPPDATA%\AirshelfData`)は残ります(消すと import-once 履歴が
 失われる)。不要なら手動削除。
 
-> 旧 admin 配置(`%ProgramData%\radirec` + Windows サービス)からの移行は
-> [移行 runbook](migration-to-velopack.md) を参照。
+> 改名前の Radirec からの移行は [Airshelf への移行の手順書](migration-to-airshelf.md)、
+> 旧 admin 配置(`%ProgramData%\radirec` + Windows サービス)からの移行は §8 を参照。
 
 ## 7. 開発時の実行
 
-SDK から直接動かす場合(`radirec.exe` を publish せずに):
+SDK から直接動かす場合(`airshelf.exe` を publish せずに):
 
 ```powershell
 dotnet run --project src/Airshelf.Cli -- ingest --dry-run
 ```
 
-設定は常に `%LOCALAPPDATA%\RadirecData\radirec.json` を使います(§3。別の場所を指すオプションは無い)。
+設定は常に `%LOCALAPPDATA%\AirshelfData\airshelf.json` を使います(§3。別の場所を指すオプションは無い)。
 
 単一 exe を手元で作るには `dotnet publish src/Airshelf.Cli -c Release`(win-x64 自己完結)。配布(常駐トレイの
 Setup.exe・更新フィード)は CI がタグ push で **`vpk`(Velopack)** により Release へ発行します(§6・ADR-0013)。
 
 ## 8. 旧環境からの移行
 
-旧 admin 配置(`%ProgramData%\radirec` + Windows サービス)や、さらに古い `C:\radirec\` 同居レイアウトからの
-移行は、いずれも **台帳(`ledger.db`)を無傷で新データルート `%LOCALAPPDATA%\RadirecData\` へ運ぶ**のが要点です
-(運び損ねると全放送回が「未取込」判定になり NAS へ再コピーが爆発)。現行の手順は
-[移行 runbook](migration-to-velopack.md) にまとめています。
+どの旧環境からの移行も、**台帳(`ledger.db`)を無傷で新データルート `%LOCALAPPDATA%\AirshelfData\` へ運ぶ**のが要点です
+(運び損ねると全放送回が「未取込」判定になり NAS へ再コピーが爆発)。
+
+- 改名前の **Radirec**(Velopack 版。データは `%LOCALAPPDATA%\RadirecData\`)からは
+  [Airshelf への移行の手順書](migration-to-airshelf.md)([ADR-0022](adr/0022-rename-product-to-airshelf.md))。
+- 旧 admin 配置(`%ProgramData%\radirec` + Windows サービス)や、さらに古い `C:\radirec\` 同居レイアウトからは、
+  まず [移行 runbook](migration-to-velopack.md) で `%LOCALAPPDATA%\RadirecData\` へ移してから、上の手順書で Airshelf へ移します。

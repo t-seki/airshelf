@@ -165,5 +165,5 @@ public sealed class ControlPipeClient(
     }
 
     /// <summary>常駐に繋がらないときの知らせ(#179 の設計の決定の文言)。</summary>
-    public const string NotRunningMessage = "常駐が動いていません(Radirec.Gui.exe を起動してください)";
+    public const string NotRunningMessage = "常駐が動いていません(Airshelf.Gui.exe を起動してください)";
 }

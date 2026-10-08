@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Airshelf.Core.Ledger;
 
 /// <summary>
-/// 取込履歴に出す「放送」の 1 列の表記。管理画面(<c>IngestHistoryRow</c>)と CLI の <c>radirec history</c>(#182)で共有する。
+/// 取込履歴に出す「放送」の 1 列の表記。管理画面(<c>IngestHistoryRow</c>)と CLI の <c>airshelf history</c>(#182)で共有する。
 /// </summary>
 public static class BroadcastLabel
 {

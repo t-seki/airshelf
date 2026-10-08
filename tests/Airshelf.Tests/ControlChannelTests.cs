@@ -27,8 +27,8 @@ public sealed class ControlChannelTests
     [Fact]
     public void パイプ名はユーザーごとで_使えない文字は置き換える()
     {
-        Assert.Equal("radirec-control-S-1-5-21-1", ControlProtocol.PipeNameFor("S-1-5-21-1"));
-        Assert.Equal("radirec-control-DOMAIN_user", ControlProtocol.PipeNameFor(@"DOMAIN\user"));
+        Assert.Equal("airshelf-control-S-1-5-21-1", ControlProtocol.PipeNameFor("S-1-5-21-1"));
+        Assert.Equal("airshelf-control-DOMAIN_user", ControlProtocol.PipeNameFor(@"DOMAIN\user"));
         Assert.StartsWith(ControlProtocol.PipeNamePrefix, ControlProtocol.DefaultPipeName());
     }
 
@@ -46,7 +46,7 @@ public sealed class ControlChannelTests
         Assert.Equal("1.2.3", result.TrayVersion);
         var status = result.Response!.Status!;
         Assert.True(status.Running);
-        Assert.Equal(@"C:\data\radirec.json", status.ConfigPath);
+        Assert.Equal(@"C:\data\airshelf.json", status.ConfigPath);
         Assert.Equal(@"I:\radio", status.RadioRoot);
         Assert.Equal(3, status.LastImported);
         Assert.Equal("手動", status.LastScanTrigger);
@@ -63,7 +63,7 @@ public sealed class ControlChannelTests
         var status = result.Response!.Status!;
         Assert.False(status.Running);
         Assert.Equal("設定を読み込めませんでした", status.DegradedReason);
-        Assert.Equal(@"C:\data\radirec.json", status.ConfigPath);
+        Assert.Equal(@"C:\data\airshelf.json", status.ConfigPath);
         Assert.Null(status.RadioRoot);
     }
 
@@ -256,7 +256,7 @@ public sealed class ControlChannelTests
         Assert.True((await slow).Response!.Reload!.Accepted);
     }
 
-    // ---- CLI(radirec status / reload) ----
+    // ---- CLI(airshelf status / reload) ----
 
     [Fact]
     public async Task CLIのstatusは常駐に繋がらなくても0で_running_falseと理由を返す()
@@ -285,7 +285,7 @@ public sealed class ControlChannelTests
         var result = doc.RootElement.GetProperty("result");
         Assert.True(result.GetProperty("reachable").GetBoolean());
         Assert.True(result.GetProperty("running").GetBoolean());
-        Assert.Equal(@"C:\data\radirec.json", result.GetProperty("tray").GetProperty("configPath").GetString());
+        Assert.Equal(@"C:\data\airshelf.json", result.GetProperty("tray").GetProperty("configPath").GetString());
         Assert.Equal(@"I:\radio", result.GetProperty("tray").GetProperty("radioRoot").GetString());
     }
 
@@ -312,12 +312,12 @@ public sealed class ControlChannelTests
 
         Assert.Equal(ExitCodes.Success, (await RunCli(["reload"], Client(server))).ExitCode);
 
-        control.Reload = ReloadResult.Failed("radirec.json を読めません");
+        control.Reload = ReloadResult.Failed("airshelf.json を読めません");
         var (exitCode, output) = await RunCli(["reload", "--json"], Client(server));
         Assert.Equal(ExitCodes.UsageOrConfig, exitCode);
         using var doc = JsonDocument.Parse(output);
         Assert.False(doc.RootElement.GetProperty("result").GetProperty("accepted").GetBoolean());
-        Assert.Equal("radirec.json を読めません", doc.RootElement.GetProperty("result").GetProperty("error").GetString());
+        Assert.Equal("airshelf.json を読めません", doc.RootElement.GetProperty("result").GetProperty("error").GetString());
     }
 
     [Fact]
@@ -364,7 +364,7 @@ public sealed class ControlChannelTests
         Assert.Equal(expected, AirshelfCli.CommandOf(args));
     }
 
-    // ---- 走査の実行(radirec ingest。#180)----
+    // ---- 走査の実行(airshelf ingest。#180)----
 
     [Fact]
     public async Task scanは走査が終わるまで待って結果を返す_応答の待ち時間は走査の実行用のものを使う()
@@ -502,7 +502,7 @@ public sealed class ControlChannelTests
         Assert.Contains("トレイが古ければ更新してください", doc.RootElement.GetProperty("error").GetString());
     }
 
-    // ---- 再適用(radirec reapply。#181)----
+    // ---- 再適用(airshelf reapply。#181)----
 
     private static ReapplyReport Plan(bool dryRun, params string[] fromPaths) => new()
     {
@@ -553,7 +553,7 @@ public sealed class ControlChannelTests
         Assert.Equal(ExitCodes.Success, exitCode);
         var id = ReapplyPlanId.Of(plan);
         Assert.Contains($"予定 ID: {id}", output);
-        Assert.Contains($"radirec reapply --apply {id}", output);
+        Assert.Contains($"airshelf reapply --apply {id}", output);
         Assert.Null(control.AppliedPlanId);
     }
 
@@ -622,7 +622,7 @@ public sealed class ControlChannelTests
 
         Assert.Equal(ExitCodes.PlanChanged, exitCode);
         Assert.Contains("変わったため実行しませんでした", output);
-        Assert.Contains($"radirec reapply --apply {ReapplyPlanId.Of(replanned)}", output);
+        Assert.Contains($"airshelf reapply --apply {ReapplyPlanId.Of(replanned)}", output);
     }
 
     [Theory]
@@ -772,11 +772,11 @@ public sealed class ControlChannelTests
 
     // ---- 組み立て ----
 
-    private static string UniqueName() => "radirec-test-" + Guid.NewGuid().ToString("N");
+    private static string UniqueName() => "airshelf-test-" + Guid.NewGuid().ToString("N");
 
     private static ControlPipeServer StartServer(IServiceControl? control, string? degradedReason)
     {
-        var server = new ControlPipeServer(UniqueName(), control, degradedReason, @"C:\data\radirec.json", "1.2.3");
+        var server = new ControlPipeServer(UniqueName(), control, degradedReason, @"C:\data\airshelf.json", "1.2.3");
         server.Start();
         return server;
     }

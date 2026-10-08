@@ -5,8 +5,8 @@ namespace Airshelf.Gui;
 
 /// <summary>
 /// 常駐トレイの簡易ログ。WinExe はコンソールを持たないため、診断を
-/// <c>%LOCALAPPDATA%\RadirecData\gui.log</c> へ追記する(<see cref="AppData"/> 経由。ADR-0009 / 0013)。
-/// **Velopack のインストール先 <c>%LOCALAPPDATA%\Radirec</c> ではない** — そちらは更新/アンインストールで消える。
+/// <c>%LOCALAPPDATA%\AirshelfData\gui.log</c> へ追記する(<see cref="AppData"/> 経由。ADR-0009 / 0013)。
+/// **Velopack のインストール先 <c>%LOCALAPPDATA%\Airshelf</c> ではない** — そちらは更新/アンインストールで消える。
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class TrayLog

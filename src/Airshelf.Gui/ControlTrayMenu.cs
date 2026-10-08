@@ -14,12 +14,12 @@ namespace Airshelf.Gui;
 /// status はメニューを開いた瞬間(<see cref="ToolStripDropDown.Opening"/>)にスナップショットを読んで表示を
 /// 更新する。取り込みワーカー未起動(設定未読込 = <see cref="IServiceControl"/> が null)のときは
 /// 「今すぐ再スキャン」をグレーアウトし「取り込み停止中」を表示する縮退にする。
-/// 項目は requirements §10.3 の「トレイに残すもの」だけ:版 / Radirec を開く / 今すぐ再スキャン / 状態・最終スキャン /
+/// 項目は requirements §10.3 の「トレイに残すもの」だけ:版 / Airshelf を開く / 今すぐ再スキャン / 状態・最終スキャン /
 /// 更新を適用して再起動(保留中のみ)/ 再読み込みして再起動(縮退時のみ)/ 終了。ほかは管理画面へ移した:
 /// 取込履歴(#151)、設定リロードと設定ファイルを開く(設定ページ。#152)、統合設定の再適用(番組ページの「保存して適用」。
 /// #154。再適用の確認ダイアログから programs.json に追記する流れ〈#144〉も一緒に退役した。要対応〈#155〉が引き継ぐ)、
 /// 今すぐ更新を確認(バージョン情報ページ。#157)。
-/// 「Radirec を開く」(#151)は管理画面を開く既定の項目(太字。アイコンのダブルクリックでも開く)で、縮退時も選べる。
+/// 「Airshelf を開く」(#151)は管理画面を開く既定の項目(太字。アイコンのダブルクリックでも開く)で、縮退時も選べる。
 /// </summary>
 internal sealed class ControlTrayMenu
 {
@@ -34,7 +34,7 @@ internal sealed class ControlTrayMenu
     private readonly ToolStripMenuItem? _applyUpdate; // 更新保留時のみ表示(S6)
     private readonly ToolStripSeparator? _updateSeparator; // _applyUpdate の上の区切り線。同じく保留時のみ(#157)
 
-    /// <param name="openManagement">管理画面を開く(#151)。「Radirec を開く」で呼ぶ。</param>
+    /// <param name="openManagement">管理画面を開く(#151)。「Airshelf を開く」で呼ぶ。</param>
     /// <param name="control">取り込みワーカーの制御面。縮退(未起動)時は null。</param>
     /// <param name="degradedReason">control==null の理由(縮退メニューに表示)。healthy 時は null。</param>
     /// <param name="update">自己更新サービス(S6)。null / 未インストール(dev)なら更新項目を出さない。</param>
@@ -56,7 +56,7 @@ internal sealed class ControlTrayMenu
         _lastScanLine = new ToolStripMenuItem("最終スキャン: —") { Enabled = false };
 
         // 版情報(S1 / #63)。クリック不可のヘッダー。CI がタグから注入した版、ローカルは 0.0.0-dev。
-        var versionLine = new ToolStripMenuItem($"Radirec {AppVersion.Of(typeof(ControlTrayMenu).Assembly)}")
+        var versionLine = new ToolStripMenuItem($"Airshelf {AppVersion.Of(typeof(ControlTrayMenu).Assembly)}")
         {
             Enabled = false,
         };
@@ -65,7 +65,7 @@ internal sealed class ControlTrayMenu
 
         // 管理画面を開く(#151・W-602)。既定の項目なので太字にする(アイコンのダブルクリックでも開く。Program.cs)。
         // 縮退時も選べる(管理画面は縮退の状態を見せる)。
-        var open = new ToolStripMenuItem("Radirec を開く", image: null, (_, _) => openManagement());
+        var open = new ToolStripMenuItem("Airshelf を開く", image: null, (_, _) => openManagement());
         open.Font = new Font(open.Font, FontStyle.Bold);
 
         Menu.Items.Add(versionLine);
@@ -117,7 +117,7 @@ internal sealed class ControlTrayMenu
     {
         // 要求チャネルへ coalesce される冪等操作。即座に返る(スキャン完了は待たない)。
         _control?.RequestRescan();
-        _tray.ShowBalloonTip(3000, "Radirec", "手動再スキャンを要求しました", ToolTipIcon.Info);
+        _tray.ShowBalloonTip(3000, "Airshelf", "手動再スキャンを要求しました", ToolTipIcon.Info);
     }
 
     private async void OnApplyUpdate(object? sender, EventArgs e)
@@ -130,7 +130,7 @@ internal sealed class ControlTrayMenu
         var version = _update.PendingVersion;
         if (version is null)
         {
-            _tray.ShowBalloonTip(3000, "Radirec", UpdateTexts.NothingToApply, ToolTipIcon.Info); // W-509
+            _tray.ShowBalloonTip(3000, "Airshelf", UpdateTexts.NothingToApply, ToolTipIcon.Info); // W-509
             RefreshUpdateItem();
             return;
         }
@@ -153,7 +153,7 @@ internal sealed class ControlTrayMenu
         catch (Exception ex)
         {
             TrayLog.Warn($"更新の適用に失敗しました: {ex}");
-            _tray.ShowBalloonTip(4000, "Radirec", UpdateTexts.ApplyFailed, ToolTipIcon.Warning); // W-509
+            _tray.ShowBalloonTip(4000, "Airshelf", UpdateTexts.ApplyFailed, ToolTipIcon.Warning); // W-509
         }
     }
 

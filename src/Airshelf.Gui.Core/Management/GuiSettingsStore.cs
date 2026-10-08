@@ -4,8 +4,8 @@ using Airshelf.Hosting;
 namespace Airshelf.Gui.Core.Management;
 
 /// <summary>
-/// 管理画面用の設定ファイル <c>gui-settings.json</c> の中身(#152・ADR-0019)。<c>radirec.json</c> と同じフォルダに置き、
-/// 管理画面だけが読み書きする(<c>radirec.json</c> は GUI で編集しない)。値が無いキーは null(既定の決め方は読み手が持つ)。
+/// 管理画面用の設定ファイル <c>gui-settings.json</c> の中身(#152・ADR-0019)。<c>airshelf.json</c> と同じフォルダに置き、
+/// 管理画面だけが読み書きする(<c>airshelf.json</c> は GUI で編集しない)。値が無いキーは null(既定の決め方は読み手が持つ)。
 /// </summary>
 public sealed record GuiSettings
 {

@@ -99,7 +99,7 @@ public sealed class ReapplyCommand(
         if (report.DryRun && planId is not null)
         {
             console.MarkupLineInterpolated($"予定 ID: {planId}");
-            console.MarkupLineInterpolated($"実行するには: radirec reapply --apply {planId}");
+            console.MarkupLineInterpolated($"実行するには: airshelf reapply --apply {planId}");
         }
     }
     private void Render(ReapplyReport report, string? outputRoot)

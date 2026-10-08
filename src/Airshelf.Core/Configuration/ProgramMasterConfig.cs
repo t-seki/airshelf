@@ -110,8 +110,8 @@ public sealed class KeptApartSiblings
 public sealed class ProgramDefaults
 {
     /// <summary>
-    /// 既定ジャンル。**空**が既定(未指定)で、明示された場合のみ radirec.json の Genre を上書きする。
-    /// programs.json が無い/未指定なら空のままとなり、上位(radirec.json)の値が使われる。
+    /// 既定ジャンル。**空**が既定(未指定)で、明示された場合のみ airshelf.json の Genre を上書きする。
+    /// programs.json が無い/未指定なら空のままとなり、上位(airshelf.json)の値が使われる。
     /// </summary>
     public string Genre { get; set; } = string.Empty;
 }

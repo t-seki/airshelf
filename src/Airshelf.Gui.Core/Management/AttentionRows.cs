@@ -106,7 +106,7 @@ public static class AttentionText
     /// <summary>W-119。取り込みが止まっている(W-103〜W-105・W-153)ので、W-136 を押せない。</summary>
     public const string ReapplyUnavailable = "取り込みが止まっているため、再適用を確かめられません";
 
-    /// <summary>W-137。縮退(radirec.json を読めない)。</summary>
+    /// <summary>W-137。縮退(airshelf.json を読めない)。</summary>
     public const string Unavailable = "設定を読めないため、要対応を出せません";
 
     /// <summary>W-137 の 2 つ目。台帳か設定ファイルを読めず、要対応を計算できなかった。</summary>

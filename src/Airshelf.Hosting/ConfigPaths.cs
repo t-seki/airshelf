@@ -2,27 +2,27 @@ namespace Airshelf.Hosting;
 
 /// <summary>
 /// 設定ファイルの発見と、設定内相対パスの解決基準を一元化する(ADR-0006 / 0012 / 0013)。
-/// トレイ常駐 per-user 移行(ADR-0012/0013)で、データは per-user の <c>%LOCALAPPDATA%\RadirecData\</c> に置く
+/// トレイ常駐 per-user 移行(ADR-0012/0013)で、データは per-user の <c>%LOCALAPPDATA%\AirshelfData\</c> に置く
 /// (Velopack の versioned app ディレクトリの外・非 admin・非 roaming。SQLite 台帳は roaming 不可)。
-/// フォルダ名を <c>Radirec</c> にしてはならない理由は <see cref="DataRoot"/> を参照。
+/// フォルダ名を <c>Airshelf</c> にしてはならない理由は <see cref="DataRoot"/> を参照。
 /// 設定は DataRoot 側を既定発見し、設定内の相対パスは**設定ファイル自身のディレクトリ基準**で解決する。
 /// </summary>
 public static class ConfigPaths
 {
     /// <summary>
-    /// データルート = <c>%LOCALAPPDATA%\RadirecData\</c>(Windows。他 OS では LocalApplicationData 配下)。
+    /// データルート = <c>%LOCALAPPDATA%\AirshelfData\</c>(Windows。他 OS では LocalApplicationData 配下)。
     /// 台帳・設定・マスタを置く。Local(非 roaming)= SQLite 台帳がマシン間同期で壊れないため。
-    /// **フォルダ名は Velopack の packId 'Radirec'(インストール先 <c>%LOCALAPPDATA%\Radirec</c>)と
-    /// 意図的に違える** — Windows は case-insensitive で <c>radirec</c>≒<c>Radirec</c> になり、同一だと
+    /// **フォルダ名は Velopack の packId 'Airshelf'(インストール先 <c>%LOCALAPPDATA%\Airshelf</c>)と
+    /// 意図的に違える** — Windows は case-insensitive で <c>airshelf</c>≒<c>Airshelf</c> になり、同一だと
     /// 台帳が Velopack のアンインストールで消される(=全再取込)。ADR-0013 の衝突回避。
     /// </summary>
     public static string DataRoot =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RadirecData");
+            "AirshelfData");
 
     /// <summary>既定の設定ファイル。トレイと CLI はどちらもこれを使う(CLI の <c>--config</c> は ADR-0020 で削った)。</summary>
-    public static string DefaultConfigPath => Path.Combine(DataRoot, "radirec.json");
+    public static string DefaultConfigPath => Path.Combine(DataRoot, "airshelf.json");
 
     /// <summary>明示パスがあればそれを、無ければ <see cref="DefaultConfigPath"/> を返す。</summary>
     public static string Resolve(string? explicitPath) =>
@@ -59,7 +59,7 @@ public static class ConfigPaths
 
     /// <summary>
     /// 設定ファイル <paramref name="file"/> の場所を、今読み込んでいる設定から求める(設定ページの「ファイルを開く」#143 / #152)。
-    /// <c>radirec.json</c> は <paramref name="configFilePath"/> そのもの、<c>stations.json</c> / <c>programs.json</c> は
+    /// <c>airshelf.json</c> は <paramref name="configFilePath"/> そのもの、<c>stations.json</c> / <c>programs.json</c> は
     /// <see cref="RebaseAgainst"/> 済みの <paramref name="stationsFile"/> / <paramref name="programsFile"/>
     /// (<c>StationsFile</c> / <c>ProgramsFile</c> で既定と違う場所を指していればその場所)。
     /// </summary>
@@ -83,7 +83,7 @@ public static class ConfigPaths
 /// <summary>利用者が編集する設定ファイルの種類(見本から作るときの種類と、開く場所の計算に使う)。</summary>
 public enum ConfigFile
 {
-    /// <summary>環境設定 <c>radirec.json</c>。</summary>
+    /// <summary>環境設定 <c>airshelf.json</c>。</summary>
     Airshelf,
 
     /// <summary>番組 alias・統合設定 <c>programs.json</c>(<c>ProgramsFile</c>)。</summary>

@@ -20,7 +20,7 @@ public static class CompositionRoot
     /// </param>
     /// <param name="notify">
     /// 取込通知を発行するか。**常駐経路のみ true**。CLI がここを直接組むのは <c>ingest --dry-run</c> だけで
-    /// (非 dry-run の <c>radirec ingest</c> は常駐に頼む。#203)、dry-run はそもそも発行しない(ADR-0012)。
+    /// (非 dry-run の <c>airshelf ingest</c> は常駐に頼む。#203)、dry-run はそもそも発行しない(ADR-0012)。
     /// </param>
     /// <param name="summaryPublisher">
     /// 取込要約**シグナル**の publisher を注入する(現行の実装はトレイ常駐の in-process トースト。ADR-0012)。
@@ -67,7 +67,7 @@ public static class CompositionRoot
         IHeldRecordingStore heldStore = useFailureStore ? heldStoreFacet : new NullHeldRecordingStore();
         IIngestHeldPublisher heldPub = useFailureStore && heldPublisher is not null ? heldPublisher : new NullIngestHeldPublisher();
 
-        // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> radirec.json の Genre > 既定。
+        // ジャンルの優先順位: programs.json の Defaults.Genre(明示時)> airshelf.json の Genre > 既定。
         var genre = string.IsNullOrWhiteSpace(programs.Defaults.Genre)
             ? config.Genre
             : programs.Defaults.Genre;
@@ -197,7 +197,7 @@ public static class CompositionRoot
         // 失敗として報告して設定の誤りに気づけるようにする(#133)。
         if (!Uri.TryCreate(config.JellyfinUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri))
             return (new MisconfiguredLibraryRefresher(
-                $"JellyfinUrl の形式が不正です({config.JellyfinUrl})。radirec.json を確認してください。"), null);
+                $"JellyfinUrl の形式が不正です({config.JellyfinUrl})。airshelf.json を確認してください。"), null);
 
         // 既定 100 秒だと更新遅延時に取込コマンドが長く固まるため、明示的に短くする。
         var http = new HttpClient { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(30) };

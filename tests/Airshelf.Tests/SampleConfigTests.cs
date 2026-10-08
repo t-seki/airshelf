@@ -4,7 +4,7 @@ using Airshelf.Hosting;
 namespace Airshelf.Tests;
 
 /// <summary>
-/// 初回起動時に <c>ConfigSeeder</c> が %LOCALAPPDATA%\RadirecData\ へ生成する sample 設定が
+/// 初回起動時に <c>ConfigSeeder</c> が %LOCALAPPDATA%\AirshelfData\ へ生成する sample 設定が
 /// ConfigLoader で解析できることを保証する。sample は埋め込みリソースで「初回生成の種」になるため、
 /// 壊れると新規インストールが起動時に失敗する。
 /// </summary>
@@ -14,9 +14,9 @@ public class SampleConfigTests
         Path.Combine(AppContext.BaseDirectory, "Samples", name);
 
     [Fact]
-    public void Radirecサンプルが解析できパスは相対で入る()
+    public void Airshelfサンプルが解析できパスは相対で入る()
     {
-        var config = ConfigLoader.LoadRequired<AirshelfConfig>(SamplePath("radirec.sample.json"));
+        var config = ConfigLoader.LoadRequired<AirshelfConfig>(SamplePath("airshelf.sample.json"));
 
         // 相対パス(ADR-0006。config ディレクトリ基準で解決される前提の裸名)。
         Assert.Equal("ledger.db", config.LedgerPath);

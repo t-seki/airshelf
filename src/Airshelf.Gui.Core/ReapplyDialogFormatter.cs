@@ -19,7 +19,7 @@ public enum ReapplyBasis
 
 /// <summary>
 /// 統合設定の再適用(ADR-0016 / #126)の確認・完了の文言と、<c>gui.log</c> に書く明細行を <see cref="ReapplyReport"/> から
-/// 組み立てる(表示専用・純粋)。管理画面の番組ページ(#154)が画面の中に出す。語は CLI(<c>radirec reapply</c>)と
+/// 組み立てる(表示専用・純粋)。管理画面の番組ページ(#154)が画面の中に出す。語は CLI(<c>airshelf reapply</c>)と
 /// <c>docs/usage.md</c> の表に揃える。アルバムの行数に上限を持ち、超えた分は「…ほか」に畳んで 1 回ずつの明細は
 /// <c>gui.log</c> へ回す。統合設定の無い兄弟フォルダは確認に出さない(管理画面の要対応へ移る。#155)。明細には残す。
 /// </summary>
@@ -29,7 +29,7 @@ public static class ReapplyDialogFormatter
     public const int MaxAlbums = 8;
 
     /// <summary>明細の置き場所(利用者が辿れるように、そのまま書く)。</summary>
-    public const string LogLocation = @"%LOCALAPPDATA%\RadirecData\gui.log";
+    public const string LogLocation = @"%LOCALAPPDATA%\AirshelfData\gui.log";
 
     // W-247
     private static readonly string DetailsInLog = $"1 回ずつの明細は gui.log({LogLocation})に書きました。";

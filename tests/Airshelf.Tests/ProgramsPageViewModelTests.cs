@@ -81,7 +81,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         }
     }
 
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-programs-page-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-programs-page-").FullName;
     private readonly List<string> _log = [];
     private readonly ProgramsApplyGate _gate = new();
 
