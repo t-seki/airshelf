@@ -52,9 +52,10 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.WinUI.Notifications" />
-    <!-- 取り込みワーカーのホスティング(BackgroundService / Host)と電源イベント購読(ADR-0003/0012)。 -->
+    <!-- 取り込みワーカーのホスティング(BackgroundService / Host)。電源イベント購読(ADR-0003/0012)の
+         SystemEvents は Microsoft.WindowsDesktop.App 共有フレームワークに含まれるので PackageReference は不要
+         (付けると Windows で NU1510 になり -warnaserror で落ちる。#260)。 -->
     <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Win32.SystemEvents" />
     <!-- per-user 自己更新(ADR-0013 / S5・S6)。 -->
     <PackageReference Include="Velopack" />
   </ItemGroup>
