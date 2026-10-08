@@ -22,8 +22,8 @@ secrets.json
 *.secret
 config.local.*
 # 個人の実設定(*.sample.json からコピーして作る)
-/radirec.json
-/config/radirec.json
+/airshelf.json
+/config/airshelf.json
 /config/stations.json
 /config/programs.json
 

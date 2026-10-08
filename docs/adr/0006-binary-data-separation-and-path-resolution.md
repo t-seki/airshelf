@@ -1,6 +1,6 @@
 # バイナリとデータを分離し、設定内の相対パスは設定ファイル基準で解決する
 
-Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#16 配布・インストール整備)。**ADR-0012 / 0013 でデータを `%ProgramData%\radirec`(マシン共通)から `%LOCALAPPDATA%\RadirecData`(安定 per-user・非 roaming・更新で消えない位置)へ**(`ConfigPaths.DataRoot` を `CommonApplicationData`→`LocalApplicationData`)。SQLite 台帳は roaming 不可なので Local を使う。実行体は Velopack 管理下の versioned ディレクトリ。バイナリ/データ分離の原則は維持。
+Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#16 配布・インストール整備)。**ADR-0012 / 0013 でデータを `%ProgramData%\radirec`(マシン共通)から `%LOCALAPPDATA%\RadirecData`(安定 per-user・非 roaming・更新で消えない位置)へ**(`ConfigPaths.DataRoot` を `CommonApplicationData`→`LocalApplicationData`)。SQLite 台帳は roaming 不可なので Local を使う。実行体は Velopack 管理下の versioned ディレクトリ。バイナリ/データ分離の原則は維持。**[ADR-0022](0022-rename-product-to-airshelf.md)(2026-10-08)で製品名を Airshelf に改め、データのフォルダは `%LOCALAPPDATA%\AirshelfData`、設定ファイルは `airshelf.json` になった(本文の `RadirecData` / `radirec.json` は当時の名前)**。
 
 移行(#15)後の本番は、実行体・台帳・設定を **`C:\radirec\` に同居**させていた(`radirec.json` / `ledger.db`(+ WAL/SHM)/ `stations.json` / `programs.json` がすべて同一フォルダ、`radirec.json` 内のパスはすべて絶対)。この同居は更新時に台帳や設定をバイナリ差し替えに巻き込む事故リスクを持つ。また設定内の相対パスは実行時 CWD 基準で解決されるため、サービスの既定 CWD(System32)では相対指定が破綻する潜在バグを抱えていた(本番は全パス絶対で回避していた)。
 
