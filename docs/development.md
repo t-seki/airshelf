@@ -46,27 +46,72 @@ CI は **GitHub-hosted の Linux runner** で動きます。`release.yml` が「
 PR を検証するための構成です。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
 警告で出荷が止まるのを避けるためです。
 
-### 依存の更新・脆弱性(Dependabot)
+### 依存の更新・脆弱性(Renovate)
 
-`.github/dependabot.yml` が **NuGet** と **GitHub Actions** を週次で見て、更新を PR として出します(#106)。
-上がってきた PR は上記 CI がそのままビルド + テストします。
+依存の更新は **Renovate** が PR として出します(#252 で Dependabot から移行。以前の `.github/dependabot.yml` は無い)。
+設定は `renovate.json` で、共通プリセット `t-seki/renovate-config` を継承します。上がってきた PR は上記 CI が
+そのままビルド + テストします。
 
-- **NuGet**: patch/minor は 1 PR にまとめ、major は個別(破壊的変更を見落とさないため)。
-- **GitHub Actions**: `release.yml` / `ci.yml` は action を **commit SHA で pin** していますが、
-  Dependabot は SHA とバージョンコメントをまとめて張り替えます(手作業だと更新が途切れるため)。
-  > ⚠ **`release.yml` に触れる更新 PR だけは、マージ前に SHA を手で確認してください。**
-  > Dependabot はワークフローファイル単位で対象を絞れないため、`ci.yml` と `release.yml` の pin を
-  > 同じ PR で書き換えます。ところが **`release.yml` はタグ push でしか起動しない**ので、
-  > PR の CI がグリーンでも release.yml 側は何も検証されていません。release.yml は
-  > **self-hosted runner + `contents: write`** で動く(= 最高権限)ため、ここだけは
-  > 「更新時に人が新 SHA を確かめる」という SHA pin 本来の前提を残します。
+プリセット(`default.json`。`gh api repos/t-seki/renovate-config/contents/default.json` で読める)の内容:
+
+- ベースは `config:best-practices`(GitHub Actions の digest pin を含む)。
+- 実行は週次(月曜 9 時前, Asia/Tokyo)。PR には `dependencies` ラベル、Dependency Dashboard も有効。
+- **minor/patch**: 1 つのグループ(`minor and patch updates`)にまとめ、**CI が通れば自動マージ**(`platformAutomerge`)。
+- **pin / pinDigest / digest**: 同じく CI が通れば自動マージ。
+- **major**: 自動マージせず、人がレビューする(破壊的変更を見落とさないため)。
+- **lockFileMaintenance**: 週次(同じ月曜 9 時前)で有効。自動マージの規則(minor/patch、pin 系)の
+  `matchUpdateTypes` に入っていないため、プリセットを読む限り自動マージの対象ではない。実際の扱いは未確認
+  (Dashboard の「Awaiting Schedule」に `renovate/lock-file-maintenance` が出ているが、まだ PR にはなっていない)。
+
+この repo の `renovate.json` が上乗せしているもの:
+
+- `pin.enabled: true`。
+- **GitHub Actions**(`matchManagers: github-actions`)は `automerge: false`、`pinDigests: true`。
+  プリセットの自動マージ(minor/patch、digest)を上書きして、**Actions の更新は全部人がマージ**します。
+  `release.yml` / `ci.yml` は action を **commit SHA で pin** していて、Renovate が SHA とバージョンコメントを
+  まとめて張り替えます(手作業だと更新が途切れるため)。
+  > ⚠ **`release.yml` に触れる Actions の更新 PR は、マージ前に SHA を手で確認してください。**
+  > `ci.yml` と `release.yml` の pin は同じ PR で書き換わりますが、**`release.yml` はタグ push でしか
+  > 起動しない**ので、PR の CI がグリーンでも release.yml 側は何も検証されていません。release.yml は
+  > **self-hosted runner + `contents: write`** で動く(= 最高権限)ため、自動マージを外して
+  > 「更新時に人が新 SHA を確かめる」という SHA pin 本来の前提を残しています。
   > 確認は `gh api repos/actions/checkout/git/ref/tags/v7.0.1` などで、コメントのタグが指す SHA と
   > diff の SHA が一致するかを見ます。
-- **なぜ CI で落とさないか**: `-warnaserror` は MSBuild の全警告を落とすので、NuGetAudit の
-  脆弱性警告(NU1901-1904)もエラーになります。それだと**こちらのコードを変えていない PR が、
-  依存に新規 CVE が登録された日に落ちる**(直せるのは依存の更新待ち)。そこで
-  `Directory.Build.props` の `WarningsNotAsErrors` で NU19xx を除外し、代わりに脆弱性は
-  Dependabot が PR として能動的に届けます。**ログに出して誰も読まない状態にしない**のが要点です。
+- NuGet は上乗せなし(プリセットのとおり)。
+
+#### 自動マージの前提(確認したこと・未確認のこと)
+
+確認したこと(2026-10 時点):
+
+- Renovate の GitHub App はこの repo で動いている(#254 Configure Renovate と #255 Dependency Dashboard の作者が `app/renovate`)。
+- repo の `allow_auto_merge` は `false`(`gh api repos/t-seki/airshelf --jq .allow_auto_merge`)。
+  branch protection と rulesets の API は 403 を返す(private repo の無料プランでは使えない)。つまり
+  GitHub のプラットフォーム側の auto-merge は使えない前提。`platformAutomerge` の設定の説明
+  (https://docs.renovatebot.com/configuration-options/#platformautomerge )によれば、使えないときは
+  Renovate 自身が automerge する。
+- Renovate 自身の automerge は、必須のテストが通るのを待ってからマージする
+  (https://docs.renovatebot.com/key-concepts/automerge/ )。
+
+未確認のこと:
+
+- 必須チェックを設定できない(branch protection が無い)この repo で、Renovate が `build-and-test` の通過を
+  どう判定して待つか。
+- Renovate の更新 PR がマージされた実績はまだ無い。自動マージが実際に動くかは、最初の更新 PR で確かめる。
+- Actions の minor/patch が NuGet と同じグループ(`minor and patch updates`)に入ったとき、`renovate.json` の
+  `automerge: false` とグループの自動マージのどちらが効くか。#266 で確かめる。
+
+#### 脆弱性の通知
+
+`-warnaserror` は MSBuild の全警告を落とすので、NuGetAudit の脆弱性警告(NU1901-1904)もエラーになります。
+それだと**こちらのコードを変えていない PR が、依存に新規 CVE が登録された日に落ちる**(直せるのは依存の
+更新待ち)。そこで `Directory.Build.props` の `WarningsNotAsErrors` で NU19xx を除外しています。
+前提は「代わりに脆弱性の更新が PR として届く」ことでした。**ログに出して誰も読まない状態にしない**のが要点です。
+
+> ⚠ **この前提は今は満たされていません。** Renovate が脆弱性の PR を出すには Dependabot alerts を有効に
+> しておく必要がありますが(https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts )、
+> この repo では無効です(`gh api repos/t-seki/airshelf/vulnerability-alerts` が 404)。有効にする作業は
+> #265 で行います。それまでは、下の `dotnet list ... --vulnerable` を手で流して確かめてください。
+> NU19xx を `-warnaserror` に戻す変更はしていません。
 
 手元で今すぐ確認したいときは:
 
@@ -232,7 +277,7 @@ GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる
 - `.github/workflows/` — 中の 2 本はどちらも自動では入れられない:
   - `ci.yml` は自動マージの条件にしている CI そのもの。変えると検証が緩みうる
   - `release.yml` は母艦の self-hosted runner + `contents: write` で動き、PR の CI では検証されない
-    ([依存の更新・脆弱性](#依存の更新脆弱性dependabot)を参照)
+    ([依存の更新・脆弱性](#依存の更新脆弱性renovate)を参照)
 
 ### マージ後の確認(デプロイ)
 
