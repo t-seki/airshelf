@@ -7,7 +7,7 @@ namespace Airshelf.Gui.Core.Updates;
 public static class UpdateTexts
 {
     /// <summary>W-501 / W-601。</summary>
-    public static string VersionLine(string version) => $"Radirec {version}";
+    public static string VersionLine(string version) => $"Airshelf {version}";
 
     /// <summary>W-502(ボタン)。</summary>
     public const string CheckButton = "今すぐ更新を確認";
@@ -48,5 +48,5 @@ public static class UpdateTexts
 
     /// <summary>W-609。自動の確認で初めて更新を見つけたときのバルーン。</summary>
     public static string FoundBalloon(string? version) =>
-        $"更新があります(v{version})。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。";
+        $"更新があります(v{version})。Airshelf を開いて「バージョン情報」か、トレイメニューから適用できます。";
 }

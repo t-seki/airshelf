@@ -95,7 +95,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
         }
     }
 
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-saved-reapply-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-saved-reapply-").FullName;
     private readonly List<string> _log = [];
     private readonly List<ManagementPage> _navigated = [];
 
@@ -103,7 +103,7 @@ public sealed class SavedReapplyConfirmTests : IDisposable
 
     private string ProgramsPath => Path.Combine(_dir, "programs.json");
     private string StationsPath => Path.Combine(_dir, "stations.json");
-    private string ConfigPath => Path.Combine(_dir, "radirec.json");
+    private string ConfigPath => Path.Combine(_dir, "airshelf.json");
 
     private static ReapplyItem Item(ReapplyAction action) => new()
     {

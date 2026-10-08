@@ -14,7 +14,7 @@ using Spectre.Console;
 namespace Airshelf.Tests;
 
 /// <summary>
-/// radirec.exe の終了コード・JSON の形・解析(#178・ADR-0020)。CI は exe を起動しないので、ここで守る。
+/// airshelf.exe の終了コード・JSON の形・解析(#178・ADR-0020)。CI は exe を起動しないので、ここで守る。
 /// </summary>
 public sealed class CliTests
 {
@@ -221,7 +221,7 @@ public sealed class CliTests
     public async Task dryrunで台帳のあるフォルダに届かなければ5で_全件を予定とは答えない()
     {
         // 届かない NAS を「台帳が無い」(NullLedger)と扱うと、取り込み済みの回まで予定と誤答する(#216)。
-        var dir = Directory.CreateTempSubdirectory("radirec-dryrun-unreachable-").FullName;
+        var dir = Directory.CreateTempSubdirectory("airshelf-dryrun-unreachable-").FullName;
         try
         {
             var config = new AirshelfConfig
@@ -251,7 +251,7 @@ public sealed class CliTests
     public async Task dry_runで別の番組の判断にアルバム名が無ければ_設定の誤りとして1(bool json)
     {
         // ADR-0021。JSON として読めても中身が使えない programs.json は、壊れた JSON と同じ「設定の読み込みに失敗しました」で 1。
-        var dir = Directory.CreateTempSubdirectory("radirec-dryrun-programs-").FullName;
+        var dir = Directory.CreateTempSubdirectory("airshelf-dryrun-programs-").FullName;
         try
         {
             var config = new AirshelfConfig

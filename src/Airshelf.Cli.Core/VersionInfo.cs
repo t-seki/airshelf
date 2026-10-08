@@ -6,7 +6,7 @@ namespace Airshelf.Cli.Core;
 public static class VersionInfo
 {
     /// <summary>
-    /// <c>AssemblyInformationalVersion</c> から表示用の版を得る。exe(radirec)のアセンブリを渡す。
+    /// <c>AssemblyInformationalVersion</c> から表示用の版を得る。exe(airshelf)のアセンブリを渡す。
     /// .NET は末尾に <c>+&lt;commit hash&gt;</c> のビルドメタデータを付けうるため、最初の <c>+</c> で切る。
     /// </summary>
     public static string Of(Assembly assembly)

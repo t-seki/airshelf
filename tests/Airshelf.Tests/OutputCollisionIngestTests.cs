@@ -23,7 +23,7 @@ public sealed class OutputCollisionIngestTests : IDisposable
     private const string At1000 = "[TBSラジオ]パンサー向井のふらっと(TimeFree)_20241223100000.m4a";
 
     private readonly string _work =
-        Path.Combine(Path.GetTempPath(), "radirec-test-" + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "airshelf-test-" + Guid.NewGuid().ToString("N"));
 
     private readonly List<IDisposable> _ledgers = [];
 

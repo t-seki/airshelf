@@ -511,7 +511,7 @@ public sealed class IngestServiceTests
     {
         // 実物の台帳で確かめる(ストアの主キーは大文字小文字を区別する)。前の走査では大文字の表記で失敗を記録し、
         // 今の走査では小文字の表記で同じファイルが列挙された。古い表記の行が残り続けないこと。
-        var dir = Directory.CreateTempSubdirectory("radirec-ingest-failures-").FullName;
+        var dir = Directory.CreateTempSubdirectory("airshelf-ingest-failures-").FullName;
         try
         {
             using var store = new SqliteLedger(Path.Combine(dir, "ledger.db"));

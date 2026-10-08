@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""radirec.ico の生成スクリプト(#52 / 軸A A1)。
+"""airshelf.ico の生成スクリプト(#52 / 軸A A1)。
 
 デザイン: チャコール円バッジ + 赤い録音ドット(左下)から右上へ白い電波弧。
 16px のトレイ実寸で判読できる太いシルエットを優先している。
 1024px マスターで描き、16/20/24/32/48/256 へ LANCZOS 縮小してマルチ解像度 ICO に格納する。
 
-再生成: python3 generate-icon.py  (要 Pillow。radirec.ico を上書き)
+再生成: python3 generate-icon.py  (要 Pillow。airshelf.ico を上書き)
 """
 from PIL import Image, ImageDraw
 import os
@@ -35,7 +35,7 @@ def draw_master() -> Image.Image:
 def main() -> None:
     master = draw_master()
     frames = [master.resize((s, s), Image.LANCZOS) for s in SIZES]
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "radirec.ico")
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "airshelf.ico")
     frames[-1].save(
         out,
         format="ICO",

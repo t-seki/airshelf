@@ -1,6 +1,6 @@
 namespace Airshelf.Hosting;
 
-/// <summary>環境設定(radirec.json)。個人固有値はここに集約しコードにハードコードしない。</summary>
+/// <summary>環境設定(airshelf.json)。個人固有値はここに集約しコードにハードコードしない。</summary>
 public sealed class AirshelfConfig
 {
     /// <summary>らじれこ出力ルート(例 <c>I:\radio\tmp</c>)。</summary>
@@ -46,7 +46,7 @@ public sealed class AirshelfConfig
     /// **旧設定**(#152・ADR-0019)。新規取込のトーストを出すかは、管理画面の設定ページで切り替え、管理画面用の設定ファイル
     /// (<c>gui-settings.json</c>)に持つ。ここは、その設定ファイルにまだ値が無いときの**初期値としてだけ**読む
     /// (<c>false</c> なら新規取込のトーストを止めた状態で始める)。取込失敗のトーストと失敗のストアは、この値に関係なく動く。
-    /// 既存の radirec.json を読めなくしないため、キーは残す(未知のキーは読み込みで失敗させるので)。既定 true。
+    /// 既存の airshelf.json を読めなくしないため、キーは残す(未知のキーは読み込みで失敗させるので)。既定 true。
     /// </summary>
     public bool NotificationsEnabled { get; set; } = true;
 

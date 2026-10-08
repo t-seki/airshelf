@@ -14,9 +14,9 @@
   により **WSL/Linux でコンパイルできます**。つまり**ソリューション全体のビルドとテストは WSL で完結**します。
   実行については両者で違います — **`Gui` は WPF/WinForms のランタイムが無いので Linux では起動しません**が、
   **`Cli` は Debug ビルドなら Linux でも起動します**
-  (`dotnet src/Airshelf.Cli/bin/Debug/net10.0-windows/radirec.dll --help` 等)。**Release ビルドは起動しません** —
+  (`dotnet src/Airshelf.Cli/bin/Debug/net10.0-windows/airshelf.dll --help` 等)。**Release ビルドは起動しません** —
   `Airshelf.Cli.csproj` が Release のときだけ `RuntimeIdentifier=win-x64` / `SelfContained=true` にするので、
-  `bin/Release/net10.0-windows/win-x64/radirec.dll` を `dotnet` で起動すると `libhostpolicy.so` が見つからずに終了します。
+  `bin/Release/net10.0-windows/win-x64/airshelf.dll` を `dotnet` で起動すると `libhostpolicy.so` が見つからずに終了します。
   WSL で CLI を動かして確かめるときは Debug ビルドを使ってください。ただし本番の実行環境は Windows 前提で、
   出荷物は win-x64 self-contained、config が指すパス(`I:`, UNC)も Windows のものです。
 - テストフィクスチャ(`tests/Airshelf.Tests/Fixtures/silent.m4a`)は著作権フリーの無音 M4A で、
@@ -87,13 +87,14 @@ git tag v1.2.0 && git push origin v1.2.0   # → workflow が発火
 ワークフローは `dotnet test` → `dotnet publish`(win-x64 自己完結・両 exe を 1 フォルダ)→
 **`vpk`(Velopack)で pack + GitHub Release へ upload**(Setup.exe / full+delta nupkg / portable /
 更新フィード)、まで自動化する(ADR-0013)。以後の配布・更新は Velopack の Setup.exe とアプリ内更新で
-行う(利用手順は [usage.md §6](usage.md)、移行は [migration-to-velopack.md](migration-to-velopack.md))。
+行う(利用手順は [usage.md §6](usage.md)、移行は [migration-to-airshelf.md](migration-to-airshelf.md)。旧 admin 配置からは [migration-to-velopack.md](migration-to-velopack.md))。
 
 **ランナー**: `runs-on: [self-hosted, windows, x64, homelab]`(母艦 Windows PC の self-hosted runner)。
 トリガはタグ push のみ(PR ビルドは self-hosted で走らせない)。ランナーの導入手順は **別リポジトリ
 `t-seki/homelab`** の runbook にある(このリポジトリには無い):
 <https://github.com/t-seki/homelab/blob/main/docs/runbooks/github-actions-runner.md>。
-要点は repo ごとに `C:\actions-runner\radirec-tool\` へ runner を展開し
+要点は repo ごとに `C:\actions-runner\<repo>\` へ runner を展開し(この repo の runner は改名前に登録した
+`C:\actions-runner\radirec-tool\` のまま。repo-level の登録なので、`t-seki/airshelf` への改名後もそのまま動く。#256)
 `--labels "self-hosted,windows,x64,homelab" --runasservice` で登録、`actions/checkout` のため
 Git for Windows を PATH に置く、こと。
 
@@ -102,34 +103,34 @@ Git for Windows を PATH に置く、こと。
 ```
 src/Airshelf.Core/     ドメインロジック(OS 非依存・テスト可能)
 src/Airshelf.Hosting/  合成ルート + 環境設定・パス解決 + 制御(Control/)。Cli と Gui が共有する
-src/Airshelf.Cli/      単一 exe radirec.exe。普段の運用とエージェントの窓口(ingest / reapply / refresh / history / attention / status / reload)。Program.cs だけの薄い入口
+src/Airshelf.Cli/      単一 exe airshelf.exe。普段の運用とエージェントの窓口(ingest / reapply / refresh / history / attention / status / reload)。Program.cs だけの薄い入口
 src/Airshelf.Cli.Core/ Cli のテスト可能な核(コマンド・--json の形・終了コード・CommandApp の設定。net10.0)
-src/Airshelf.Gui/      本番の常駐本体 Radirec.Gui.exe。取り込みワーカー + トレイ + 通知 + 管理画面(XAML)+ 自己更新
+src/Airshelf.Gui/      本番の常駐本体 Airshelf.Gui.exe。取り込みワーカー + トレイ + 通知 + 管理画面(XAML)+ 自己更新
 src/Airshelf.Gui.Core/ Gui のテスト可能な提示ロジックと管理画面の ViewModel(WinRT/WPF/WinForms シェルから隔離)
 tests/Airshelf.Tests/  xUnit
 ```
 
-**本番の常駐は `Radirec.Gui`(トレイ)**で([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)。`service` verb は廃止)、
-`radirec.exe` は普段の運用と AI エージェントの窓口([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
+**本番の常駐は `Airshelf.Gui`(トレイ)**で([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)。`service` verb は廃止)、
+`airshelf.exe` は普段の運用と AI エージェントの窓口([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
 台帳を書き換える `ingest` / `reapply` と、`status` / `reload` はトレイの制御チャネルへ頼む(トレイが動いていなければ終了コード 2)。
 そのため、開発機でトレイを動かさずに CLI だけで**取り込み**を試せるのは `ingest --dry-run` まで(ADR-0020 の帰結。
 `refresh` / `history` / `attention` はトレイなしでも動く。`reapply` は確認も含めてトレイに頼む。#181)。
 参照グラフは 2 経路で Core に届く:
 
 ```
-Radirec.Gui ──> Radirec.Gui.Core ──> Radirec.Core
-     │                 └───────────> Radirec.Hosting
-     └────────> Radirec.Hosting  ──> Radirec.Core
-Radirec.Cli ──> Radirec.Cli.Core ──> Radirec.Hosting / Radirec.Core
-Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core / Radirec.Cli.Core
+Airshelf.Gui ──> Airshelf.Gui.Core ──> Airshelf.Core
+     │                 └───────────> Airshelf.Hosting
+     └────────> Airshelf.Hosting  ──> Airshelf.Core
+Airshelf.Cli ──> Airshelf.Cli.Core ──> Airshelf.Hosting / Airshelf.Core
+Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Airshelf.Cli.Core
 ```
 
-`Radirec.Cli`(exe)は `net10.0-windows` で、Release では win-x64 の自己完結 exe になるので、Linux の CI から
-テストで参照できない。コマンドと終了コード・JSON の形は `Radirec.Cli.Core`(`net10.0`)に置き、テストはそちらを
-参照する(#178。`Radirec.Gui` / `Radirec.Gui.Core` と同じ分け方)。Spectre.Console.Cli を参照するのは `Radirec.Cli.Core`
-だけで、トレイと共有する `Radirec.Hosting` には入れない。
+`Airshelf.Cli`(exe)は `net10.0-windows` で、Release では win-x64 の自己完結 exe になるので、Linux の CI から
+テストで参照できない。コマンドと終了コード・JSON の形は `Airshelf.Cli.Core`(`net10.0`)に置き、テストはそちらを
+参照する(#178。`Airshelf.Gui` / `Airshelf.Gui.Core` と同じ分け方)。Spectre.Console.Cli を参照するのは `Airshelf.Cli.Core`
+だけで、トレイと共有する `Airshelf.Hosting` には入れない。
 
-- `Radirec.Gui` 自体に `Radirec.Core` への直接 ProjectReference は**無い**が、Core の型は推移参照で
+- `Airshelf.Gui` 自体に `Airshelf.Core` への直接 ProjectReference は**無い**が、Core の型は推移参照で
   Gui のコンパイル面に乗っている(ADR-0012 の「参照の実体は `Gui → Hosting → Core`」)。
 - `Gui.Core → Hosting` は、管理画面の ViewModel が制御面(`Hosting/Control/` の `IServiceControl` /
   `ServiceStatusSnapshot`)をそのまま受け取るための辺(#151)。Gui.Core 側にインタフェースを切らないのは、
@@ -137,16 +138,16 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core / Radire
 - 管理画面は WPF + XAML + MVVM(`CommunityToolkit.Mvvm`)。ViewModel は `Gui.Core/Management/` に置いて
   WSL の CI でテストし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
   XAML(`ManagementWindow.xaml`)も `EnableWindowsTargeting` により Linux でコンパイルされる(起動はしない)。
-- `Radirec.Hosting` は **CLI と常駐トレイの 2 フロントエンドが共有する合成層**。だから Cli に畳まず
+- `Airshelf.Hosting` は **CLI と常駐トレイの 2 フロントエンドが共有する合成層**。だから Cli に畳まず
   独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。CLI の
   `status` / `reload` は、同じ `Hosting/Control/` の制御チャネル(named pipe。`ControlPipeServer` / `ControlPipeClient`)で
   トレイへ頼む(#179・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
-- `Radirec.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux CI でビルド/テスト可能)、
+- `Airshelf.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux CI でビルド/テスト可能)、
   `Cli` は `net10.0-windows`、`Gui` は `net10.0-windows10.0.x`。ワーカーが Windows 専用 API
   (`SystemEvents.PowerModeChanged`)に依存するため、ワーカーは Hosting ではなく Gui に置いてある。
 - 編集 UI(M5)は作らないと決めた(#5、2026-09-28。§[roadmap](roadmap.md) 軸C)。
 
-### Radirec.Core の主な型
+### Airshelf.Core の主な型
 
 | 名前空間 | 型 | 責務 |
 |----------|----|----|
@@ -191,7 +192,7 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core / Radire
   しない。取り込み済みの判断待ちは要対応が台帳から見つける。[ADR-0021](adr/0021-substitute-broadcast-held-by-filename-program-name.md))。
 - **保留のストアは記録してから保留シグナルを発行する**(取込失敗のストアは発行してから記録する)。保留のストアは要対応の元でも
   あるので、発行に失敗しても記録は残す。片付けは、列挙が 0 件の走査と、安定待ち(`SkippedUnstable`)の録音ではしない。
-- **保留は失敗ではない**。`radirec ingest` の終了コードに数えない。
+- **保留は失敗ではない**。`airshelf ingest` の終了コードに数えない。
 
 ## 拡張ポイント
 
@@ -219,7 +220,7 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core / Radire
 
 なし。CI(`.github/workflows/ci.yml`、GitHub-hosted Linux)が PR ごとに
 `dotnet build Airshelf.slnx -c Release -warnaserror` と `dotnet test` を走らせ、手元で同じコマンドを
-打つのと同じ検証になる([ビルドとテスト](#ビルドとテスト))。`Radirec.Gui` は WSL/Linux で起動できないので、
+打つのと同じ検証になる([ビルドとテスト](#ビルドとテスト))。`Airshelf.Gui` は WSL/Linux で起動できないので、
 GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる**。
 
 ### マージの承認
@@ -252,9 +253,9 @@ ADR や requirements の「決定当時の記録」に、後から見て事実�
 
 **誤りの質も見分ける**(#113):
 
-- **存在しないものの名指し**(例: `radirec ingest --once` — このフラグは一度も実装されていない)
+- **存在しないものの名指し**(例: `airshelf ingest --once` — このフラグは一度も実装されていない)
   → 読者が打っても失敗するだけ。害は小さいが、一次資料としては直したい
-- **実在するが役割が違う**(例:「`rescan` は `radirec ingest` に吸収」— 実際の移設先はトレイメニュー)
+- **実在するが役割が違う**(例:「`rescan` は `airshelf ingest` に吸収」— 実際の移設先はトレイメニュー)
   → 読者は**それらしく動くもの**に辿り着いてしまい、誤解が定着する。**こちらの方が危険**
 
 いずれも**発見時に必ず現在地の記述を直す**。当時の記録側をどうするかは上の表に従う。
@@ -263,7 +264,7 @@ ADR や requirements の「決定当時の記録」に、後から見て事実�
 
 無音フィクスチャを らじれこ風フォルダに置いて CLI を通す手順:
 1. `{root}/{局}/{番組}/[{局}]{番組}(TimeFree)_{YYYYMMDDHHMMSS}.m4a` にフィクスチャをコピー。
-2. `radirec.json` の `RadioRoot`/`OutputRoot`/`LedgerPath` を一時ディレクトリに向ける。
+2. `airshelf.json` の `RadioRoot`/`OutputRoot`/`LedgerPath` を一時ディレクトリに向ける。
 3. `ingest --dry-run`(副作用ゼロ)→ `ingest`(生成)→ 再実行(全て「済」= 冪等)を確認。
 
 **トレイ常駐(現行)の E2E**: 合成無音 M4A を隔離設定で流してトースト経路を検証する

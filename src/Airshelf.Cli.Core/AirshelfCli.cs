@@ -7,7 +7,7 @@ using Spectre.Console.Cli;
 namespace Airshelf.Cli.Core;
 
 /// <summary>
-/// radirec.exe の <see cref="CommandApp"/> を組み立てて走らせる。exe(Airshelf.Cli)の Program.cs はこれを呼ぶだけ。
+/// airshelf.exe の <see cref="CommandApp"/> を組み立てて走らせる。exe(Airshelf.Cli)の Program.cs はこれを呼ぶだけ。
 /// テストは <paramref name="console"/> と <paramref name="configSource"/> を差し替えて、解析・終了コード・JSON を確かめる。
 /// </summary>
 public static class AirshelfCli
@@ -15,7 +15,7 @@ public static class AirshelfCli
     /// <param name="args">コマンドライン引数。</param>
     /// <param name="version">表示する版(exe のアセンブリから <see cref="VersionInfo.Of"/> で得る)。</param>
     /// <param name="console">出力先。null なら標準出力(<see cref="AnsiConsole.Console"/>)。</param>
-    /// <param name="configSource">設定を読む口。null なら既定の radirec.json(<see cref="DefaultCliConfigSource"/>)。</param>
+    /// <param name="configSource">設定を読む口。null なら既定の airshelf.json(<see cref="DefaultCliConfigSource"/>)。</param>
     /// <param name="controlClient">
     /// 常駐の制御チャネルへ頼む口(#179)。null なら今のユーザーの既定のパイプ(<see cref="ControlPipeClient"/>)。
     /// </param>
@@ -46,7 +46,7 @@ public static class AirshelfCli
             .WithDescription("常駐(トレイ)の状態を見る。常駐が動いていなくても答える")
             .WithExample(StatusCommand.Name, "--json");
         config.AddCommand<ReloadCommand>(ReloadCommand.Name)
-            .WithDescription("常駐に設定リロードを頼む(radirec.json などを直した後)")
+            .WithDescription("常駐に設定リロードを頼む(airshelf.json などを直した後)")
             .WithExample(ReloadCommand.Name);
     }
 
@@ -67,7 +67,7 @@ public static class AirshelfCli
     private static void Configure(
         IConfigurator config, string version, IAnsiConsole console, ICliConfigSource configSource, bool json, string? command)
     {
-        config.SetApplicationName("radirec");
+        config.SetApplicationName("airshelf");
         config.SetApplicationVersion(version);
         config.ConfigureConsole(console);
         config.Settings.Registrar.RegisterInstance(console);
@@ -99,7 +99,7 @@ public static class AirshelfCli
             .WithExample(AttentionCommand.Name, "--json");
         // 常駐はトレイ(Airshelf.Gui)が担う(ADR-0012)。refresh / history / attention と ingest --dry-run は CLI が直接行い、
         // status / reload と ingest(走査の実行。#180)と reapply(#181)はトレイの制御チャネル(named pipe)へ頼む(ADR-0020 / #179。ConfigureControl)。
-        // 一回きりの移行のための ingest --root と organize-source、設定ファイルを指す --config は削った(ADR-0020)。設定は常にトレイと同じ既定の radirec.json を使う。
+        // 一回きりの移行のための ingest --root と organize-source、設定ファイルを指す --config は削った(ADR-0020)。設定は常にトレイと同じ既定の airshelf.json を使う。
     }
 
     /// <summary>

@@ -50,7 +50,7 @@ public interface IServiceControl
 
     /// <summary>
     /// 保存前の番組の設定で再適用を確かめる(管理画面の番組ページの「確認」。#154)。ファイルから設定リロードはせず、
-    /// 今の設定(radirec.json)とディスクの <c>stations.json</c>、渡した <paramref name="programs"/> で dry-run する。
+    /// 今の設定(airshelf.json)とディスクの <c>stations.json</c>、渡した <paramref name="programs"/> で dry-run する。
     /// 直列ループの上で行う(取り込み中は終わるのを待つ)。直近の設定リロードの反映の失敗では止めない
     /// (<see cref="ReapplyPlanGate"/>。番組の設定は下書きから取るので、原因を直した後にやり直せるように)。stations.json を
     /// 読めなければ、その理由で失敗を返す。実行は、保存してから <see cref="ReloadAndApplyReapplyAsync"/> で行う
@@ -81,7 +81,7 @@ public interface IServiceControl
     Task<ReapplyResult> ApplyReapplyAsync(ReapplyReport plan);
 
     /// <summary>
-    /// CLI の <c>reapply</c> の確認(#181・ADR-0020)。設定リロードはせず、今の設定(radirec.json)とディスクの <c>programs.json</c> /
+    /// CLI の <c>reapply</c> の確認(#181・ADR-0020)。設定リロードはせず、今の設定(airshelf.json)とディスクの <c>programs.json</c> /
     /// <c>stations.json</c> で dry-run し、予定と予定 ID(<see cref="ReapplyResult.PlanId"/>)を返す。直列ループの上で行う。
     /// 常駐の状態(設定・管理画面の直前の確認)は変えないので、管理画面で開いている確認を古くしない。
     /// 取り込みが止まっていれば <see cref="ReapplyResult.IsStopped"/> の失敗を返す。台帳のある場所(NAS など)に届かなければ

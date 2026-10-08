@@ -1,6 +1,6 @@
 # CLI と Service を単一 exe に統合する
 
-Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#16 配布・インストール整備。従来の 2 exe 構成 `Radirec.Cli`(net10.0) + `Radirec.Service`(net10.0-windows)を 1 つの `radirec.exe` に集約)。**ADR-0012 で `service` verb を廃止**し、`radirec.exe` は dev/batch 単発 CLI 専用に縮小。常駐はトレイ(`Radirec.Gui`)へ移設。
+Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#16 配布・インストール整備。従来の 2 exe 構成 `Radirec.Cli`(net10.0) + `Radirec.Service`(net10.0-windows)を 1 つの `radirec.exe` に集約)。**ADR-0012 で `service` verb を廃止**し、`radirec.exe` は dev/batch 単発 CLI 専用に縮小。常駐はトレイ(`Radirec.Gui`)へ移設。**[ADR-0022](0022-rename-product-to-airshelf.md)(2026-10-08)で製品名を Airshelf に改め、CLI は `airshelf.exe`、トレイは `Airshelf.Gui` になった(ここと本文の名前は当時のもの)**。
 
 配布・インストールを Release + スクリプトに閉じ込めるにあたり、成果物が 2 つ(CLI と Service)あることが構造的な事故源だった。両者は共有ライブラリ `Radirec.Hosting` / `Radirec.Core` を参照するが、**別々に publish される**ため、片方だけ差し替えると Core のバージョンがズレて取り込みロジックとサービスの挙動が食い違いうる。install/update スクリプトも 2 バイナリぶんの差し替えを冪等に扱う必要があり複雑になる。
 

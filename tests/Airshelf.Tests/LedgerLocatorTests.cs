@@ -10,7 +10,7 @@ namespace Airshelf.Tests;
 // 次の読み込みから新しい台帳を読む。
 public sealed class LedgerLocatorTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-ledger-locator-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-ledger-locator-").FullName;
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 

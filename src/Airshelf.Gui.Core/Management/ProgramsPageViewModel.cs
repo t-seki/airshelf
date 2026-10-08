@@ -71,11 +71,11 @@ public sealed class ProgramsPageViewModel : ObservableObject
     public const string Unavailable = "設定を読めないため、番組の設定を出せません";
 
     /// <summary>W-212。</summary>
-    public const string Unused = "radirec.json で programs.json を使わない設定になっています";
+    public const string Unused = "airshelf.json で programs.json を使わない設定になっています";
 
     /// <summary>W-213。</summary>
     public const string UnusedHint =
-        "番組の設定を使うには、radirec.json の ProgramsFile にファイル名(例 programs.json)を書き、設定ページの「再読み込み」を押してください。";
+        "番組の設定を使うには、airshelf.json の ProgramsFile にファイル名(例 programs.json)を書き、設定ページの「再読み込み」を押してください。";
 
     /// <summary>W-214。取り込みが止まっていて、確認(dry-run)を走らせられない。</summary>
     public const string ConfirmUnavailable = "取り込みが止まっているため、確認と保存はできません";
@@ -245,7 +245,7 @@ public sealed class ProgramsPageViewModel : ObservableObject
 
     /// <param name="control">取り込みワーカーの制御面。縮退(ワーカーが無い)なら null。</param>
     /// <param name="locateProgramsFile">
-    /// いまの <c>programs.json</c> の場所。<c>radirec.json</c> で programs.json を使わない設定(<c>ProgramsFile</c> が空)なら
+    /// いまの <c>programs.json</c> の場所。<c>airshelf.json</c> で programs.json を使わない設定(<c>ProgramsFile</c> が空)なら
     /// null を返す。設定を読めていない(縮退。場所が決まらない)なら、この引数自体を null にする(W-211)。
     /// </param>
     /// <param name="applyGate">保存と適用の途中か(ホームの再スキャンと共有する)。</param>

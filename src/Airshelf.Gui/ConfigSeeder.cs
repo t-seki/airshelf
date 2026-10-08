@@ -5,7 +5,7 @@ using Airshelf.Hosting;
 namespace Airshelf.Gui;
 
 /// <summary>
-/// 初回起動時に、データルート(<c>%LOCALAPPDATA%\RadirecData\</c>)へ設定ファイルを埋め込み sample から
+/// 初回起動時に、データルート(<c>%LOCALAPPDATA%\AirshelfData\</c>)へ設定ファイルを埋め込み sample から
 /// 生成する(既存は温存)。旧 <c>install.ps1</c> の seeding を per-user 移行(ADR-0013 / S5)でアプリへ移設。
 /// 設定ページの「ファイルを開く」(#143 / #152)も、開くファイルが無ければ同じ sample から作る(<see cref="SeedFileIfAbsent"/>)。
 /// </summary>
@@ -15,7 +15,7 @@ internal static class ConfigSeeder
     // 設定ファイルの種類 → 埋め込みリソース名(csproj の LogicalName と一致させる)・データルートでの既定のファイル名。
     private static readonly (ConfigFile File, string Resource, string DefaultName)[] Map =
     [
-        (ConfigFile.Airshelf, "Airshelf.Gui.Samples.radirec.sample.json", "radirec.json"),
+        (ConfigFile.Airshelf, "Airshelf.Gui.Samples.airshelf.sample.json", "airshelf.json"),
         (ConfigFile.Stations, "Airshelf.Gui.Samples.stations.sample.json", "stations.json"),
         (ConfigFile.Programs, "Airshelf.Gui.Samples.programs.sample.json", "programs.json"),
     ];

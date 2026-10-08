@@ -2,7 +2,7 @@ using Airshelf.Hosting;
 
 namespace Airshelf.Cli.Core;
 
-/// <summary>コマンドが設定(radirec.json)を読む口。テストでは読めない設定などに差し替える。</summary>
+/// <summary>コマンドが設定(airshelf.json)を読む口。テストでは読めない設定などに差し替える。</summary>
 public interface ICliConfigSource
 {
     /// <summary>設定を読み、相対パスを config ディレクトリ基準へ rebase する(ADR-0006)。読めなければ理由を返す。</summary>

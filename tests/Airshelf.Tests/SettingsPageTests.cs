@@ -10,7 +10,7 @@ namespace Airshelf.Tests;
 // 管理画面の設定ページと、新規取込のトーストの切り替え(#152・ADR-0019)。文言の ID は docs/mockups/management-window.md。
 public sealed class SettingsPageTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), $"radirec-settings-{Guid.NewGuid():N}");
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), $"airshelf-settings-{Guid.NewGuid():N}");
     private readonly List<string> _warnings = [];
 
     public SettingsPageTests() => Directory.CreateDirectory(_dir);
@@ -112,7 +112,7 @@ public sealed class SettingsPageTests : IDisposable
     }
 
     [Fact]
-    public void radirecjsonを読めないときは書かずに出すで始める()
+    public void airshelfjsonを読めないときは書かずに出すで始める()
     {
         var setting = IngestToastSetting.Load(Store(), legacyNotificationsEnabled: null, _warnings.Add);
 
@@ -212,7 +212,7 @@ public sealed class SettingsPageTests : IDisposable
         public void Restart() => Restarts++;
     }
 
-    private string ConfigPath => Path.Combine(_dir, "radirec.json");
+    private string ConfigPath => Path.Combine(_dir, "airshelf.json");
     private string StationsPath => Path.Combine(_dir, "stations.json");
     private string ProgramsPath => Path.Combine(_dir, "programs.json");
 
@@ -232,7 +232,7 @@ public sealed class SettingsPageTests : IDisposable
         Assert.False(page.IsNormal);
         Assert.Equal("設定の読み込みに失敗しました: x", page.DegradedReason); // W-402
         Assert.Equal(ConfigPath, page.ConfigPath);
-        Assert.True(page.OpenAirshelfCommand.CanExecute(null));   // radirec.json は開ける(直すため)
+        Assert.True(page.OpenAirshelfCommand.CanExecute(null));   // airshelf.json は開ける(直すため)
         Assert.False(page.OpenStationsCommand.CanExecute(null)); // W-405(場所が分からない)
     }
 
@@ -304,7 +304,7 @@ public sealed class SettingsPageTests : IDisposable
         Assert.False(running.IsStartFailed);
         Assert.Equal("", running.StartFailedReason);
 
-        // radirec.json を読めない(W-105)なら縮退パネルが代わりに出る。
+        // airshelf.json を読めない(W-105)なら縮退パネルが代わりに出る。
         var degraded = Page(control: null, new FakeActions(), config: null, error: "設定の読み込みに失敗しました: x", startError: "y");
         Assert.False(degraded.IsStartFailed);
         Assert.False(degraded.OpenProgramsCommand.CanExecute(null));
@@ -357,7 +357,7 @@ public sealed class SettingsPageTests : IDisposable
 
         actions.ThrowOnRead = new IOException("locked");
         await page.RefreshAsync();
-        Assert.Equal(SettingsPageViewModel.ReadFailed("radirec.json"), page.Airshelf.Note); // W-315
+        Assert.Equal(SettingsPageViewModel.ReadFailed("airshelf.json"), page.Airshelf.Note); // W-315
         Assert.Null(page.Airshelf.Content);
     }
 

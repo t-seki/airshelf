@@ -1,4 +1,4 @@
-# らじれこ運用支援ツール 要件定義
+# Airshelf 要件定義(らじれこ / radikool の録音の運用支援ツール)
 
 > Status: Draft v3 / 最終更新: 2026-08-04
 >
@@ -91,6 +91,8 @@
 > **以下は移行前の設計**で、当時の記録として残す。現行の構成は §10 / §11 を参照。
 > → CLI の役割は [ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md) で改めた:普段の運用と AI エージェントの窓口で、
 > 台帳を書き換える操作(`ingest` など)はトレイの制御チャネルへ頼む(#179 / #180)。
+> → 製品名を [ADR-0022](adr/0022-rename-product-to-airshelf.md)(#256)で Airshelf に改めた:トレイは `Airshelf.Gui`、
+> CLI は `airshelf.exe`、データは `%LOCALAPPDATA%\AirshelfData`。この節の旧名は当時の記録として残す。
 
 本番形態は **単一 exe `radirec.exe`**。同一の取り込みエンジン(`Radirec.Core`)を、常駐サービスと
 単発 CLI の 2 通りで動かす。両者は 1 つの実行体に **verb** で統合し、配布物を 1 本化して Core
@@ -261,7 +263,7 @@ alias 設計が必要(§9)。
 ## 7. 自動パイプライン(取り込み)
 
 走査は①録音検知(FileSystemWatcher)②スリープ復帰 ③常駐トレイの起動時 ④定期(安全網)⑤**手動**
-(制御チャネルの rescan、§7.2)⑥**走査の実行**(CLI の `radirec ingest` が制御チャネルで頼む。結果が返るまで待つ。§7.2・#180)
+(制御チャネルの rescan、§7.2)⑥**走査の実行**(CLI の `airshelf ingest` が制御チャネルで頼む。結果が返るまで待つ。§7.2・#180)
 のいずれかで起動する。①〜⑤の要求が走査の実行の起こしと束ねられ、走査の実行の後に取り残されたときは、通常の走査として
 1 回走らせ、最終スキャンのきっかけは「再走査」になる(#180)。以下は 1 走査分の処理:
 
@@ -293,7 +295,7 @@ alias 設計が必要(§9)。
 > (局はそのまま。統合番組のフォルダから来た回は、そのフォルダのパートを引き継ぐ。#239)。3 の同一性判定で取り込み済みの回は、これまでどおり「済」になる(判断待ちの取り込み済みの回は
 > 要対応が台帳から見つける。§10.3)。保留した録音ファイルは台帳の DB の**保留のストア**(`held` テーブル)に記録し、
 > 取り込んだ・「取り込まない」と判断された・取込元から消えた走査で消す(取込失敗のストアと同じ条件)。保留は失敗ではない
-> (`radirec ingest` の終了コードを変えない)。10 の後に、初めて保留した録音ファイルがあれば**保留シグナル**を発行する(§7.1)。
+> (`airshelf ingest` の終了コードを変えない)。10 の後に、初めて保留した録音ファイルがあれば**保留シグナル**を発行する(§7.1)。
 
 ### 7.1 取込通知(サービス→デスクトップ)
 
@@ -316,7 +318,7 @@ alias 設計が必要(§9)。
   取込通知から外し、管理画面の要対応(§10.3)に移した。取り込みの走査は兄弟フォルダを調べなくなった(要対応が台帳から
   毎回計算するので、走査での検出と `gui.log` への記録は重複になるため)。
 - **表示の制約**: サービス(Session 0)はデスクトップに通知を出せないため、**表示はユーザー
-  セッションの常駐 GUI(`Radirec.Gui`)**が担う。
+  セッションの常駐 GUI(`Airshelf.Gui`)**が担う。
 - **不在中サマリ**: 受け手が停止していた間に発行されたシグナルは、次回起動時に **1 件の通知へ
   集約**して提示する(不在中サマリ、[CONTEXT.md](../CONTEXT.md) が語彙の権威)。購読位置(EventLog
   bookmark)を永続化して不在期間を再構成する。再構成が信頼できないとき(初回起動・記録が失効/
@@ -340,8 +342,8 @@ alias 設計が必要(§9)。
   トレイが起動して常駐し、管理画面のホームを開く。新規取込のトーストはクリックしても何もしない(トレイが動いていなければ、
   トレイが起動するだけ)。クリックの受け取り(COM activator)は [ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) の追記。
 - 発行機構(EventLog を跨プロセス片方向バスに使う判断)は [ADR-0008](adr/0008-ingest-notification-via-eventlog-signal.md)、
-  受け手 GUI(非パッケージ WPF トレイ + 従来トースト、`Radirec.Gui`)は
-  [ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) に委ねる。`Radirec.Gui` は M5 デスクトップ
+  受け手 GUI(非パッケージ WPF トレイ + 従来トースト、`Airshelf.Gui`)は
+  [ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) に委ねる。`Airshelf.Gui` は M5 デスクトップ
   編集アプリ(§10.1。#5 は作らないと決めて 2026-09-28 に閉じた)の最初の tracer slice として作り、
   当初は**表示専用**だった(保留・取込失敗のトーストのクリックは #237 で足した)。
 
@@ -353,10 +355,10 @@ alias 設計が必要(§9)。
 > 移行前の設計。「利用者→常駐へ指示を出す」概念(3 コマンド)は不変。
 > → #126 で 4 種目の「再適用の実行」を足した(下の一覧)。
 > → **#179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で named pipe は形を変えて戻った**:CLI の
-> `radirec status` / `radirec reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前(`radirec-control-<SID>`)で、
+> `airshelf status` / `airshelf reload` がトレイの受け口へ頼む。パイプはユーザーごとの名前(`airshelf-control-<SID>`)で、
 > 同じユーザーだけに `PipeOptions.CurrentUserOnly` で絞る(以下の ADR-0010 の固定名・`PipeSecurity` の記述とは違う)。
-> → #180 で 5 種目の「走査の実行」を足した(CLI の `radirec ingest` が頼む。下の一覧)。
-> → #181 で「再適用の実行」を CLI からも頼めるようにした(`radirec reapply`。予定 ID で実行する。下の一覧)。
+> → #180 で 5 種目の「走査の実行」を足した(CLI の `airshelf ingest` が頼む。下の一覧)。
+> → #181 で「再適用の実行」を CLI からも頼めるようにした(`airshelf reapply`。予定 ID で実行する。下の一覧)。
 > → #214 で、Windows では `CurrentUserOnly` をやめ、許可と所有者をユーザーの SID で作る `PipeSecurity` に戻した
 > (`CurrentUserOnly` はトークンの所有者で比べるので、UAC で昇格した端末の CLI が非昇格のトレイに繋がらなかった)。
 > Windows 以外は `CurrentUserOnly` のまま。
@@ -368,17 +370,17 @@ alias 設計が必要(§9)。
 
 - **rescan(手動再スキャン)**: 自動トリガを待たず取り込み走査を今すぐ 1 回要求する(受理まで。
   完了は待たない)。§7 の走査トリガ⑤に相当。
-- **走査の実行**(#180 で追加。CLI の `radirec ingest` から): 取り込み走査を 1 回行わせ、**終わるまで待って結果を返す**
+- **走査の実行**(#180 で追加。CLI の `airshelf ingest` から): 取り込み走査を 1 回行わせ、**終わるまで待って結果を返す**
   ([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。取り込みの走査・再適用と同じ直列ループの上で走る
   (取り込み中に頼めば、終わるのを待ってから走る)。結果は頼んだ側に返るので新規取込のトーストは出さず、取込失敗の
   トーストは出して失敗のストアにも記録する(止めるのは成功要約だけ。#152 / [ADR-0019](adr/0019-gui-settings-file-for-ingest-toast.md))。
   最終スキャンのきっかけは `CLI`。
-- **reload(設定リロード)**: `radirec.json` の変更をサービスに反映させる。**反映はサービス実質
+- **reload(設定リロード)**: `airshelf.json` の変更をサービスに反映させる。**反映はサービス実質
   再起動相当**で部分反映はしない(config 由来ランタイムを丸ごと再構築)。不正 config は受理時に
   弾かれ、再構築に失敗しても**旧構成のまま稼働継続**する。
 - **status(状態取得)**: サービスの**ライブ状態**(稼働状態・監視ルート・最終スキャン完了時刻と
   その結果)を読む。
-- **再適用の実行**(#126 で追加。#181 から CLI の `radirec reapply` からも): 統合設定の**再適用**
+- **再適用の実行**(#126 で追加。#181 から CLI の `airshelf reapply` からも): 統合設定の**再適用**
   ([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))の dry-run の結果を返し、
   利用者が確認したら実行する。rescan / reload と違い、受理ではなく**結果が返るまで待つ**。確かめる設定は 2 通り:
   設定リロードを反映した保存済みの設定と、管理画面の番組ページで編集した**保存前の設定**(#154。確かめるときは
@@ -398,12 +400,12 @@ Windows 実機での検証手順は [control-channel-verification.md](control-ch
 **現在地**(バナーの外・移行後): 制御の窓口は**常駐トレイのメニューと管理画面**(in-process 呼び出し。
 [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))と、**CLI**(named pipe の制御チャネル。
 [ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))の 2 つ。どちらも最後は `IServiceControl` を呼ぶ。
-CLI からは `radirec status`(状態取得)・`radirec reload`(設定リロード。#179)・`radirec ingest`(走査の実行。#180)・
-`radirec reapply`(再適用の確認と実行。#181)が
-トレイへ頼む(受け口は `Radirec.Hosting/Control/ControlPipeServer`。パイプはユーザーごとの名前で、同じユーザーからしか繋げない)。
+CLI からは `airshelf status`(状態取得)・`airshelf reload`(設定リロード。#179)・`airshelf ingest`(走査の実行。#180)・
+`airshelf reapply`(再適用の確認と実行。#181)が
+トレイへ頼む(受け口は `Airshelf.Hosting/Control/ControlPipeServer`。パイプはユーザーごとの名前で、同じユーザーからしか繋げない)。
 CLI の `rescan` verb は戻していない。**手動再スキャンの移設先はトレイメニューの「今すぐ再スキャン」**で
 (`ControlTrayMenu` → `IServiceControl.RequestRescan`)、常駐プロセス内の走査要求になる。
-`radirec ingest` は、かつては常駐とは別プロセスで自分で走査する単発 CLI だったが、#180 で**走査の実行**をトレイに頼む形に
+`airshelf ingest` は、かつては常駐とは別プロセスで自分で走査する単発 CLI だったが、#180 で**走査の実行**をトレイに頼む形に
 変わった(`--dry-run` だけは CLI が台帳を読み取り専用で開いて計算する)。状態はメニューを開いた時点のスナップショットとして
 表示する。設定リロードと再適用の窓口は、トレイのメニューから管理画面(§10.3)へ移った(番組ページ。#154)。
 トレイと管理画面からの操作は [usage.md](usage.md) §6 を参照。
@@ -444,8 +446,8 @@ CLI の `rescan` verb は戻していない。**手動再スキャンの移設�
 - 例外的に「正規化ルールを一括再適用したい」場合は、編集アプリ側の明示操作として提供する
   (自動パイプラインは再正規化しない)。
   → 2026-09-24: 再適用([ADR-0016](adr/0016-reapply-program-settings-to-ingested-episodes.md))は
-  CLI(`radirec reapply`)とトレイ(#126)の明示操作として提供し、Z: の出力ファイルも動かす。
-  → 2026-09-28: 「編集アプリ側の明示操作」は編集アプリを作らないと決めたため(#5)、CLI(`radirec reapply`)
+  CLI(`airshelf reapply`)とトレイ(#126)の明示操作として提供し、Z: の出力ファイルも動かす。
+  → 2026-09-28: 「編集アプリ側の明示操作」は編集アプリを作らないと決めたため(#5)、CLI(`airshelf reapply`)
   と管理画面(§10.3。#154 でトレイから移った)の再適用に一本化した。
 
 ## 9. 設定ファイル(放送局マスタ / 番組 alias / config)
@@ -517,7 +519,7 @@ stations:
   `Album` が無い設定は壊れた `programs.json` と同じ扱いで、取り込みの起動に失敗し、設定リロードでは新しい設定に切り替わらない
   (`ProgramsConfigException`。CLI の `ingest --dry-run` は「設定の読み込みに失敗しました」で 1)。
 - 照合は `Station`・`Folder`・`FilenameProgram` のどれも照合キーで行う。完全一致の判断は組ごとなので、同じフォルダでもファイル名の
-  番組名が違えば別の判断が要る。ファイル名の番組名は `radirec ingest --json`(`filenameProgram`)と `radirec attention --json`
+  番組名が違えば別の判断が要る。ファイル名の番組名は `airshelf ingest --json`(`filenameProgram`)と `airshelf attention --json`
   (`substituteSuspects`)が出す値をそのまま書けばよい。
 - 判断が要るのは、ファイル名の番組名がフォルダ名も、そのフォルダの `Programs` のエントリの `Canonical.Album` も含まない組だけ(§7。#241)。
   統合番組のフォルダ(`…おかしば10時1`)で時間帯の書き方が違う回(`…おかしば 10時～11時` / `…おかしば 10時～10時55分`)は、
@@ -571,10 +573,10 @@ stations:
 フロントエンド**に分離する。単一リポジトリ・レイヤ分離とし、GUI は後回しの独立フロントエンド。
 
 ```
-radirec-tool/
+airshelf/
   core/   # ドメインロジック: パース(importer) / 正規化ルール / 放送局・番組解決 /
           #   タグ書込(TagLib#) / import-once 台帳 / Jellyfin リフレッシュ。GUI 非依存・テスト可能
-  cli/    # 薄い入口(普段の運用とエージェントの窓口。ADR-0020)。radirec ingest / reapply / refresh / history / attention / status / reload
+  cli/    # 薄い入口(普段の運用とエージェントの窓口。ADR-0020)。airshelf ingest / reapply / refresh / history / attention / status / reload
   gui/    # 本番の常駐本体。取り込みワーカー + トレイ + 取込通知 + 管理画面(取込履歴を含む。§10.3)+ 制御 + 自己更新。
           #   一覧編集(§10.1)は作らないと決めた(#5)
   docs/  tests/
@@ -593,13 +595,13 @@ radirec-tool/
   下の 2 つは作らない。統合と正規名の揃え直しは再適用(`reapply`。ADR-0016)と管理画面が引き取った。
   - **一括正規化**: alias/放送局マスタ更新 → 該当アルバム全回へ再適用(`radirec apply-alias`)。
   - **一括タグ編集 / 実リネーム**: 番組(アルバム)単位でタグ修正・Z: 上ファイル名の規約統一。
-- **個別のタグ微修正**は **Jellyfin 標準メタデータエディタ**で代替する(Radirec 側に編集機能は無い。#5)。
+- **個別のタグ微修正**は **Jellyfin 標準メタデータエディタ**で代替する(Airshelf 側に編集機能は無い。#5)。
 
 ### 10.1 デスクトップ編集アプリ(gui / 作らないと決めた。2026-09-28)
 
 → 2026-09-28: 作らないと決めた(#5)。以下は当時の設計として残す。
 
-`Radirec.Gui` プロジェクト自体は**取込通知の受け手(トレイ)として出荷済み**(§7.1・ADR-0009)。
+`Airshelf.Gui` プロジェクト自体は**取込通知の受け手(トレイ)として出荷済み**(§7.1・ADR-0009)。
 以下の**編集本体**は同プロジェクトへの後載せで、CLI 運用で不足が判明したら着手する。差別化は
 「一覧グリッドでの対話編集」。実装可否は運用後に判断。GUI(トレイ + 編集)の将来オプションの俯瞰は
 [roadmap.md](roadmap.md) を参照。番組の設定の編集と取り込みの状況を扱う**管理画面**は編集本体とは別物で、
@@ -607,7 +609,7 @@ radirec-tool/
 
 > **注**: [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) の常駐移行が
 > **2 ツリー統合(C2 の構造前提)を先に確立済み**。`Gui → Core` の直接参照が入ったわけではなく、
-> Core の型が推移参照(`Gui → Hosting → Core` / `Gui → Gui.Core → {Core, Hosting}`)で `Radirec.Gui` の
+> Core の型が推移参照(`Gui → Hosting → Core` / `Gui → Gui.Core → {Core, Hosting}`)で `Airshelf.Gui` の
 > コンパイル面に乗っている状態(§11 の参照グラフ)。よって編集本体着手時は構造前提が既に整っており、
 > 残るは編集機能そのもの。ただし**「CLI 運用で不足が判明したら着手」のゲート自体は維持**
 > (移行は常駐単純化が動機で、編集本体の greenlight ではない)。
@@ -633,7 +635,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 
 ### 10.3 管理画面(完了。エピック #159)
 
-§10.1 の編集本体とは別に、**管理画面**(CONTEXT.md)を `Radirec.Gui` に足す。動機は、番組の設定(`programs.json`)を
+§10.1 の編集本体とは別に、**管理画面**(CONTEXT.md)を `Airshelf.Gui` に足す。動機は、番組の設定(`programs.json`)を
 エディタで直すのがつらいこと、取り込みの状況を 1 つの画面で見たいこと、トレイのメニューと通知が増えて煩雑になったこと
 (2026-09-25 の設計。決定の一覧は issue #5 のコメント)。**回のタグを 1 つずつ直す機能は含めず、§10.1 のゲートは残す**。
 将来、編集本体を作るときは管理画面のページとして載せる。
@@ -645,8 +647,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   - **取込履歴**:台帳の全件の一覧(列の見出しで並べ替え・出力先 / 取込元を開く・パスのコピー)。旧取込履歴ウィンドウ(#66)を引き継ぐ(#151 でウィンドウは退役)
     (全件をホームの中で広げると、要対応が押し出されるため分けた。#161)
   - **番組**:統合番組と分けておく兄弟フォルダ、ファイル名の番組名の判断(#235・ADR-0021)の一覧・追加・編集・削除([ADR-0017](adr/0017-management-window-owns-programs-json.md))
-  - **設定**:新規取込のトーストの切り替え / `radirec.json`・`stations.json` を読み取り専用で見せ、「ファイルを開く」と「再読み込み」を付ける。
-    トーストの切り替えは管理画面用の設定ファイル `gui-settings.json` に持ち、`radirec.json` は書かない(#152・[ADR-0019](adr/0019-gui-settings-file-for-ingest-toast.md))
+  - **設定**:新規取込のトーストの切り替え / `airshelf.json`・`stations.json` を読み取り専用で見せ、「ファイルを開く」と「再読み込み」を付ける。
+    トーストの切り替えは管理画面用の設定ファイル `gui-settings.json` に持ち、`airshelf.json` は書かない(#152・[ADR-0019](adr/0019-gui-settings-file-for-ingest-toast.md))
   - **バージョン情報**:版 / 今すぐ更新を確認 / 更新を適用して再起動
 - **番組を保存する流れ**:編集 →「確認」で、**保存前の設定のまま**再適用の dry-run を行い、変更前→変更後を見せる →
   「保存して適用」(保存 → 設定リロード → 再適用)/「保存だけ」/「戻る」。「保存だけ」で食い違ったままの回は要対応に出る。
@@ -665,18 +667,18 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
     ホームのボタンが積むのは完全一致の判断で、照合の種類(前方一致・部分一致。#240・§9.2)は番組ページの編集で選び、
     一覧ではファイル名の番組名に `…（前方一致）` / `…（部分一致）` と添える(完全一致には添えない)。
   - **出力先から消す予定**:「取り込まない」と判断した取り込み済みの回。番組の設定と食い違ったままの回の欄に並べ、再適用で消える。
-- **トレイに残すもの**:版 / **Radirec を開く**(既定の項目。ダブルクリックでも開く)/ 今すぐ再スキャン / 状態・最終スキャン /
+- **トレイに残すもの**:版 / **Airshelf を開く**(既定の項目。ダブルクリックでも開く)/ 今すぐ再スキャン / 状態・最終スキャン /
   更新を適用して再起動(保留中のみ)/ 再読み込みして再起動(縮退時のみ)/ 終了。ほかの項目は管理画面へ移し、トレイから消した:
   取込履歴(取込履歴ページ。#151)、設定リロードと設定ファイルのサブメニュー(設定ページ。#152)、再適用(番組ページ。#154)、
   今すぐ更新を確認(バージョン情報ページ。#157)。
-- **通知**:取込失敗のトーストは常に出す。新規取込のトーストは設定ページで止められる(#152。以前の `radirec.json` の設定は
+- **通知**:取込失敗のトーストは常に出す。新規取込のトーストは設定ページで止められる(#152。以前の `airshelf.json` の設定は
   失敗のトーストと失敗の記録も止めていたので分けた。旧設定は初期値としてだけ読む。[ADR-0019](adr/0019-gui-settings-file-for-ingest-toast.md))。
   兄弟フォルダの知らせはトーストから外して要対応へ移した(#155)。差し替え放送で初めて保留したときのトーストは常に出す
   (#233。取り込まれない回に気づけるように。[ADR-0021](adr/0021-substitute-broadcast-held-by-filename-program-name.md))。
   保留と取込失敗のトーストは、クリックで管理画面のホームを開く(#237・§7.1)。
   管理画面から操作したときの結果は、バルーンではなく画面の中に出す。
 - **縮退時**(設定が読めない):管理画面は開けるが、設定を読めない理由と「ファイルを開く」「再読み込みして再起動」を出す。JSON のエディタは内蔵しない。
-- **技術**:WPF + XAML + MVVM(CommunityToolkit.Mvvm)。ViewModel と計算は `Radirec.Gui.Core` / `Radirec.Hosting` に置いて
+- **技術**:WPF + XAML + MVVM(CommunityToolkit.Mvvm)。ViewModel と計算は `Airshelf.Gui.Core` / `Airshelf.Hosting` に置いて
   WSL の CI でテストし、シェルは薄く保つ。見た目は HTML モックで詰めてから、RC タグを実機で確かめる。
 
 ## 11. 技術スタック・実行/開発環境
@@ -688,28 +690,28 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 
 - 言語/ランタイム: **C# / .NET**(実行は Windows ネイティブ)
 - **ソリューション構成**(レイヤ分離を .NET プロジェクトに対応、§10):
-  - `Radirec.Core` — クラスライブラリ。ドメインロジック(importer / 正規化 / タグ書込 /
+  - `Airshelf.Core` — クラスライブラリ。ドメインロジック(importer / 正規化 / タグ書込 /
     import-once 台帳 / 出力ターゲット抽象 / Jellyfin 連携)。**クロスプラットフォームでテスト可能**。
-  - `Radirec.Hosting` — 合成ルート + 環境設定・パス解決 + 制御(`Control/`)。**`Radirec.Cli` と
-    `Radirec.Gui` の 2 フロントエンドが共有する合成層**なので Cli に畳まず独立を保つ([ADR-0012])。
-  - `Radirec.Cli` — **単一 exe `radirec.exe`**(`Spectre.Console.Cli`)。**普段の運用と AI エージェントの窓口**
+  - `Airshelf.Hosting` — 合成ルート + 環境設定・パス解決 + 制御(`Control/`)。**`Airshelf.Cli` と
+    `Airshelf.Gui` の 2 フロントエンドが共有する合成層**なので Cli に畳まず独立を保つ([ADR-0012])。
+  - `Airshelf.Cli` — **単一 exe `airshelf.exe`**(`Spectre.Console.Cli`)。**普段の運用と AI エージェントの窓口**
     ([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md)。`ingest`/`reapply`/`refresh`/`history`/`attention`/`status`/`reload`)。
     TFM は `net10.0-windows`。中身は `Program.cs` だけの薄い入口で、コマンドは
-    `Radirec.Cli.Core` にある(#178)。`status` / `reload`(#179)と `ingest`(走査の実行。#180)と `reapply`(再適用の確認と実行。#181)は
+    `Airshelf.Cli.Core` にある(#178)。`status` / `reload`(#179)と `ingest`(走査の実行。#180)と `reapply`(再適用の確認と実行。#181)は
     トレイの制御チャネル(named pipe)へ頼む。
     ※ かつては常駐サービス(`service` verb)と制御チャネル窓口(`status`/`rescan`/`reload`)も
     1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
     → `status` / `reload` は #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、トレイへ頼む形で戻った(`service` と `rescan` は戻していない)。
-  - `Radirec.Cli.Core` — `Radirec.Cli` のテスト可能な核(コマンド・`--json` の形・終了コード・`CommandApp` の設定。
+  - `Airshelf.Cli.Core` — `Airshelf.Cli` のテスト可能な核(コマンド・`--json` の形・終了コード・`CommandApp` の設定。
     `Spectre.Console.Cli`)。TFM は `net10.0` で、Linux の CI でテストできる(#178・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
-  - `Radirec.Gui` — **本番の常駐本体**(独立 exe、WPF + WinForms、`net10.0-windows10.0.x`)。
+  - `Airshelf.Gui` — **本番の常駐本体**(独立 exe、WPF + WinForms、`net10.0-windows10.0.x`)。
     取り込みワーカー・取込通知・管理画面(取込履歴を含む。§10.3)・制御メニュー・自己更新を 1 プロセスで持つ([ADR-0012])。
-    将来の配布フロントエンド(§14)は管理画面が担う形になった。編集 UI(M5)は作らないと決めた(#5)。`radirec.exe` とは
+    将来の配布フロントエンド(§14)は管理画面が担う形になった。編集 UI(M5)は作らないと決めた(#5)。`airshelf.exe` とは
     実行モデルが別(ユーザーセッション GUI)なので別 exe。
-  - `Radirec.Gui.Core` — `Radirec.Gui` のテスト可能ロジック(トースト文面整形・取込履歴行の整形・
+  - `Airshelf.Gui.Core` — `Airshelf.Gui` のテスト可能ロジック(トースト文面整形・取込履歴行の整形・
     版表示・状態の文言)と、管理画面の ViewModel(§10.3。CommunityToolkit.Mvvm)。**CI で走らせられない
     WinRT/WPF/WinForms シェルから隔離**する置き場([ADR-0012])。
-  - `Radirec.Tests` — 単体テスト(xUnit 等)。
+  - `Airshelf.Tests` — 単体テスト(xUnit 等)。
   - **参照グラフ**: `Gui → {Gui.Core, Hosting}` / `Gui.Core → {Core, Hosting}` / `Cli → Cli.Core → {Hosting, Core}` /
     `Hosting → Core`。`Gui → Core` の直接参照は無く、Core の型は推移参照で乗る([ADR-0012])。
     `Gui.Core → Hosting` は管理画面の ViewModel が制御面(`IServiceControl` / `ServiceStatusSnapshot`)をそのまま
@@ -726,7 +728,8 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - **開発/実行環境**:
   - **開発・ビルド・実行は Windows**(.NET SDK / Visual Studio or `dotnet` CLI)。リポジトリは
     Windows 側(例 `C:\dev\radirec-tool`)に置く。WSL からは `/mnt/c/...` で編集可能。
-  - `Radirec.Core`/`Hosting`/`Gui.Core`/`Tests` はクロスプラットフォーム(`net10.0`)で書き、
+    → リポジトリ名は ADR-0022(#256)で `airshelf` に改めた(例 `C:\dev\airshelf`)。
+  - `Airshelf.Core`/`Hosting`/`Gui.Core`/`Tests` はクロスプラットフォーム(`net10.0`)で書き、
     WSL の linux `dotnet` でもビルド/テスト可能にする(パス依存は設定注入)。`Cli` / `Gui` は
     Windows 専用。取り込みワーカーが `SystemEvents.PowerModeChanged` に依存するため、
     ワーカーは Hosting ではなく `Gui` に置く(Hosting を Windows 専用にしないため。[ADR-0012])。
@@ -741,7 +744,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
       → **[ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で覆った**。現行は
       **トレイ常駐 per-user**(ログオン自動起動のユーザーセッションプロセス)。「ログオフ中でも動く」という
       サービスの利点が、この用途(録音元がユーザーセッションのアプリ)では実質的に空だったため。
-      → 併せて、上記の **CLI `--once` は一度も実装されなかった**(#113)。単発実行は `radirec ingest` そのもの。
+      → 併せて、上記の **CLI `--once` は一度も実装されなかった**(#113)。単発実行は `airshelf ingest` そのもの。
 - [x] NAS への二重書き込み権限: import-once + 編集側が権威、に確定(§8)。
       → 2026-09-28: 編集側(編集アプリ)は作らないと決めた(#5)。権威は再適用(ADR-0016。その中で
       行う削除〈#234〉を含む)に一本化した(§8 冒頭の追記を参照)。
@@ -754,7 +757,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - [x] 常駐の**電源イベント購読(スリープ復帰検知)+ 復帰キャッチアップ・フルスキャン**の実装
       (`RadioMonitorWorker`)。※Windows 実機での結合確認は残(#3)。
       → 機構は不変のまま [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で
-      ユーザーセッションのワーカーへ**移設**(撤去せず。ワーカーの居場所は `Radirec.Gui`)。
+      ユーザーセッションのワーカーへ**移設**(撤去せず。ワーカーの居場所は `Airshelf.Gui`)。
 - [x] **取込通知(常駐→デスクトップ)**: 要約シグナル発行(EventLog)+ 受け手トレイ GUI で確定
       ([ADR-0008](adr/0008-ingest-notification-via-eventlog-signal.md) / [ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md)、§7.1)。
       → **機構は [ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md) で変質**。EventLog 契約は退役し、
@@ -791,6 +794,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 - [x] 同日 2 放送時の `track`/`title`/ファイル名の衝突回避([ADR-0002](adr/0002-same-day-tiebreak-by-time.md)):
       パート番号(`-N` / `track=MMDD*10+N` / `title (N)`)+ 時刻 dedup で解決済み。
 - [ ] コード/リポジトリの配置(`C:\dev\radirec-tool` 等)と .NET SDK バージョン。
+      → リポジトリは `t-seki/airshelf` に改名した(ADR-0022、#256)。
 - [ ] TagLib# で MP3 ID3 側の §6 マッピングが書けることの実地確認(radikool / M4 スコープ)。
 
 ## 13. マイルストーン(コア+CLI → 常駐化 → 統合 → 通知・制御 → トレイ常駐移行 → 管理画面。編集 GUI は作らないと決めた)
@@ -799,6 +803,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
 > M5(編集 GUI)本体の着手前に出荷済み(M6 の受け手トレイが M5 の最初の tracer slice を兼ねるため、
 > 番号は M6 だが先行)。**M3 / M6 は達成後に M7 が機構を置き換えている** — 各項は当時の記録として残す。
 > → 2026-09-28: M5(編集 GUI)は作らないと決めて issue #5 を close した(下の項目 5 を参照)。
+> → 各項のプロジェクト名・コマンド名(`Radirec.*`・`radirec`)は当時のもの。製品名は ADR-0022(#256)で Airshelf に改めた。
 
 1. **M1 コア + CLI 取り込み(らじれこ → NAS)**: `Radirec.Core` にパース→正規化→import-once→
    タグ付与(TagLib#)、`Radirec.Cli` に `radirec ingest --once`。まず `--dry-run`、次に実コピー。
@@ -839,4 +844,6 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   - importer / 出力ターゲットは差し替え式(汎用 = らじれこ importer + `LocalFolderTarget`)。
 - **配布着手時に整備**: プロダクト名(現リポジトリ名 `radirec-tool` は内部名)、README/使い方、
   ライセンス、個人データを含まない出荷 config、**らじれこの利用規約・再配布/連携の可否確認**。
+  → プロダクト名は **Airshelf** に決定([ADR-0022](adr/0022-rename-product-to-airshelf.md)、#256)。リポジトリも
+  `t-seki/airshelf` に改名した。
 - **実装技術**: 配布(非技術者向け exe/GUI)を見据えた技術選定を §11 で扱う(要検討事項)。

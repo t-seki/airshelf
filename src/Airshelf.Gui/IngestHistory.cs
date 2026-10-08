@@ -5,7 +5,7 @@ using Airshelf.Hosting;
 namespace Airshelf.Gui;
 
 /// <summary>
-/// 管理画面の取込履歴(S4 / #66)。台帳を読むのは CLI の <c>radirec history</c> と共有する
+/// 管理画面の取込履歴(S4 / #66)。台帳を読むのは CLI の <c>airshelf history</c> と共有する
 /// <see cref="IngestHistoryReader"/>(#182)で、ここは管理画面の行(<see cref="IngestHistoryRow"/>)へ整形するだけ。
 /// </summary>
 [SupportedOSPlatform("windows")]

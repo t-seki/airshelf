@@ -11,6 +11,6 @@ public enum UpdateSupport
     /// <summary>Velopack で入れていない版(開発版・portable)。W-510。</summary>
     NotInstalled,
 
-    /// <summary>Velopack で入れた版だが、設定(<c>radirec.json</c>)を読めず、更新の仕組みを作れない(トークンの出どころが無い)。W-511。</summary>
+    /// <summary>Velopack で入れた版だが、設定(<c>airshelf.json</c>)を読めず、更新の仕組みを作れない(トークンの出どころが無い)。W-511。</summary>
     ConfigUnreadable,
 }

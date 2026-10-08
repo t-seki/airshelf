@@ -4,8 +4,8 @@
   "RadioRoot": "",   // 例: "I:\\radio\\tmp\\RADIO"(らじれこの録音ルート)
   "OutputRoot": "",  // 例: "\\\\NAS\\share\\media\\radio"(Jellyfin ライブラリ。UNC 推奨)
 
-  // 相対パスは radirec.json のあるディレクトリ基準で解決される(ADR-0006)。
-  // 既定では ledger / stations / programs は %LOCALAPPDATA%\RadirecData\ に同居する(ADR-0013)。
+  // 相対パスは airshelf.json のあるディレクトリ基準で解決される(ADR-0006)。
+  // 既定では ledger / stations / programs は %LOCALAPPDATA%\AirshelfData\ に同居する(ADR-0013)。
   "LedgerPath": "ledger.db",
   "StationsFile": "stations.json",
   "ProgramsFile": "programs.json",

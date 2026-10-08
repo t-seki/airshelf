@@ -11,7 +11,7 @@ public class ConfigPathsTests
     public void Rebase_絶対パスは素通りする()
     {
         // 実行 OS で絶対と判定されるパスを使う(Linux CI では C:\ は絶対扱いされないため)。
-        // 本番 Windows では C:\radirec\ledger.db が絶対として素通りする挙動と等価。
+        // 本番 Windows では C:\airshelf\ledger.db が絶対として素通りする挙動と等価。
         var absolute = Path.Combine(Path.GetTempPath(), "ledger.db");
 
         Assert.Equal(absolute, ConfigPaths.Rebase("/some/base", absolute));
@@ -35,7 +35,7 @@ public class ConfigPathsTests
     public void RebaseAgainst_相対だけを設定ファイルのディレクトリへ寄せる()
     {
         var dir = Path.GetTempPath();
-        var configPath = Path.Combine(dir, "radirec.json");
+        var configPath = Path.Combine(dir, "airshelf.json");
         var absoluteLedger = Path.Combine(dir, "sub", "ledger.db");
         var config = new AirshelfConfig
         {
@@ -58,23 +58,23 @@ public class ConfigPathsTests
     [Fact]
     public void Resolve_明示パスを優先し省略時は既定を返す()
     {
-        Assert.Equal("/explicit/radirec.json", ConfigPaths.Resolve("/explicit/radirec.json"));
+        Assert.Equal("/explicit/airshelf.json", ConfigPaths.Resolve("/explicit/airshelf.json"));
         Assert.Equal(ConfigPaths.DefaultConfigPath, ConfigPaths.Resolve(null));
         Assert.Equal(ConfigPaths.DefaultConfigPath, ConfigPaths.Resolve("   "));
     }
 
     /// <summary>
     /// 設定ページの「ファイルを開く」(#143 / #152)が開く場所。実際の読み込み(<see cref="ConfigLoading.TryLoad"/> の rebase)を
-    /// 通した設定から求め、相対は radirec.json のディレクトリ基準・絶対は素通りになることを確かめる。
+    /// 通した設定から求め、相対は airshelf.json のディレクトリ基準・絶対は素通りになることを確かめる。
     /// </summary>
     [Fact]
-    public void Locate_読み込んだ設定からradirec_json基準で場所を求める()
+    public void Locate_読み込んだ設定からairshelf_json基準で場所を求める()
     {
-        var dir = Directory.CreateTempSubdirectory("radirec-locate-").FullName;
+        var dir = Directory.CreateTempSubdirectory("airshelf-locate-").FullName;
         try
         {
             var absoluteStations = Path.Combine(dir, "elsewhere", "my-stations.json");
-            var configPath = Path.Combine(dir, "radirec.json");
+            var configPath = Path.Combine(dir, "airshelf.json");
             File.WriteAllText(configPath, $$"""
                 {
                   "ProgramsFile": "sub/programs.json",
@@ -98,9 +98,9 @@ public class ConfigPathsTests
     }
 
     [Fact]
-    public void Locate_設定を読めていなければradirec_jsonだけ決まる()
+    public void Locate_設定を読めていなければairshelf_jsonだけ決まる()
     {
-        var configPath = Path.Combine(Path.GetTempPath(), "radirec.json");
+        var configPath = Path.Combine(Path.GetTempPath(), "airshelf.json");
 
         Assert.Equal(configPath, ConfigPaths.Locate(ConfigFile.Airshelf, configPath, null, null));
         Assert.Null(ConfigPaths.Locate(ConfigFile.Programs, configPath, null, null));
@@ -111,7 +111,7 @@ public class ConfigPathsTests
     public void Locate_パスが空なら場所は決まらない()
     {
         // 空の ProgramsFile / StationsFile は rebase でも空のまま、LoadOptional も何も読まない(= 使っていない)。
-        var configPath = Path.Combine(Path.GetTempPath(), "radirec.json");
+        var configPath = Path.Combine(Path.GetTempPath(), "airshelf.json");
 
         Assert.Null(ConfigPaths.Locate(ConfigFile.Programs, configPath, "x.json", ""));
         Assert.Null(ConfigPaths.Locate(ConfigFile.Stations, configPath, "  ", "x.json"));

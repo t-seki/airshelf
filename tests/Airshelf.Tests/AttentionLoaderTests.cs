@@ -6,7 +6,7 @@ namespace Airshelf.Tests;
 // 要対応を台帳とディスクの設定ファイルから計算する(#155)。台帳は実物の SQLite、設定は一時フォルダのファイル。
 public sealed class AttentionLoaderTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-attention-loader-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-attention-loader-").FullName;
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 

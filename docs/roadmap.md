@@ -1,8 +1,8 @@
-# Radirec.Gui ロードマップ(常駐トレイ)
+# Airshelf.Gui ロードマップ(常駐トレイ)
 
 > Status: Map v4 / 最終更新: 2026-09-28
 
-これは **`Radirec.Gui`(常駐トレイ)の将来オプションの地図**であり、着手の約束ではない。
+これは **`Airshelf.Gui`(常駐トレイ)の将来オプションの地図**であり、着手の約束ではない。
 優先順位は付けていない。実際の不満が出た時点で、ある軸を greenlit してから issue を切る(§運用)。
 
 v1(2026-07-18)が並べていた軸A(通知トレイの深化)・軸B(制御チャネルの GUI 化)・軸C(M5 編集アプリ本体)は
@@ -36,7 +36,7 @@ catch-up 参加といった「分割が生んだ機構」が消えた([CONTEXT.m
 **軸B(制御チャネルの GUI 化)— 決着**
 
 - **B1 トレイメニューに rescan/reload/status**(#50): 出荷済み。named pipe クライアントとして実装したが、
-  ADR-0012 で in-process 呼び出しに置き換わり、`Radirec.Gui.Core` の制御 DTO は削除された。
+  ADR-0012 で in-process 呼び出しに置き換わり、`Airshelf.Gui.Core` の制御 DTO は削除された。
 - **B2 状態の可視化**: **見送り**(§見送り)。
 
 さらに、v1 の地図に無かった項目が #62(トレイ常駐移行エピック)でトレイメニューに載った —
@@ -73,32 +73,32 @@ CLI 運用で不足が判明しないまま維持されていた。軸D(管理�
 
 ## 前提: 現状の構造(この地図の起点)
 
-`Radirec.Gui` は「取込通知の受け手」ではなく、**取り込みワーカーを内包する常駐本体**である(ADR-0012)。
+`Airshelf.Gui` は「取込通知の受け手」ではなく、**取り込みワーカーを内包する常駐本体**である(ADR-0012)。
 1 つのユーザーセッション exe が「取り込み + トースト + 管理画面(取込履歴を含む)+ 制御 + 自己更新」を持つ。
 
 v1 が不変条件として掲げていた「**2 ツリーは ProjectReference を共有しない**」は**退役した**。
 実際の参照グラフは 2 経路で Core に届いている:
 
 ```
-Radirec.Gui ──> Radirec.Gui.Core ──> Radirec.Core
-     │                 └───────────> Radirec.Hosting
-     └────────> Radirec.Hosting  ──> Radirec.Core
-Radirec.Cli ──> Radirec.Cli.Core ──> Radirec.Hosting / Radirec.Core
+Airshelf.Gui ──> Airshelf.Gui.Core ──> Airshelf.Core
+     │                 └───────────> Airshelf.Hosting
+     └────────> Airshelf.Hosting  ──> Airshelf.Core
+Airshelf.Cli ──> Airshelf.Cli.Core ──> Airshelf.Hosting / Airshelf.Core
 ```
 
-- `Radirec.Cli.Core` は #178 で足した。CLI のコマンド・終了コード・JSON の形を、Linux の CI でテストできる `net10.0` に
-  置く(exe の `Radirec.Cli` は Program.cs だけ)。`Gui` / `Gui.Core` と同じ分け方。
+- `Airshelf.Cli.Core` は #178 で足した。CLI のコマンド・終了コード・JSON の形を、Linux の CI でテストできる `net10.0` に
+  置く(exe の `Airshelf.Cli` は Program.cs だけ)。`Gui` / `Gui.Core` と同じ分け方。
 
 - `Gui.Core → Hosting` は管理画面(#151)で足した辺。ViewModel が制御面(`IServiceControl` /
   `ServiceStatusSnapshot`)をそのまま受け取る。Gui.Core 側にインタフェースを切ると、`IServiceControl` の写しと
   アダプタができ、制御面を足すたびに両方を直すことになるので採らなかった。Hosting は `net10.0`(依存は Core だけ)
   なので、Gui.Core は引き続き WSL の CI でビルド・テストできる。
 
-- `Radirec.Gui` 自体に `Radirec.Core` への直接 ProjectReference は**無い**が、**Core の型は既に Gui の
-  コンパイル面に乗っている**(`Gui/RadioMonitorWorker.cs` が `Radirec.Core.Ingestion`、
-  `Gui/IngestHistory.cs` が `Radirec.Core.Ledger` を直接使う)。ADR-0012 が「参照の実体は
+- `Airshelf.Gui` 自体に `Airshelf.Core` への直接 ProjectReference は**無い**が、**Core の型は既に Gui の
+  コンパイル面に乗っている**(`Gui/RadioMonitorWorker.cs` が `Airshelf.Core.Ingestion`、
+  `Gui/IngestHistory.cs` が `Airshelf.Core.Ledger` を直接使う)。ADR-0012 が「参照の実体は
   `Gui → Hosting → Core`」と自己訂正したとおり、`Gui → Core` という辺そのものは存在しない。
-- `Radirec.Hosting` は **CLI(`radirec.exe`)と常駐トレイの 2 フロントエンドが共有する合成層**。
+- `Airshelf.Hosting` は **CLI(`airshelf.exe`)と常駐トレイの 2 フロントエンドが共有する合成層**。
   だから Hosting は Cli に畳まず独立を保つ。
 - 両ツリーを繋いでいた EventLog の JSON 契約(EventID 1001/1002)と named pipe は**どちらも撤去済み**。
   ただし named pipe は #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、CLI → トレイの制御チャネルとして
@@ -107,12 +107,12 @@ Radirec.Cli ──> Radirec.Cli.Core ──> Radirec.Hosting / Radirec.Core
   `IngestSummaryPayload` / `IngestFailurePayload` という**型は `Gui.Core` に残っているが、跨プロセスの
   バージョン付き JSON 契約としてではなく、ワーカーから文面整形へ渡す in-process の受け渡し型**として
   生き残っている(シリアライズは無い)。
-- **制御(rescan/reload/status)は `Radirec.Hosting/Control/` に残り**(`IServiceControl` /
+- **制御(rescan/reload/status)は `Airshelf.Hosting/Control/` に残り**(`IServiceControl` /
   `ServiceStatusSnapshot` 等)、トレイが in-process で叩く。CLI の `status` / `reload` は、トレイの受け口
   (`ControlPipeServer`)を通って同じ `IServiceControl` に届く(#179)。制御の実装は Hosting 側にある — ここでも
   Hosting が 2 フロントエンドの共有合成層として効いている。
 
-**`Radirec.Gui.Core` は分離を維持しているが、役割が変わった**: EventLog subscriber 契約の置き場ではなく、
+**`Airshelf.Gui.Core` は分離を維持しているが、役割が変わった**: EventLog subscriber 契約の置き場ではなく、
 **CI で走らせられない WinRT/WPF/WinForms シェルから隔離した「テスト可能な提示ロジック」**
 (トースト文面整形・履歴行整形・版表示・状態の文言)と、管理画面の ViewModel(#151)の置き場である(ADR-0012)。
 UI を厚くする変更(管理画面がそうだった)でも、ロジックは Gui.Core 側に置いてシェルを薄く保つのがこの分離の使い方になる。

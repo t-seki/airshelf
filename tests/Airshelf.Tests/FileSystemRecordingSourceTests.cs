@@ -8,7 +8,7 @@ namespace Airshelf.Tests;
 /// </summary>
 public sealed class FileSystemRecordingSourceTests : IDisposable
 {
-    private readonly string _root = Directory.CreateTempSubdirectory("radirec-source-").FullName;
+    private readonly string _root = Directory.CreateTempSubdirectory("airshelf-source-").FullName;
 
     public void Dispose()
     {

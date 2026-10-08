@@ -28,7 +28,7 @@ public enum ManagementPage
 public sealed class ManagementViewModel : ObservableObject
 {
     /// <summary>W-001(ウィンドウの表題)。</summary>
-    public const string Title = "Radirec";
+    public const string Title = "Airshelf";
 
     /// <summary>W-003(ウィンドウ下端の注記)。</summary>
     public const string CloseNote = "閉じてもトレイに常駐し、取り込みは続きます";

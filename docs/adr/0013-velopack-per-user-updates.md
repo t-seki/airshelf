@@ -1,6 +1,6 @@
 # 更新機構は Velopack(GitHub Releases フィード)による per-user 自己更新にする
 
-Status: accepted([ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の per-user 化で解錠された更新機構の選定。**実装済み — #75 per-user 化 / #76 トレイからのアプリ内自己更新**)
+Status: accepted([ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の per-user 化で解錠された更新機構の選定。**実装済み — #75 per-user 化 / #76 トレイからのアプリ内自己更新**)。**[ADR-0022](0022-rename-product-to-airshelf.md)(2026-10-08)で製品名を Airshelf に改め、Velopack の packId は `Radirec` → `Airshelf`(インストール先 `%LOCALAPPDATA%\Airshelf`)、データのフォルダは `%LOCALAPPDATA%\AirshelfData`、設定ファイルは `airshelf.json` になった(本文の名前は当時のもの。packId とデータのフォルダを別の名前にする決定は維持)**。
 
 トレイ常駐 per-user モデル([ADR-0012](0012-retire-service-for-tray-resident-per-user.md))への移行で install が非 admin になり、デスクトップ自己更新技術が使えるようになった。更新機構に **Velopack**(旧 Squirrel / Clowd.Squirrel の後継)を採用し、**既存の GitHub Releases をフィード源**として使う。トレイが起動時・定期にフィードを照会し、新版があれば delta を取得して**稼働中 exe を差し替え → 再起動**する。
 

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  install/update/uninstall.ps1 が共有する取込通知トレイ(Radirec.Gui)の定数とヘルパ(ADR-0009)。
+  install/update/uninstall.ps1 が共有する取込通知トレイ(Airshelf.Gui)の定数とヘルパ(ADR-0009)。
 
 .DESCRIPTION
   各スクリプトの先頭で `. (Join-Path $PSScriptRoot '_TrayCommon.ps1')` として dot-source する。
@@ -12,10 +12,10 @@
   通知ユーザー自身のセッションから行う必要がある(その場合は各ユーザーで一度トレイを起動する)。
 #>
 
-$GuiProcessName = 'Radirec.Gui'
-$GuiExeName = 'Radirec.Gui.exe'
+$GuiProcessName = 'Airshelf.Gui'
+$GuiExeName = 'Airshelf.Gui.exe'
 $GuiRunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-$GuiRunValue = 'RadirecTray'
+$GuiRunValue = 'AirshelfTray'
 
 # 操作者と同一セッションのトレイプロセスのみを対象にする(昇格実行が他ユーザーの
 # セッションのトレイを巻き添えに kill しないため。F2)。

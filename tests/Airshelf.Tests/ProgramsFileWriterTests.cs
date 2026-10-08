@@ -13,7 +13,7 @@ public sealed class ProgramsFileWriterTests : IDisposable
 {
     private static readonly DateTime Now = new(2026, 9, 25, 21, 5, 9);
 
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-writer-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-writer-").FullName;
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 

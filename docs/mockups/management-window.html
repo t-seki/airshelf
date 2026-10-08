@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>管理画面のモック(#150)- Radirec</title>
+<title>管理画面のモック(#150)- Airshelf</title>
 <style>
   :root {
     --bg: #f3f3f3; --win: #ffffff; --line: #d6d6d6; --text: #1b1b1b; --sub: #5f5f5f;
@@ -176,7 +176,7 @@
     <select data-key="set">
       <option value="normal">通常</option>
       <option value="opened">ファイルを開いた結果</option>
-      <option value="reloadconfirm">radirec.json の再読み込み(確認)</option>
+      <option value="reloadconfirm">airshelf.json の再読み込み(確認)</option>
       <option value="reloaded">再読み込みの結果</option>
       <option value="stations">stations.json の再読み込み(確かめている間)</option>
       <option value="nostations">stations.json を使わない設定</option>
@@ -208,7 +208,7 @@
 
 <!-- ================= 管理画面 ================= -->
 <div class="window" data-if="scene:window">
-  <div class="titlebar"><span data-w="W-001">Radirec</span><span class="caps"><span>—</span><span>☐</span><span>✕</span></span></div>
+  <div class="titlebar"><span data-w="W-001">Airshelf</span><span class="caps"><span>—</span><span>☐</span><span>✕</span></span></div>
   <nav>
     <button data-go="page:home" class="on" data-w="W-002">ホーム</button>
     <button data-go="page:history" data-w="W-002">取込履歴</button>
@@ -446,13 +446,13 @@
   <section data-if="page:programs">
     <h2>番組</h2>
 
-    <!-- 縮退:radirec.json を読めない -->
+    <!-- 縮退:airshelf.json を読めない -->
     <div data-if="run:noconfig" class="msg warn" data-w="W-211">設定を読めないため、番組の設定を出せません</div>
 
     <!-- programs.json を使わない設定(ProgramsFile が空) -->
     <div data-if="pf:unused run:watching,polling,noscan,crashed,startloop,startfail" class="card">
-      <p style="margin-top: 0;" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
-      <p class="sub" data-w="W-213">番組の設定を使うには、radirec.json の ProgramsFile にファイル名(例 programs.json)を書き、設定ページの「再読み込み」を押してください。</p>
+      <p style="margin-top: 0;" data-w="W-212">airshelf.json で programs.json を使わない設定になっています</p>
+      <p class="sub" data-w="W-213">番組の設定を使うには、airshelf.json の ProgramsFile にファイル名(例 programs.json)を書き、設定ページの「再読み込み」を押してください。</p>
       <div class="mocknote">この設定では、どのフォルダもフォルダ名がそのままアルバム名になる(統合もしない)。</div>
     </div>
 
@@ -642,7 +642,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
           <div class="cnt">移動・リネーム 24</div>
         </div>
         <p data-w="W-246">対象外の回(衝突・放送局の変更など)は動かしません。</p>
-        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\RadirecData\gui.log)に書きました。</p>
+        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\AirshelfData\gui.log)に書きました。</p>
         <div class="msg warn" data-w="W-250">「保存だけ」にすると、揃っていない 47 回は要対応の「再適用が要る番組」に残ります</div>
       </div>
       <div class="card confirm-body" style="margin-top: 12px;" data-if="prog:aligned">
@@ -668,7 +668,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
           <div>・TBSラジオ「安住紳一郎の日曜天国(1)」→「安住紳一郎の日曜天国」</div>
           <div class="cnt">移動・リネーム 24</div>
         </div>
-        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\RadirecData\gui.log)に書きました。</p>
+        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\AirshelfData\gui.log)に書きました。</p>
       </div>
       <div class="row" style="justify-content: flex-end;">
         <button class="btn primary" data-go="prog:applying" data-w="W-312">適用</button>
@@ -691,7 +691,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <p data-w="W-272">移動・リネーム 47 回 / 台帳とタグを直す 0 回 / 台帳だけ直す 0 回 / 重複が残っている 0 回 / 対象外 1 回</p>
         <p data-w="W-273">Jellyfin ライブラリ更新: 起動しました</p>
         <p data-w="W-274">タグ(album / title / track)が反映されないアルバムがあれば、Jellyfin でメタデータを更新してください。</p>
-        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\RadirecData\gui.log)に書きました。</p>
+        <p class="sub" data-w="W-247">1 回ずつの明細は gui.log(%LOCALAPPDATA%\AirshelfData\gui.log)に書きました。</p>
         <div class="mocknote">失敗があれば見出しが <span data-w="W-272">統合設定の再適用が完了しました(失敗 2 回)</span> になり、
           <span data-w="W-274">失敗した回は、もう一度再適用すると揃います。</span> が足される。Jellyfin の段はほかに
           <span data-w="W-273">Jellyfin ライブラリ更新: 未設定のため行いません</span> /
@@ -713,7 +713,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 
       <div class="card confirm-body" data-if="prog:abort">
         <h3 style="margin-top: 0;" data-w="W-251">統合設定の再適用を中止しました</h3>
-        <p>設定ファイルが見つかりません: C:\Users\me\AppData\Local\RadirecData\radirec.json(取り込みは前の設定のまま動いています)</p>
+        <p>設定ファイルが見つかりません: C:\Users\me\AppData\Local\AirshelfData\airshelf.json(取り込みは前の設定のまま動いています)</p>
       </div>
 
       <div class="row" style="justify-content: flex-end;"><button class="btn" data-go="prog:list">(モック:一覧に戻る)</button></div>
@@ -722,7 +722,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
     <!-- コメントが消える確認 -->
     <div class="overlay" data-if="prog:comments">
       <div class="dialog">
-        <div class="dh">Radirec</div>
+        <div class="dh">Airshelf</div>
         <div class="db">
           <h3 data-w="W-260">コメントが 6 件消えます(.bak に残ります)</h3>
           <p data-w="W-261">管理画面から保存すると、programs.json 全体を書き直すため、// のコメントは残りません。保存の前に、同じフォルダに programs.json.bak-日時 を作ります。これからのメモは各行の「メモ」欄に書けます。</p>
@@ -746,7 +746,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       <h3 style="margin-top: 0;" data-w="W-401">設定を読めません</h3>
       <p class="msg err" data-w="W-402">設定の読み込みに失敗しました: '}' is invalid after a property name. Expected a ':'. Path: $.RadioRoot | LineNumber: 2 | BytePositionInLine: 14.</p>
       <p data-w="W-403">取り込みは止まっています。ファイルを直して保存してから「再読み込みして再起動」を押してください。</p>
-      <p class="sub">C:\Users\me\AppData\Local\RadirecData\radirec.json</p>
+      <p class="sub">C:\Users\me\AppData\Local\AirshelfData\airshelf.json</p>
       <div class="row">
         <button class="btn" data-w="W-404">ファイルを開く</button>
         <button class="btn primary" data-w="W-404">再読み込みして再起動</button>
@@ -792,7 +792,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 
         <div class="card readonly">
           <div class="row" style="justify-content: space-between;">
-            <div><b>radirec.json</b> <span class="sub">C:\Users\me\AppData\Local\RadirecData\radirec.json</span></div>
+            <div><b>airshelf.json</b> <span class="sub">C:\Users\me\AppData\Local\AirshelfData\airshelf.json</span></div>
             <div class="row">
               <button class="btn small" data-go="set:opened" data-w="W-305">ファイルを開く</button>
               <button class="btn small" data-go="set:reloadconfirm" data-w="W-305">再読み込み</button>
@@ -813,12 +813,12 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
 }</pre>
           <div class="msg info" data-if="set:reloaded" data-w="W-310">設定リロードを受理しました(反映は取込完了後)</div>
           <div class="msg warn" data-if="set:reloaded" data-w="W-310">設定リロードは拒否されました: 設定の読み込みに失敗しました: …</div>
-          <div class="msg info" data-if="set:opened" data-w="W-308">radirec.json が無かったので見本から作りました</div>
+          <div class="msg info" data-if="set:opened" data-w="W-308">airshelf.json が無かったので見本から作りました</div>
         </div>
 
         <div class="card readonly">
           <div class="row" style="justify-content: space-between;">
-            <div><b>stations.json</b> <span class="sub" data-if="set:normal,opened,reloadconfirm,reloaded,stations">C:\Users\me\AppData\Local\RadirecData\stations.json</span></div>
+            <div><b>stations.json</b> <span class="sub" data-if="set:normal,opened,reloadconfirm,reloaded,stations">C:\Users\me\AppData\Local\AirshelfData\stations.json</span></div>
             <div class="row">
               <button class="btn small" data-if="set:normal,opened,reloadconfirm,reloaded,stations" data-go="set:opened" data-w="W-305">ファイルを開く</button>
               <button class="btn small" data-if="set:normal,opened,reloadconfirm,reloaded,stations" data-go="set:stations" data-w="W-305">再読み込み</button>
@@ -834,7 +834,7 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
     …
   ]
 }</pre>
-          <p class="sub" data-if="set:nostations" data-w="W-307">radirec.json でこのファイルを使わない設定になっています</p>
+          <p class="sub" data-if="set:nostations" data-w="W-307">airshelf.json でこのファイルを使わない設定になっています</p>
           <div class="msg warn" data-if="set:opened" data-w="W-308">stations.json を開けませんでした(gui.log 参照)</div>
           <!-- stations.json の再読み込み(#164)。確かめている間はこの段に W-311 を出し、揃える回があれば番組ページの確認(W-252)へ移る -->
           <div class="msg info" data-if="set:stations" data-w="W-311">stations.json を読み込み直し、取り込み済みの回を今の設定と比べます</div>
@@ -853,14 +853,14 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
         <div class="mocknote">中身を読めなかったときは中身の代わりに
           <span class="an" data-w="W-315">stations.json を読めませんでした(gui.log 参照)</span>、まだ無いときは
           <span class="an" data-w="W-317">stations.json はまだありません(「ファイルを開く」で見本から作ります)</span>。
-          取り込みが止まっているときは radirec.json と stations.json の「再読み込み」を押せず、横に
+          取り込みが止まっているときは airshelf.json と stations.json の「再読み込み」を押せず、横に
           <span class="an" data-w="W-316">取り込みが止まっているため、再読み込みできません</span>。</div>
-        <p class="sub" data-if="pf:unused" data-w="W-212">radirec.json で programs.json を使わない設定になっています</p>
+        <p class="sub" data-if="pf:unused" data-w="W-212">airshelf.json で programs.json を使わない設定になっています</p>
       </div>
 
     </div>
 
-    <!-- radirec.json の再読み込みの確認 -->
+    <!-- airshelf.json の再読み込みの確認 -->
     <div class="overlay" data-if="set:reloadconfirm run:watching,polling,noscan,crashed,startloop,startfail">
       <div class="dialog">
         <div class="dh">設定リロード</div>
@@ -877,8 +877,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
   <section data-if="page:version">
     <h2>バージョン情報</h2>
     <div class="card">
-      <p style="font-size: 16px; margin-top: 0;" data-if="upd:none,pending" data-w="W-501">Radirec 0.12.0</p>
-      <p style="font-size: 16px; margin-top: 0;" data-if="upd:dev" data-w="W-501">Radirec 0.0.0-dev</p>
+      <p style="font-size: 16px; margin-top: 0;" data-if="upd:none,pending" data-w="W-501">Airshelf 0.12.0</p>
+      <p style="font-size: 16px; margin-top: 0;" data-if="upd:dev" data-w="W-501">Airshelf 0.0.0-dev</p>
 
       <div data-if="upd:none,pending run:watching,polling,noscan,crashed,startloop,startfail" class="row">
         <button class="btn" data-go="ver:latest" data-w="W-502">今すぐ更新を確認</button>
@@ -920,8 +920,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
   <div class="tray-col">
     <h3>トレイのメニュー(通常)</h3>
     <div class="traymenu">
-      <div class="dis" data-w="W-601">Radirec 0.12.0</div><hr>
-      <div class="def" data-w="W-602">Radirec を開く</div>
+      <div class="dis" data-w="W-601">Airshelf 0.12.0</div><hr>
+      <div class="def" data-w="W-602">Airshelf を開く</div>
       <div data-w="W-603">今すぐ再スキャン</div><hr>
       <div class="dis" data-w="W-604">状態: 稼働中(監視中)</div>
       <div class="dis" data-w="W-604">最終スキャン: 9/25 10:42 検知(取込 3)</div><hr>
@@ -933,8 +933,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
   <div class="tray-col">
     <h3>更新の保留中</h3>
     <div class="traymenu">
-      <div class="dis" data-w="W-601">Radirec 0.12.0</div><hr>
-      <div class="def" data-w="W-602">Radirec を開く</div>
+      <div class="dis" data-w="W-601">Airshelf 0.12.0</div><hr>
+      <div class="def" data-w="W-602">Airshelf を開く</div>
       <div data-w="W-603">今すぐ再スキャン</div><hr>
       <div class="dis" data-w="W-604">状態: 稼働中(監視中)</div>
       <div class="dis" data-w="W-604">最終スキャン: 9/25 10:42 検知(取込 3)</div><hr>
@@ -946,8 +946,8 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
   <div class="tray-col">
     <h3>縮退(取り込みが止まっている)</h3>
     <div class="traymenu">
-      <div class="dis" data-w="W-601">Radirec 0.12.0</div><hr>
-      <div class="def" data-w="W-602">Radirec を開く</div>
+      <div class="dis" data-w="W-601">Airshelf 0.12.0</div><hr>
+      <div class="def" data-w="W-602">Airshelf を開く</div>
       <div class="dis" data-w="W-603">今すぐ再スキャン</div><hr>
       <div class="dis" data-w="W-604">状態: 取り込み停止中(設定を読み込めませんでした)</div>
       <div class="dis" data-w="W-604">最終スキャン: —</div><hr>
@@ -966,19 +966,19 @@ SONYSONPOQUESTFORTHEFUTURE</textarea>
       <span class="gone">今すぐ更新を確認</span>(#157)</div>
 
     <h3>バルーン(トレイに残した操作)</h3>
-    <div class="toast"><div class="app">Radirec</div><div data-w="W-608">手動再スキャンを要求しました</div></div>
-    <div class="toast"><div class="app">Radirec</div><div data-w="W-609">更新があります(v0.13.0)。Radirec を開いて「バージョン情報」か、トレイメニューから適用できます。</div></div>
+    <div class="toast"><div class="app">Airshelf</div><div data-w="W-608">手動再スキャンを要求しました</div></div>
+    <div class="toast"><div class="app">Airshelf</div><div data-w="W-609">更新があります(v0.13.0)。Airshelf を開いて「バージョン情報」か、トレイメニューから適用できます。</div></div>
 
     <h3>バルーン(管理画面が開けない・閉じた)</h3>
-    <div class="toast"><div class="app">Radirec</div><div data-w="W-004">管理画面でエラーが起きたため閉じました(gui.log 参照)</div></div>
-    <div class="toast"><div class="app">Radirec</div><div class="an" data-w="W-005">管理画面を開けませんでした(gui.log 参照)</div></div>
+    <div class="toast"><div class="app">Airshelf</div><div data-w="W-004">管理画面でエラーが起きたため閉じました(gui.log 参照)</div></div>
+    <div class="toast"><div class="app">Airshelf</div><div class="an" data-w="W-005">管理画面を開けませんでした(gui.log 参照)</div></div>
 
     <h3>取込通知(トースト)</h3>
-    <div class="toast" data-w="W-701"><div class="app">Radirec</div>
+    <div class="toast" data-w="W-701"><div class="app">Airshelf</div>
       <div class="t">新規取込 3件</div>
       <div>安住紳一郎の日曜天国（TBSラジオ）2件</div>
       <div>オードリーのオールナイトニッポン（ニッポン放送）2026-09-20 01:00</div></div>
-    <div class="toast" data-w="W-702"><div class="app">Radirec</div>
+    <div class="toast" data-w="W-702"><div class="app">Airshelf</div>
       <div class="t">取込失敗 1件</div>
       <div>[ニッポン放送]オードリーのオールナイトニッポン(TimeFree)_20270229010000.m4a（放送日時が不正です …）</div></div>
     <div class="mocknote">新規取込のトーストは、設定ページでオフにすると出ない。失敗のトーストは常に出る。

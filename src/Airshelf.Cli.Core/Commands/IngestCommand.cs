@@ -70,7 +70,7 @@ public sealed class IngestCommand(
                                    or IOException and not LedgerUnreachableException)
         {
             // 台帳オープンや stations/programs の読み込みで失敗した場合、programs.json の中身が使えない場合
-            // (「別の番組として取り込む」にアルバム名が無い等。ADR-0021)。radirec.json 本体の解析失敗は LoadConfig 側で処理済み。台帳のフォルダに届かないときは外へ出して、ほかのコマンドと同じく
+            // (「別の番組として取り込む」にアルバム名が無い等。ADR-0021)。airshelf.json 本体の解析失敗は LoadConfig 側で処理済み。台帳のフォルダに届かないときは外へ出して、ほかのコマンドと同じく
             // 5 にする(AirshelfCli.HandleException。#216)。
             CommandSupport.Fail(
                 console, Name, settings.Json, ExitCodes.UsageOrConfig, $"設定の読み込みに失敗しました: {ex.Message}");
@@ -147,9 +147,9 @@ public sealed class IngestCommand(
         if (report.Count(IngestOutcome.Held) > 0)
             console.MarkupLine(
                 $"[yellow]差し替え放送の疑いがある回を{(report.DryRun ? "保留します" : "保留しました")}。[/]" +
-                "[grey]programs.json の FilenamePrograms に判断を書いて radirec reload で反映すると、次の走査で判断どおりに扱います" +
+                "[grey]programs.json の FilenamePrograms に判断を書いて airshelf reload で反映すると、次の走査で判断どおりに扱います" +
                 "(Match.Mode を Prefix・Contains にすると、スポンサー名やゲスト名の違う組を 1 つの判断で扱えます。" +
-                "radirec attention にも出ます)[/]");
+                "airshelf attention にも出ます)[/]");
 
         // 不要(取込0件・dry-run)のときは何も出さない。
         switch (report.LibraryRefresh)

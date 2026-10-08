@@ -45,7 +45,7 @@ public sealed class RefreshCommand(IAnsiConsole console, ICliConfigSource config
     {
         if (refresher is NullLibraryRefresher)
             return new RefreshJson(RefreshStatus.NotConfigured,
-                "Jellyfin が未設定です。radirec.json の JellyfinUrl / JellyfinApiKey を設定してください。");
+                "Jellyfin が未設定です。airshelf.json の JellyfinUrl / JellyfinApiKey を設定してください。");
 
         try
         {

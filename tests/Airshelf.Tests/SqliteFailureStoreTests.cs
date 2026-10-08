@@ -13,7 +13,7 @@ namespace Airshelf.Tests;
 public sealed class SqliteFailureStoreTests : IDisposable
 {
     private readonly string _dir =
-        Path.Combine(Path.GetTempPath(), "radirec-failstore-" + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "airshelf-failstore-" + Guid.NewGuid().ToString("N"));
 
     public SqliteFailureStoreTests() => Directory.CreateDirectory(_dir);
 

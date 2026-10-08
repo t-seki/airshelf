@@ -13,7 +13,7 @@ public sealed class TagLibTagWriterTests : IDisposable
         Path.Combine(AppContext.BaseDirectory, "Fixtures", "silent.m4a");
 
     private readonly string _work =
-        Path.Combine(Path.GetTempPath(), "radirec-test-" + Guid.NewGuid().ToString("N"));
+        Path.Combine(Path.GetTempPath(), "airshelf-test-" + Guid.NewGuid().ToString("N"));
 
     public TagLibTagWriterTests() => Directory.CreateDirectory(_work);
 

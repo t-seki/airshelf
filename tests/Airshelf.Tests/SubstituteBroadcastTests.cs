@@ -23,7 +23,7 @@ public sealed class SubstituteBroadcastTests : IDisposable
     private const string Folder = "パンサー向井のチャリで30分";
     private const string Substitute = "辛坊治郎 ズーム そこまで言うか！";
 
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-substitute-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-substitute-").FullName;
 
     public void Dispose()
     {

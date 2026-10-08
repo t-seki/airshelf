@@ -8,7 +8,7 @@ namespace Airshelf.Tests;
 /// </summary>
 public sealed class LedgerFileTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), $"radirec-ledgerfile-{Guid.NewGuid():N}");
+    private readonly string _root = Path.Combine(Path.GetTempPath(), $"airshelf-ledgerfile-{Guid.NewGuid():N}");
 
     public LedgerFileTests() => Directory.CreateDirectory(_root);
 

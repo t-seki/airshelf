@@ -8,7 +8,7 @@ namespace Airshelf.Tests;
 /// </summary>
 public sealed class NewFileWriterTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("radirec-newfile-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("airshelf-newfile-").FullName;
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 

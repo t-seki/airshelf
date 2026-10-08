@@ -59,7 +59,7 @@ public interface IReapplyJobHost
     bool LastReloadUnreachable { get; }
 
     /// <summary>
-    /// 設定ファイル(radirec.json)を読んで検証する(反映はしない)。<paramref name="error"/> は前置き
+    /// 設定ファイル(airshelf.json)を読んで検証する(反映はしない)。<paramref name="error"/> は前置き
     /// (「設定の読み込みに失敗しました: 」など)を含んだ、そのまま出せる理由。
     /// </summary>
     bool TryLoadConfig(out AirshelfConfig? config, out string? error);
