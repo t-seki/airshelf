@@ -45,9 +45,11 @@ dotnet build Airshelf.slnx -c Release -warnaserror
 dotnet test --solution Airshelf.slnx -c Release --no-build
 ```
 
-CI は **GitHub-hosted の Linux runner** で動きます。`release.yml` が「PR ビルドは self-hosted で
-走らせない」(母艦 Windows PC を PR のコードに晒さない)と決めているためで、その判断を維持したまま
-PR を検証するための構成です。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
+CI は **母艦 Windows PC の self-hosted runner**(`runs-on: [self-hosted, windows, x64, homelab]`、
+`release.yml` と共有の永続 runner で、同時に動くのは 1 ジョブ)で動きます。private repo の
+GitHub-hosted の無料枠を使い切ったためで、PR の CI を母艦で回すこと(Renovate が上げた依存が母艦で
+動くこと)は受け入れています。public にする場合は GitHub-hosted に戻します(fork の PR が `runs-on` を
+書き換えて母艦で任意のコードを動かせるため)。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
 警告で出荷が止まるのを避けるためです。
 
 ### 依存の更新・脆弱性(Renovate)
@@ -186,7 +188,7 @@ git tag v1.2.0 && git push origin v1.2.0   # → workflow が発火
 行う(利用手順は [usage.md §6](usage.md)、移行は [migration-to-airshelf.md](migration-to-airshelf.md)。旧 admin 配置からは [migration-to-velopack.md](migration-to-velopack.md))。
 
 **ランナー**: `runs-on: [self-hosted, windows, x64, homelab]`(母艦 Windows PC の self-hosted runner)。
-トリガはタグ push のみ(PR ビルドは self-hosted で走らせない)。ランナーの導入手順は **別リポジトリ
+トリガはタグ push のみ(`contents: write` で Release を作るため。PR の検証は `ci.yml` が同じ runner で行う)。ランナーの導入手順は **別リポジトリ
 `t-seki/homelab`** の runbook にある(このリポジトリには無い):
 <https://github.com/t-seki/homelab/blob/main/docs/runbooks/github-actions-runner.md>。
 要点は repo ごとに `C:\actions-runner\<repo>\` へ runner を展開し(この repo の runner は改名前に登録した
@@ -221,8 +223,8 @@ Airshelf.Cli ──> Airshelf.Cli.Core ──> Airshelf.Hosting / Airshelf.Core
 Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Airshelf.Cli.Core
 ```
 
-`Airshelf.Cli`(exe)は `net10.0-windows` で、Release では win-x64 の自己完結 exe になるので、Linux の CI から
-テストで参照できない。コマンドと終了コード・JSON の形は `Airshelf.Cli.Core`(`net10.0`)に置き、テストはそちらを
+`Airshelf.Cli`(exe)は `net10.0-windows` で、Release では win-x64 の自己完結 exe になるので、テストプロジェクト(`net10.0`)から
+参照できない。コマンドと終了コード・JSON の形は `Airshelf.Cli.Core`(`net10.0`)に置き、テストはそちらを
 参照する(#178。`Airshelf.Gui` / `Airshelf.Gui.Core` と同じ分け方)。Spectre.Console.Cli を参照するのは `Airshelf.Cli.Core`
 だけで、トレイと共有する `Airshelf.Hosting` には入れない。
 
@@ -232,13 +234,13 @@ Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Ai
   `ServiceStatusSnapshot`)をそのまま受け取るための辺(#151)。Gui.Core 側にインタフェースを切らないのは、
   写しとアダプタを制御面の変更のたびに二重に直すことになるため。
 - 管理画面は WPF + XAML + MVVM(`CommunityToolkit.Mvvm`)。ViewModel は `Gui.Core/Management/` に置いて
-  WSL の CI でテストし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
+  CI(Windows)でテストでき、Linux / WSL でもテストできるようにし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
   XAML(`ManagementWindow.xaml`)も `EnableWindowsTargeting` により Linux でコンパイルされる(起動はしない)。
 - `Airshelf.Hosting` は **CLI と常駐トレイの 2 フロントエンドが共有する合成層**。だから Cli に畳まず
   独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。CLI の
   `status` / `reload` は、同じ `Hosting/Control/` の制御チャネル(named pipe。`ControlPipeServer` / `ControlPipeClient`)で
   トレイへ頼む(#179・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
-- `Airshelf.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux CI でビルド/テスト可能)、
+- `Airshelf.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux / WSL でもビルド/テスト可能。CI は Windows)、
   `Cli` は `net10.0-windows`、`Gui` は `net10.0-windows10.0.x`。ワーカーが Windows 専用 API
   (`SystemEvents.PowerModeChanged`)に依存するため、ワーカーは Hosting ではなく Gui に置いてある。
 - 編集 UI(M5)は作らないと決めた(#5、2026-09-28。§[roadmap](roadmap.md) 軸C)。
@@ -314,7 +316,7 @@ Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Ai
 
 ### マージ前の検証
 
-なし。CI(`.github/workflows/ci.yml`、GitHub-hosted Linux)が PR ごとに
+なし。CI(`.github/workflows/ci.yml`、母艦の self-hosted Windows runner)が PR ごとに
 `dotnet build Airshelf.slnx -c Release -warnaserror` と `dotnet test` を走らせ、手元で同じコマンドを
 打つのと同じ検証になる([ビルドとテスト](#ビルドとテスト))。`Airshelf.Gui` は WSL/Linux で起動できないので、
 GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる**。
