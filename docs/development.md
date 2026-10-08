@@ -113,11 +113,18 @@ PR を検証するための構成です。**`-warnaserror` は CI のみ**で、
 更新待ち)。そこで `Directory.Build.props` の `WarningsNotAsErrors` で NU19xx を除外しています。
 前提は「代わりに脆弱性の更新が PR として届く」ことでした。**ログに出して誰も読まない状態にしない**のが要点です。
 
-> ⚠ **この前提は今は満たされていません。** Renovate が脆弱性の PR を出すには Dependabot alerts を有効に
-> しておく必要がありますが(https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts )、
-> この repo では無効です(`gh api repos/t-seki/airshelf/vulnerability-alerts` が 404)。有効にする作業は
-> #265 で行います。それまでは、下の `dotnet list ... --vulnerable` を手で流して確かめてください。
-> NU19xx を `-warnaserror` に戻す変更はしていません。
+Renovate が脆弱性の PR を出すには Dependency graph と Dependabot alerts が有効で、Renovate App に
+Dependabot alerts の read 権限が要ります(https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts )。
+2026-10-08 に次のとおり有効にしました(#265)。
+
+- Dependabot alerts: `gh api repos/t-seki/airshelf/vulnerability-alerts` が 204(有効なら 204、無効なら 404)。
+- Dependency graph: `gh api repos/t-seki/airshelf/dependency-graph/sbom` がパッケージを返す。
+- 上の 2 つは、アカウントの Settings → Code security で全 repo に有効化し、新しい repo でも自動で有効になる設定にした
+  (人の設定。API では repo 単位の結果だけ確かめている)。
+- Renovate App の Dependabot alerts の read 権限は、人が確かめた(API では未確認)。
+
+未確認: Renovate が脆弱性の PR を実際に出すこと。最初の脆弱性の PR で確かめる。
+NU19xx を `-warnaserror` に戻す変更はしていません。
 
 手元で今すぐ確認したいときは:
 
