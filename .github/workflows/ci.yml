@@ -47,4 +47,4 @@ jobs:
         run: dotnet build Airshelf.slnx -c Release -warnaserror --nologo
 
       - name: Test
-        run: dotnet test --solution Airshelf.slnx -c Release --no-build --nologo --output Detailed --diagnostic --diagnostic-output-directory /tmp/mtpdiag || { cat /tmp/mtpdiag/*.diag | tail -80; exit 1; }
+        run: dotnet tests/Airshelf.Tests/bin/Release/net10.0/Airshelf.Tests.dll --output Detailed 2>&1 | tail -60; exit 1
