@@ -68,6 +68,11 @@ PR を検証するための構成です。**`-warnaserror` は CI のみ**で、
 - `pin.enabled: true`。
 - **GitHub Actions**(`matchManagers: github-actions`)は `automerge: false`、`pinDigests: true`。
   プリセットの自動マージ(minor/patch、digest)を上書きして、**Actions の更新は全部人がマージ**します。
+  あわせて `groupName: "github-actions"` で、NuGet の `minor and patch updates` とは別のグループ(別 PR)に
+  分けています。Renovate はグループ(ブランチ)の自動マージを「中の更新が全部 `automerge: true`」のときだけ有効に
+  する(`config.automerge = config.upgrades.every((upgrade) => upgrade.automerge)`、
+  https://github.com/renovatebot/renovate/blob/main/lib/workers/repository/updates/generate.ts )ので、
+  混ざると NuGet の自動マージまで止まります。分ければ、Actions は人が確認し、NuGet は自動マージのままです。
   `release.yml` / `ci.yml` は action を **commit SHA で pin** していて、Renovate が SHA とバージョンコメントを
   まとめて張り替えます(手作業だと更新が途切れるため)。
   > ⚠ **`release.yml` に触れる Actions の更新 PR は、マージ前に SHA を手で確認してください。**
@@ -97,8 +102,6 @@ PR を検証するための構成です。**`-warnaserror` は CI のみ**で、
 - 必須チェックを設定できない(branch protection が無い)この repo で、Renovate が `build-and-test` の通過を
   どう判定して待つか。
 - Renovate の更新 PR がマージされた実績はまだ無い。自動マージが実際に動くかは、最初の更新 PR で確かめる。
-- Actions の minor/patch が NuGet と同じグループ(`minor and patch updates`)に入ったとき、`renovate.json` の
-  `automerge: false` とグループの自動マージのどちらが効くか。#266 で確かめる。
 
 #### 脆弱性の通知
 
