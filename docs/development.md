@@ -223,7 +223,7 @@ Airshelf.Cli ──> Airshelf.Cli.Core ──> Airshelf.Hosting / Airshelf.Core
 Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Airshelf.Cli.Core
 ```
 
-`Airshelf.Cli`(exe)は `net10.0-windows` で、Release では win-x64 の自己完結 exe になるので、Linux の CI から
+`Airshelf.Cli`(exe)は `net10.0-windows` で、Release では win-x64 の自己完結 exe になるので、Linux のテストから
 テストで参照できない。コマンドと終了コード・JSON の形は `Airshelf.Cli.Core`(`net10.0`)に置き、テストはそちらを
 参照する(#178。`Airshelf.Gui` / `Airshelf.Gui.Core` と同じ分け方)。Spectre.Console.Cli を参照するのは `Airshelf.Cli.Core`
 だけで、トレイと共有する `Airshelf.Hosting` には入れない。
@@ -234,13 +234,13 @@ Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Ai
   `ServiceStatusSnapshot`)をそのまま受け取るための辺(#151)。Gui.Core 側にインタフェースを切らないのは、
   写しとアダプタを制御面の変更のたびに二重に直すことになるため。
 - 管理画面は WPF + XAML + MVVM(`CommunityToolkit.Mvvm`)。ViewModel は `Gui.Core/Management/` に置いて
-  WSL の CI でテストし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
+  Windows の CI(WSL でも可)でテストし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
   XAML(`ManagementWindow.xaml`)も `EnableWindowsTargeting` により Linux でコンパイルされる(起動はしない)。
 - `Airshelf.Hosting` は **CLI と常駐トレイの 2 フロントエンドが共有する合成層**。だから Cli に畳まず
   独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。CLI の
   `status` / `reload` は、同じ `Hosting/Control/` の制御チャネル(named pipe。`ControlPipeServer` / `ControlPipeClient`)で
   トレイへ頼む(#179・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
-- `Airshelf.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux CI でビルド/テスト可能)、
+- `Airshelf.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux / WSL でもビルド/テスト可能。CI は Windows)、
   `Cli` は `net10.0-windows`、`Gui` は `net10.0-windows10.0.x`。ワーカーが Windows 専用 API
   (`SystemEvents.PowerModeChanged`)に依存するため、ワーカーは Hosting ではなく Gui に置いてある。
 - 編集 UI(M5)は作らないと決めた(#5、2026-09-28。§[roadmap](roadmap.md) 軸C)。
