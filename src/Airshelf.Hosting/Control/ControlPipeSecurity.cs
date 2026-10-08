@@ -18,7 +18,7 @@ namespace Airshelf.Hosting.Control;
 /// (別のプロセスが同じ名前で待ち受けるなりすましを防ぐ。<c>CurrentUserOnly</c> の役目を保つ)。
 /// </para>
 /// <para>
-/// Windows 以外(テスト・CI の Linux)では今までどおり <c>CurrentUserOnly</c> に任せる(UNIX ドメインソケットの相手の uid で比べ、
+/// Windows 以外(WSL / Linux でのテスト)では今までどおり <c>CurrentUserOnly</c> に任せる(UNIX ドメインソケットの相手の uid で比べ、
 /// 昇格の問題は無い)。
 /// </para>
 /// </summary>

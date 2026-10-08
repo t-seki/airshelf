@@ -51,7 +51,7 @@ public sealed class IngestHistoryRowTests
     [Fact]
     public void FileName_shows_only_the_output_file_name()
     {
-        // グリッド列はファイル名のみ。UNC でも Windows パスの区切りで分解できること(Linux CI 上で走る)。
+        // グリッド列はファイル名のみ。UNC でも Windows パスの区切りで分解できること(OS を問わず走る)。
         var row = IngestHistoryRow.From(Entry());
 
         Assert.Equal("ann0.m4a", row.FileName);

@@ -12,7 +12,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- WPF/WinForms を含む Windows ターゲットを非 Windows(WSL/Linux CI)でもビルド可能にする。
+    <!-- WPF/WinForms を含む Windows ターゲットを非 Windows(WSL/Linux)でもビルド可能にする。
          Windows 実機ビルドでは無害。実行/トースト表示は Windows のみ。 -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- exe の Win32 アイコン(Explorer / タスクバー / Alt-Tab)。トレイ表示は同じ ico を

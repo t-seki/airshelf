@@ -7,8 +7,8 @@
     <RootNamespace>Airshelf.Cli</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- `-windows` TFM を非 Windows(WSL/Linux CI)でもビルド可能にする(Airshelf.Gui と同じ理由)。
-         Windows 実機ビルドでは無害。これで CI も開発者もフラグ無しの `dotnet build Airshelf.slnx` で
+    <!-- `-windows` TFM を非 Windows(WSL/Linux)でもビルド可能にする(Airshelf.Gui と同じ理由)。
+         Windows 実機ビルドでは無害。これで WSL / Linux の開発者もフラグ無しの `dotnet build Airshelf.slnx` で
          全プロジェクトを検証できる。
          ※ Gui と違い **Cli は Debug ビルドなら Linux でも起動する**(WPF/WinForms を使わないため。
          ヘルプ表示も動く)。**Release ビルドは起動しない** — 下の Release 用 PropertyGroup が

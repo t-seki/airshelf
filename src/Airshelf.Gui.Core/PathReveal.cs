@@ -8,7 +8,7 @@ namespace Airshelf.Gui.Core;
 /// <remarks>
 /// <para>
 /// <b><see cref="System.IO.Path"/> を使わない</b>のが要点。このアセンブリはクロスプラットフォームで
-/// 単体テストは Linux 上で走るが、台帳に入っているのは常に Windows パスである。Linux 上の
+/// 単体テストは WSL / Linux でも走るが、台帳に入っているのは常に Windows パスである。Linux 上の
 /// <c>Path.GetFileName(@"I:\radio\a.m4a")</c> は区切りを見つけられず文字列全体を返すため、
 /// <c>Path.*</c> に頼るとテストが Linux の挙動を焼き込み、実機(Windows)で誤動作する
 /// (同種の罠を #82 で踏んでいる)。よって区切り文字を明示して自前で分解する。

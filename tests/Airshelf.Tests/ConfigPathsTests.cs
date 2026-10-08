@@ -10,7 +10,7 @@ public class ConfigPathsTests
     [Fact]
     public void Rebase_絶対パスは素通りする()
     {
-        // 実行 OS で絶対と判定されるパスを使う(Linux CI では C:\ は絶対扱いされないため)。
+        // 実行 OS で絶対と判定されるパスを使う(Linux では C:\ は絶対扱いされないため)。
         // 本番 Windows では C:\airshelf\ledger.db が絶対として素通りする挙動と等価。
         var absolute = Path.Combine(Path.GetTempPath(), "ledger.db");
 

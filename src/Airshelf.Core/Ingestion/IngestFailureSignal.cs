@@ -11,7 +11,7 @@ public sealed record NewIngestFailure
 
     /// <summary>
     /// 表示・シグナルに載せるのはファイル名のみ(フルパスは晒さない)。ソースは Windows パス(バックスラッシュ)
-    /// だが、非 Windows(WSL/CI)で処理・テストしても正しく末尾要素を取れるよう両区切りで分割する
+    /// だが、非 Windows(WSL / Linux)で処理・テストしても正しく末尾要素を取れるよう両区切りで分割する
     /// (<c>Path.GetFileName</c> は Linux でバックスラッシュを区切りと見なさない)。
     /// </summary>
     public string FileName => SourcePath[(SourcePath.LastIndexOfAny(['/', '\\']) + 1)..];

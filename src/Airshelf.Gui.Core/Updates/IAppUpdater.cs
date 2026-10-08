@@ -3,7 +3,7 @@ namespace Airshelf.Gui.Core.Updates;
 /// <summary>
 /// アプリ内自己更新(ADR-0013)の狭い仲介面(#157)。実装は <c>Airshelf.Gui</c> の <c>UpdateService</c>(Velopack)。
 /// バージョン情報ページの ViewModel と <see cref="UpdateChecker"/> はこの interface だけを見るので、Velopack を
-/// <c>Gui.Core</c> に持ち込まずに WSL の CI でテストできる。すべて UI スレッドから呼ぶ。
+/// <c>Gui.Core</c> に持ち込まずに WSL でもテストできる。すべて UI スレッドから呼ぶ。
 /// </summary>
 public interface IAppUpdater
 {
