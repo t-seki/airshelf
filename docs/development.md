@@ -15,7 +15,7 @@
   実行については両者で違います — **`Gui` は WPF/WinForms のランタイムが無いので Linux では起動しません**が、
   **`Cli` は Debug ビルドなら Linux でも起動します**
   (`dotnet src/Airshelf.Cli/bin/Debug/net10.0-windows/radirec.dll --help` 等)。**Release ビルドは起動しません** —
-  `Radirec.Cli.csproj` が Release のときだけ `RuntimeIdentifier=win-x64` / `SelfContained=true` にするので、
+  `Airshelf.Cli.csproj` が Release のときだけ `RuntimeIdentifier=win-x64` / `SelfContained=true` にするので、
   `bin/Release/net10.0-windows/win-x64/radirec.dll` を `dotnet` で起動すると `libhostpolicy.so` が見つからずに終了します。
   WSL で CLI を動かして確かめるときは Debug ビルドを使ってください。ただし本番の実行環境は Windows 前提で、
   出荷物は win-x64 self-contained、config が指すパス(`I:`, UNC)も Windows のものです。
