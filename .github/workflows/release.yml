@@ -93,7 +93,7 @@ jobs:
       # 差分の基準から、packId が Airshelf でない旧パッケージを外す(ADR-0022 の改名。最初の Airshelf のリリースだけ効く)。
       # vpk 1.2.161 のソースで確かめたこと:
       # - `vpk download github` は、packId に関係なく最新の Full の nupkg(`{packId}-{版}-full.nupkg`)を 1 つ Releases/ に落とす
-      #   (DownRepository.DownloadLatestFullPackageAsync)。改名直後は旧 Radirec のものになる。
+      #   (DownloadCommandRunner.RunCoreAsync)。改名直後は旧 Radirec のものになる。
       # - `vpk pack` は Releases/ の nupkg を channel だけで束ね、packId を見ない(ReleaseEntryHelper)。そのため旧 Radirec の
       #   nupkg を前の版として拾い、Radirec → Airshelf の delta を作る(DeltaPackageBuilder も packId を確かめない)。
       #   エラーにはならないが、別アプリの版を基準にした delta が Release に載り、手元の releases.win.json にも両方が混ざる。
