@@ -54,6 +54,7 @@ jobs:
           Write-Host "version = $v"
 
       - name: Test
+        # MTP の dotnet test に --nologo を付けると Linux の CI で「Zero tests ran」になった(#271)。付けない。
         shell: pwsh
         run: dotnet test --solution Airshelf.slnx -c Release
 

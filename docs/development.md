@@ -30,6 +30,10 @@ dotnet test --solution Airshelf.slnx        # 全テスト(xUnit v3 + Microsoft.
 dotnet test --solution Airshelf.slnx --filter-class "*RajirekoImporter*"  # 絞り込み
 ```
 
+> repo の `global.json` で、`dotnet test` は Microsoft.Testing.Platform(MTP)の方式で動きます。
+> solution は `--solution` で渡します(旧形式の `dotnet test Airshelf.slnx` は使えません)。
+> `dotnet test` には `--nologo` を付けません(付けると Linux の CI で「Zero tests ran」になることを確かめた。Windows では確かめていない)。
+
 > ソリューションは新形式 `Airshelf.slnx`(.NET 10 既定)です。NuGet は Central Package Management
 > (`Directory.Packages.props`)で版を一元管理、共通ビルド設定は `Directory.Build.props`。
 
