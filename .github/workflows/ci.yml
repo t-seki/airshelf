@@ -47,4 +47,4 @@ jobs:
         run: dotnet build Airshelf.slnx -c Release -warnaserror --nologo
 
       - name: Test
-        run: dotnet test --solution Airshelf.slnx -c Release --no-build --nologo
+        run: dotnet tests/Airshelf.Tests/bin/Release/net10.0/Airshelf.Tests.dll 2>&1 | tail -8; dotnet test --project tests/Airshelf.Tests/Airshelf.Tests.csproj -c Release --no-build --nologo 2>&1 | tail -15; exit 1
