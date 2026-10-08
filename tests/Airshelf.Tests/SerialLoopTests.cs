@@ -201,7 +201,7 @@ public sealed class SerialLoopTests
             cts.Token);
 
         triggers.Writer.TryWrite("定期");
-        await secondScanned.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await secondScanned.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         Assert.True(loop.Running);
         Assert.Equal(["定期"], scanned);

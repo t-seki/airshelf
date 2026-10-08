@@ -30,7 +30,7 @@ public class CompositionRootRefresherTests
 
         Assert.IsNotType<NullLibraryRefresher>(refresher);
         Assert.Null(disposable);
-        var ex = await Assert.ThrowsAsync<JellyfinException>(() => refresher.RefreshAsync());
+        var ex = await Assert.ThrowsAsync<JellyfinException>(() => refresher.RefreshAsync(TestContext.Current.CancellationToken));
         Assert.Contains("JellyfinUrl の形式が不正", ex.Message);
     }
 

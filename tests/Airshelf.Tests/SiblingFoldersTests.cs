@@ -73,6 +73,7 @@ public sealed class SiblingFoldersTests
         var groups = SiblingFolders.Find(RealFolders);
 
         Assert.Equal(
+            Flatten(
             [
                 ("TBSラジオ", new[] { "パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)" }),
                 ("TBSラジオ", ["土曜ワイドラジオTOKYOナイツのちゃきちゃき大放送(1)", "土曜ワイドラジオTOKYOナイツのちゃきちゃき大放送(2)"]),
@@ -82,13 +83,16 @@ public sealed class SiblingFoldersTests
                 ("文化放送", ["おとなりさん 10時11時", "おとなりさん 8時9時", "おとなりさん 9時10時"]),
                 ("文化放送", ["てるのりのワルノリ (1)", "てるのりのワルノリ (2)"]),
                 ("文化放送", ["ますだおかだ岡田圭右とアンタッチャブル柴田英嗣のおかしば10時1", "ますだおかだ岡田圭右とアンタッチャブル柴田英嗣のおかしば11時1", "ますだおかだ岡田圭右とアンタッチャブル柴田英嗣のおかしば12時1"]),
-            ],
-            groups
+            ]),
+            Flatten(groups
                 .Select(g => (g.Station, g.Folders.ToArray()))
                 .OrderBy(g => g.Station, StringComparer.Ordinal)
-                .ThenBy(g => g.Item2[0], StringComparer.Ordinal)
-                .ToArray());
+                .ThenBy(g => g.Item2[0], StringComparer.Ordinal)));
     }
+
+    // xunit v3 の Assert.Equal は ValueTuple の IEquatable を先に使い、中の配列を参照で比べる。文字列にして比べる(順序は保つ)。
+    private static string[] Flatten(IEnumerable<(string Station, string[] Folders)> groups) =>
+        [.. groups.Select(g => g.Station + "|" + string.Join(";", g.Folders))];
 
     [Theory]
     [InlineData("パンサー向井のふらっと(1)", "パンサー向井のふらっと")]

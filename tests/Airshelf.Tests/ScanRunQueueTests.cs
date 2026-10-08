@@ -47,17 +47,17 @@ public sealed class ScanRunQueueTests
                 lock (order) order.Add("走査の実行");
                 return Task.FromResult(Report(IngestOutcome.Imported));
             }, CancellationToken.None);
-        });
+        }, TestContext.Current.CancellationToken);
 
-        await triggerScanStarted.Task.WaitAsync(Wait);
+        await triggerScanStarted.Task.WaitAsync(Wait, TestContext.Current.CancellationToken);
         var pending = queue.Enqueue();
-        await Task.Delay(100);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
         Assert.False(pending.IsCompleted); // 取り込み中は待つ
         lock (order) Assert.Empty(order);  // 頼んだ側では走査しない
 
         triggerScan.SetResult();
-        var result = await pending.WaitAsync(Wait);
-        await loop.WaitAsync(Wait);
+        var result = await pending.WaitAsync(Wait, TestContext.Current.CancellationToken);
+        await loop.WaitAsync(Wait, TestContext.Current.CancellationToken);
 
         Assert.Equal(["トリガの走査が終わった", "走査の実行"], order);
         Assert.Equal(1, result.Report!.Count(IngestOutcome.Imported));
@@ -165,7 +165,7 @@ public sealed class ScanRunQueueTests
 
         queue.FailPending();
 
-        var result = await pending.WaitAsync(Wait);
+        var result = await pending.WaitAsync(Wait, TestContext.Current.CancellationToken);
         Assert.Equal(ScanRunFailure.Stopped, result.Failure);
         Assert.Equal(ScanRunQueue.StoppedMessage, result.Error);
     }

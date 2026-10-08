@@ -26,8 +26,8 @@
 
 ```bash
 dotnet build Airshelf.slnx        # ソリューション全体(Windows 専用プロジェクト含む)
-dotnet test  Airshelf.slnx        # 全テスト(xUnit)
-dotnet test  Airshelf.slnx --filter "FullyQualifiedName~RajirekoImporter"  # 絞り込み
+dotnet test --solution Airshelf.slnx        # 全テスト(xUnit v3 + Microsoft.Testing.Platform)
+dotnet test --solution Airshelf.slnx --filter-class "*RajirekoImporter*"  # 絞り込み
 ```
 
 > ソリューションは新形式 `Airshelf.slnx`(.NET 10 既定)です。NuGet は Central Package Management
@@ -38,7 +38,7 @@ dotnet test  Airshelf.slnx --filter "FullyQualifiedName~RajirekoImporter"  # 絞
 
 ```bash
 dotnet build Airshelf.slnx -c Release -warnaserror
-dotnet test  Airshelf.slnx -c Release --no-build
+dotnet test --solution Airshelf.slnx -c Release --no-build
 ```
 
 CI は **GitHub-hosted の Linux runner** で動きます。`release.yml` が「PR ビルドは self-hosted で

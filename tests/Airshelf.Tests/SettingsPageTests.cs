@@ -66,8 +66,8 @@ public sealed class SettingsPageTests : IDisposable
             injectedSummary: new GatedIngestSummaryPublisher(toast, () => setting.Enabled),
             injectedFailure: failureToast);
 
-        await summary.PublishAsync(Summary());
-        await failure.PublishAsync(Failure());
+        await summary.PublishAsync(Summary(), TestContext.Current.CancellationToken);
+        await failure.PublishAsync(Failure(), TestContext.Current.CancellationToken);
 
         Assert.Equal(0, toast.Calls);        // 新規取込のトーストは出ない
         Assert.Equal(1, failureToast.Calls); // 失敗のトーストは出る
@@ -81,11 +81,11 @@ public sealed class SettingsPageTests : IDisposable
         var toast = new CountingSummaryPublisher();
         var gate = new GatedIngestSummaryPublisher(toast, () => enabled);
 
-        await gate.PublishAsync(Summary());
+        await gate.PublishAsync(Summary(), TestContext.Current.CancellationToken);
         enabled = false;
-        await gate.PublishAsync(Summary());
+        await gate.PublishAsync(Summary(), TestContext.Current.CancellationToken);
         enabled = true;
-        await gate.PublishAsync(Summary());
+        await gate.PublishAsync(Summary(), TestContext.Current.CancellationToken);
 
         Assert.Equal(2, toast.Calls);
     }
@@ -463,7 +463,7 @@ public sealed class SettingsPageTests : IDisposable
 
         // 読み込みはワーカースレッドで走る(ページの切り替えは待たない)ので、終わるのを待つ。
         for (var i = 0; i < 200 && settings.Airshelf.Content is null; i++)
-            await Task.Delay(10);
+            await Task.Delay(10, TestContext.Current.CancellationToken);
         Assert.Same(settings, vm.Settings);
         Assert.Equal("{}", settings.Airshelf.Content);
     }

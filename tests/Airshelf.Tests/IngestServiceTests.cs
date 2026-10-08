@@ -255,7 +255,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task DryRun_NewFile_IsPlanned_NoWriteNoLedger()
     {
-        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true);
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(report.DryRun);
         Assert.Equal(1, report.Count(IngestOutcome.Planned));
@@ -266,7 +266,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task Run_NewFile_IsImported_AndRecorded()
     {
-        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(IngestOutcome.Imported, item.Outcome);
@@ -286,7 +286,7 @@ public sealed class IngestServiceTests
             Rec("[TBSラジオ]番組(TimeFree)_20240101100000.m4a", station: "TBSラジオ", program: "番組"),
         };
 
-        var report = await Build(files).RunOnceAsync(dryRun: false);
+        var report = await Build(files).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, report.Count(IngestOutcome.Imported));
         Assert.Equal(2, _target.Written.Count);
@@ -296,9 +296,9 @@ public sealed class IngestServiceTests
     public async Task Run_Twice_SecondRunIsIdempotentSkip()
     {
         var files = new[] { Rec(StandardName) };
-        await Build(files).RunOnceAsync(dryRun: false);
+        await Build(files).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var second = await Build(files).RunOnceAsync(dryRun: false);
+        var second = await Build(files).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, second.Count(IngestOutcome.SkippedAlreadyImported));
         Assert.Single(_target.Written); // 2 回目は書き込まない
@@ -312,12 +312,12 @@ public sealed class IngestServiceTests
         // 外れるが、content ゲート(フィンガープリント + 放送日時)が捕捉して重複コピーを作らない。
         var first = Rec("[TBSラジオ]パンサー向井のふらっと(1)(TimeFree)_20241223083000.m4a",
             station: "TBSラジオ", program: "パンサー向井のふらっと(1)", size: 5000);
-        await Build([first]).RunOnceAsync(dryRun: false);
+        await Build([first]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Single(_target.Written);
 
         var renamed = Rec("[TBSラジオ]パンサー向井のふらっと(2)(TimeFree)_20241223083000.m4a",
             station: "TBSラジオ", program: "パンサー向井のふらっと(2)", size: 5000);
-        var second = await Build([renamed]).RunOnceAsync(dryRun: false);
+        var second = await Build([renamed]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, second.Count(IngestOutcome.SkippedAlreadyImported));
         Assert.Single(_target.Written); // 2 回目は書き込まない(… 0830 重複を生成しない)
@@ -333,7 +333,7 @@ public sealed class IngestServiceTests
         var b = Rec("[TBSラジオ]番組B(TimeFree)_20241223083000.m4a",
             station: "TBSラジオ", program: "番組B", size: 6000);
 
-        var report = await Build([a, b]).RunOnceAsync(dryRun: false);
+        var report = await Build([a, b]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, report.Count(IngestOutcome.Imported));
         Assert.Equal(2, _target.Written.Count);
@@ -345,7 +345,7 @@ public sealed class IngestServiceTests
         var junk = Rec("この時間はＮＨＫネットラジオではお聞き頂けません。_20241021200956.m4a",
             station: "NHKラジオ第1(radiko)", program: "番組");
 
-        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false);
+        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, report.Count(IngestOutcome.SkippedJunk));
         Assert.Empty(_target.Written);
@@ -356,7 +356,7 @@ public sealed class IngestServiceTests
     {
         var bad = Rec("[X局]番組(TimeFree)_20250229123000.m4a"); // 非閏年の2/29
 
-        var report = await Build([bad]).RunOnceAsync(dryRun: false);
+        var report = await Build([bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, report.Count(IngestOutcome.Failed));
     }
@@ -370,7 +370,7 @@ public sealed class IngestServiceTests
     {
         var bad = BadFile();
 
-        var report = await Build([bad]).RunOnceAsync(dryRun: false);
+        var report = await Build([bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(report.FailureNotificationPublished);
         Assert.Equal(1, _failurePublisher.Calls);
@@ -383,9 +383,9 @@ public sealed class IngestServiceTests
     public async Task SameFailure_二度目は再発行されない_de_dup()
     {
         var bad = BadFile();
-        await Build([bad]).RunOnceAsync(dryRun: false);
+        await Build([bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var second = await Build([bad]).RunOnceAsync(dryRun: false);
+        var second = await Build([bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, _failurePublisher.Calls);        // 2 回目は de-dup で抑制
         Assert.False(second.FailureNotificationPublished);
@@ -397,7 +397,7 @@ public sealed class IngestServiceTests
         var bad = BadFile();
         _failurePublisher.Throws = new InvalidOperationException("発行失敗");
 
-        var first = await Build([bad]).RunOnceAsync(dryRun: false);
+        var first = await Build([bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(first.FailureNotificationPublished);
         Assert.NotNull(first.FailureNotificationError);
@@ -405,7 +405,7 @@ public sealed class IngestServiceTests
 
         // 復旧後の走査で再試行される(発行前記録なら「通知済み」と誤認して永久に見逃す)。
         _failurePublisher.Throws = null;
-        var second = await Build([bad]).RunOnceAsync(dryRun: false);
+        var second = await Build([bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(second.FailureNotificationPublished);
         Assert.Equal(2, _failurePublisher.Calls);
@@ -417,7 +417,7 @@ public sealed class IngestServiceTests
         var good = Rec(StandardName);
         _failureStore.Seed(good.FilePath, FileFingerprint.Of(good)); // 以前失敗して記録済みと仮定
 
-        await Build([good]).RunOnceAsync(dryRun: false);
+        await Build([good]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains(good.FilePath, _failureStore.Cleared);
         Assert.False(_failureStore.IsKnown(good.FilePath, FileFingerprint.Of(good)));
@@ -430,7 +430,7 @@ public sealed class IngestServiceTests
     {
         var file = Rec(StandardName);
 
-        await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false);
+        await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var record = _failureStore.Get(file.FilePath);
         Assert.NotNull(record);
@@ -446,7 +446,7 @@ public sealed class IngestServiceTests
         _failureStore.Seed(gone.FilePath, FileFingerprint.Of(gone)); // 以前失敗したが、今は取込元に無い
         var bad = BadFile();
 
-        await Build([Rec(StandardName), bad]).RunOnceAsync(dryRun: false);
+        await Build([Rec(StandardName), bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Null(_failureStore.Get(gone.FilePath));
         Assert.NotNull(_failureStore.Get(bad.FilePath)); // まだ取込元にある失敗は残る
@@ -459,7 +459,7 @@ public sealed class IngestServiceTests
         var bad = BadFile();
         _failureStore.Seed(bad.FilePath, FileFingerprint.Of(bad));
 
-        await Build([]).RunOnceAsync(dryRun: false);
+        await Build([]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(_failureStore.Get(bad.FilePath));
         Assert.Empty(_failureStore.Cleared);
@@ -472,7 +472,7 @@ public sealed class IngestServiceTests
         _failureStore.Seed(gone.FilePath, FileFingerprint.Of(gone));
         var service = Build([], source: new ThrowingRecordingSource(Rec(StandardName)));
 
-        await Assert.ThrowsAsync<IOException>(() => service.RunOnceAsync(dryRun: false));
+        await Assert.ThrowsAsync<IOException>(() => service.RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.NotNull(_failureStore.Get(gone.FilePath));
     }
@@ -501,7 +501,7 @@ public sealed class IngestServiceTests
         var gone = Rec("[X局]番組(TimeFree)_20250101120000.m4a", program: "消えた番組");
         _failureStore.Seed(gone.FilePath, FileFingerprint.Of(gone));
 
-        await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true);
+        await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(_failureStore.Get(gone.FilePath));
     }
@@ -518,7 +518,7 @@ public sealed class IngestServiceTests
             var bad = BadFile();
             store.Record(bad.FilePath.ToUpperInvariant(), FileFingerprint.Of(bad), "前の走査の理由", Now);
 
-            await BuildWithStore(store, [bad]).RunOnceAsync(dryRun: false);
+            await BuildWithStore(store, [bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
             var record = Assert.Single(store.List());
             Assert.Equal(bad.FilePath, record.SourcePath);
@@ -552,7 +552,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task DryRun_失敗があっても発行しない()
     {
-        var report = await Build([BadFile()]).RunOnceAsync(dryRun: true);
+        var report = await Build([BadFile()]).RunOnceAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, _failurePublisher.Calls);
         Assert.False(report.FailureNotificationPublished);
@@ -563,7 +563,7 @@ public sealed class IngestServiceTests
     {
         var file = Rec(StandardName);
 
-        await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false);
+        await Build([file], target: new PathLeakingOutputTarget()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var reason = _failurePublisher.Last!.Files.Single().Reason;
         Assert.DoesNotContain(file.FilePath, reason);      // フルパスは晒さない
@@ -577,7 +577,7 @@ public sealed class IngestServiceTests
         _failureStore.ThrowOnIsKnown = new InvalidOperationException("SQLite ロック(テスト)");
         var bad = BadFile();
 
-        var report = await Build([bad]).RunOnceAsync(dryRun: false); // 例外が漏れないこと(漏れると throw)
+        var report = await Build([bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken); // 例外が漏れないこと(漏れると throw)
 
         Assert.Equal(1, report.Count(IngestOutcome.Failed)); // 取込結果は正常に返る
         Assert.False(report.FailureNotificationPublished);
@@ -590,7 +590,7 @@ public sealed class IngestServiceTests
         _failureStore.ThrowOnRecord = new InvalidOperationException("SQLite 書込(テスト)");
         var bad = BadFile();
 
-        var report = await Build([bad]).RunOnceAsync(dryRun: false);
+        var report = await Build([bad]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // publish は成功しているので published=true(記録失敗で false に化けさせない)。
         Assert.True(report.FailureNotificationPublished);
@@ -601,7 +601,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task RecentlyModified_IsSkippedAsUnstable()
     {
-        var report = await Build([Rec(StandardName, ageSeconds: 5)]).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName, ageSeconds: 5)]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, report.Count(IngestOutcome.SkippedUnstable));
     }
@@ -615,7 +615,7 @@ public sealed class IngestServiceTests
             Rec("[J-WAVE]BBB(TimeFree)_20260613223000.m4a", program: "BBB"),
         };
 
-        var report = await Build(files, target: new ThrowingOutputTarget()).RunOnceAsync(dryRun: false);
+        var report = await Build(files, target: new ThrowingOutputTarget()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // 1 件目が失敗しても 2 件目まで走査が続き、両方 Failed として報告される。
         Assert.Equal(2, report.Items.Count);
@@ -627,10 +627,10 @@ public sealed class IngestServiceTests
     public async Task AlreadyImported_SkipsWithoutReadingArtistTag()
     {
         var files = new[] { Rec(StandardName) };
-        await Build(files).RunOnceAsync(dryRun: false); // 取込: 出演者を1回読む
+        await Build(files).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken); // 取込: 出演者を1回読む
         var afterImport = _tagReader.Reads;
 
-        await Build(files).RunOnceAsync(dryRun: false); // 2回目: 既取込 → タグを読まずにスキップ
+        await Build(files).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken); // 2回目: 既取込 → タグを読まずにスキップ
 
         Assert.Equal(1, afterImport);
         Assert.Equal(afterImport, _tagReader.Reads); // 追加読取なし(ADR-0003 の高速化)
@@ -639,7 +639,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task Run_WithImport_TriggersLibraryRefresh()
     {
-        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, _refresher.Calls);
         Assert.Equal(LibraryRefreshStatus.Started, report.LibraryRefresh);
@@ -650,7 +650,7 @@ public sealed class IngestServiceTests
     public async Task Run_WithImport_JellyfinNotConfigured_ReportsNotConfigured()
     {
         // 未設定(NullLibraryRefresher)は呼べば成功で終わるが、「起動」と報告してはいけない(#133)。
-        var report = await Build([Rec(StandardName)], refresher: new NullLibraryRefresher()).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)], refresher: new NullLibraryRefresher()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
         Assert.Equal(LibraryRefreshStatus.NotConfigured, report.LibraryRefresh);
@@ -663,7 +663,7 @@ public sealed class IngestServiceTests
         // JellyfinUrl の形式不正は未設定ではなく失敗として理由を報告する(#133)。
         // 繋がらない・エラー(Failed)とは分ける。再試行では直らないため(#191)。
         var report = await Build([Rec(StandardName)], refresher: new MisconfiguredLibraryRefresher("形式が不正"))
-            .RunOnceAsync(dryRun: false);
+            .RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
         Assert.Equal(LibraryRefreshStatus.Misconfigured, report.LibraryRefresh);
@@ -673,7 +673,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task DryRun_DoesNotRefresh()
     {
-        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true);
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, _refresher.Calls);
         Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
@@ -684,7 +684,7 @@ public sealed class IngestServiceTests
     public async Task DryRun_JellyfinNotConfigured_ReportsNotNeeded()
     {
         // dry-run は未設定でも「不要」(今どおり何も出さない)。
-        var report = await Build([Rec(StandardName)], refresher: new NullLibraryRefresher()).RunOnceAsync(dryRun: true);
+        var report = await Build([Rec(StandardName)], refresher: new NullLibraryRefresher()).RunOnceAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
     }
@@ -694,7 +694,7 @@ public sealed class IngestServiceTests
     {
         // ジャンクのみ = 取込0件 → リフレッシュは起動しない。
         var junk = Rec("この時間はＮＨＫネットラジオでは_20241021200956.m4a");
-        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false);
+        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, _refresher.Calls);
         Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
@@ -707,7 +707,7 @@ public sealed class IngestServiceTests
         // 取込0件なら未設定でも「不要」(今どおり何も出さない)。
         var junk = Rec("この時間はＮＨＫネットラジオでは_20241021200956.m4a");
         var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"], refresher: new NullLibraryRefresher())
-            .RunOnceAsync(dryRun: false);
+            .RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(LibraryRefreshStatus.NotNeeded, report.LibraryRefresh);
     }
@@ -717,7 +717,7 @@ public sealed class IngestServiceTests
     {
         _refresher.Throws = new JellyfinException("boom");
 
-        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // 取り込み自体は成功(台帳記録済み)。更新失敗はエラーとして報告するが巻き戻さない。
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
@@ -733,7 +733,7 @@ public sealed class IngestServiceTests
         // 外部キャンセルではないので、伝播させず失敗として握ること。
         _refresher.Throws = new TaskCanceledException("timeout");
 
-        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
         Assert.Equal(LibraryRefreshStatus.Failed, report.LibraryRefresh);
@@ -743,7 +743,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task Run_WithImport_PublishesSummary_WithProgramDateAndPart()
     {
-        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, _publisher.Calls);
         Assert.True(report.NotificationPublished);
@@ -773,7 +773,7 @@ public sealed class IngestServiceTests
             Rec("[TBSラジオ]番組(TimeFree)_20240101100000.m4a", station: "TBSラジオ", program: "番組"),
         };
 
-        await Build(files).RunOnceAsync(dryRun: false);
+        await Build(files).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(_publisher.Last);
         var summary = _publisher.Last!;
@@ -791,7 +791,7 @@ public sealed class IngestServiceTests
     [Fact]
     public async Task DryRun_DoesNotPublishSummary()
     {
-        await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true);
+        await Build([Rec(StandardName)]).RunOnceAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, _publisher.Calls);
     }
@@ -800,7 +800,7 @@ public sealed class IngestServiceTests
     public async Task Run_NoImports_DoesNotPublishSummary()
     {
         var junk = Rec("この時間はＮＨＫネットラジオでは_20241021200956.m4a");
-        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false);
+        var report = await Build([junk], skipPatterns: ["この時間はＮＨＫネットラジオでは"]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, _publisher.Calls);
         Assert.False(report.NotificationPublished);
@@ -811,7 +811,7 @@ public sealed class IngestServiceTests
     {
         _publisher.Throws = new InvalidOperationException("event log full");
 
-        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // 取り込みは成功(台帳記録済み)。発行失敗は報告するが巻き戻さない。
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
@@ -868,7 +868,7 @@ public sealed class IngestServiceTests
     {
         var gate = new Airshelf.Gui.Core.Management.GatedIngestSummaryPublisher(_publisher, () => false);
 
-        var report = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, _publisher.Calls);
         Assert.Equal(1, report.Count(IngestOutcome.Imported));
@@ -896,9 +896,9 @@ public sealed class IngestServiceTests
             CancellationToken.None);
         await pending;
         // 走査ごとに別の放送回を置く(同じ回は台帳で取込済スキップになり、要約が作られない)。
-        var offOutside = await Build([Rec(OtherWeek(19), size: 2048)], publisher: gate).RunOnceAsync(dryRun: false);
+        var offOutside = await Build([Rec(OtherWeek(19), size: 2048)], publisher: gate).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         enabled = true;
-        var shown = await Build([Rec(OtherWeek(26), size: 4096)], publisher: gate).RunOnceAsync(dryRun: false);
+        var shown = await Build([Rec(OtherWeek(26), size: 4096)], publisher: gate).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ScanRunSummaryGate.SuppressedReason, scanRun!.NotificationSuppressedReason);   // CLI の走査中・設定でオフ
         Assert.Equal(
@@ -916,7 +916,7 @@ public sealed class IngestServiceTests
     {
         var gate = new ScanRunSummaryGate(_publisher);
 
-        var report = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, _publisher.Calls);
         Assert.True(report.NotificationPublished);
@@ -934,7 +934,7 @@ public sealed class IngestServiceTests
         await queue.RunAsync(
             queue.TakePending()!, ct => Build([], publisher: gate).RunOnceAsync(dryRun: false, ct), CancellationToken.None);
         await scanRun;
-        await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false);
+        await Build([Rec(StandardName)], publisher: gate).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, _publisher.Calls);
     }

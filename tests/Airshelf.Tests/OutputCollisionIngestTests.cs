@@ -99,11 +99,11 @@ public sealed class OutputCollisionIngestTests : IDisposable
     {
         // #79 の再現: 取込済みの回を、台帳を失った状態で再走査する。
         PlaceSource(At0830);
-        var first = await Build(Ledger("before")).RunOnceAsync(dryRun: false);
+        var first = await Build(Ledger("before")).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(IngestOutcome.Imported, Assert.Single(first.Items).Outcome);
 
         var fresh = Ledger("after");
-        var report = await Build(fresh).RunOnceAsync(dryRun: false);
+        var report = await Build(fresh).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(IngestOutcome.SkippedAlreadyImported, item.Outcome);
@@ -122,10 +122,10 @@ public sealed class OutputCollisionIngestTests : IDisposable
         // 回帰(ADR-0002): 同日・別時刻で内容の違う放送は、従来どおり ` HHmm` で両方残す。
         var ledger = Ledger("ledger");
         PlaceSource(At0830);
-        await Build(ledger).RunOnceAsync(dryRun: false);
+        await Build(ledger).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         PlaceSource(At1000, differentAudio: true);
-        var report = await Build(ledger).RunOnceAsync(dryRun: false);
+        var report = await Build(ledger).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var imported = Assert.Single(report.Items, i => i.Outcome == IngestOutcome.Imported);
         Assert.Equal(Path.Combine(OutputDir, $"{Program} 2024-12-23 1000.m4a"), imported.OutputPath);
@@ -140,12 +140,12 @@ public sealed class OutputCollisionIngestTests : IDisposable
         // 08:30 はベース名とは違う内容だが ` 0830` と同じ内容 → 3 つ目を作らない。
         var first = Ledger("first");
         PlaceSource(At1000, differentAudio: true);
-        await Build(first).RunOnceAsync(dryRun: false);
+        await Build(first).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         PlaceSource(At0830);
-        await Build(first).RunOnceAsync(dryRun: false);
+        await Build(first).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal([$"{Program} 2024-12-23 0830.m4a", $"{Program} 2024-12-23.m4a"], OutputFiles());
 
-        var report = await Build(Ledger("lost")).RunOnceAsync(dryRun: false);
+        var report = await Build(Ledger("lost")).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.All(report.Items, i => Assert.Equal(IngestOutcome.SkippedAlreadyImported, i.Outcome));
         Assert.Equal(2, report.Items.Count);
@@ -161,7 +161,7 @@ public sealed class OutputCollisionIngestTests : IDisposable
         File.WriteAllText(BaseOutput, "not an mp4");
         PlaceSource(At0830);
 
-        var report = await Build(Ledger("ledger")).RunOnceAsync(dryRun: false);
+        var report = await Build(Ledger("ledger")).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(IngestOutcome.Imported, item.Outcome);
@@ -174,9 +174,9 @@ public sealed class OutputCollisionIngestTests : IDisposable
     {
         // dry-run でも同じ判定で `済` と出す。台帳が無い(NullLedger)状態で、書き込みも記録もしない。
         PlaceSource(At0830);
-        await Build(Ledger("before")).RunOnceAsync(dryRun: false);
+        await Build(Ledger("before")).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var report = await Build(new NullLedger()).RunOnceAsync(dryRun: true);
+        var report = await Build(new NullLedger()).RunOnceAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(IngestOutcome.SkippedAlreadyImported, item.Outcome);
