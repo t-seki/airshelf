@@ -74,12 +74,12 @@ jobs:
             -p:PublishSingleFile=false -p:Version=$env:VERSION -o $pub
 
       # Velopack CLI(vpk)を導入し PATH へ通す。self-hosted runner は永続でツールが残るため、
-      # install(既存だと非ゼロ終了)ではなく **update で冪等**にし、**版を 1.2.0 に固定**する
-      # (パッケージ Velopack 1.2.0 と vpk の版一致が要る。Directory.Packages.props に追従)。
+      # install(既存だと非ゼロ終了)ではなく **update で冪等**にし、**版を 1.2.161 に固定**する
+      # (パッケージ Velopack 1.2.161 と vpk の版一致が要る。Directory.Packages.props に追従)。
       - name: Install vpk
         shell: pwsh
         run: |
-          dotnet tool update -g vpk --version 1.2.0
+          dotnet tool update -g vpk --version 1.2.161
           "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       # 直近リリースを取得して delta の差分基準にする。初回(Velopack リリースがまだ無い)は
@@ -92,9 +92,9 @@ jobs:
         run: vpk download github --repoUrl "${{ github.server_url }}/${{ github.repository }}"
 
       # 差分の基準から、packId が Airshelf でない旧パッケージを外す(ADR-0022 の改名。最初の Airshelf のリリースだけ効く)。
-      # vpk 1.2.0 のソースで確かめたこと:
+      # vpk 1.2.161 のソースで確かめたこと:
       # - `vpk download github` は、packId に関係なく最新の Full の nupkg(`{packId}-{版}-full.nupkg`)を 1 つ Releases/ に落とす
-      #   (DownRepository.DownloadLatestFullPackageAsync)。改名直後は旧 Radirec のものになる。
+      #   (DownloadCommandRunner.RunCoreAsync)。改名直後は旧 Radirec のものになる。
       # - `vpk pack` は Releases/ の nupkg を channel だけで束ね、packId を見ない(ReleaseEntryHelper)。そのため旧 Radirec の
       #   nupkg を前の版として拾い、Radirec → Airshelf の delta を作る(DeltaPackageBuilder も packId を確かめない)。
       #   エラーにはならないが、別アプリの版を基準にした delta が Release に載り、手元の releases.win.json にも両方が混ざる。

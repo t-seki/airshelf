@@ -33,7 +33,7 @@ internal sealed class UpdateService : IAppUpdater
     /// <summary>
     /// 設定(トークン)なしで、Velopack でインストールされて動いているかを調べる(#157。設定を読めないときのバージョン情報ページ用)。
     /// <c>UpdateManager.IsInstalled</c> は Locator(<c>VelopackLocator.Current</c>)の <c>CurrentlyInstalledVersion</c> が
-    /// あるかだけを見て、Source(トークンを持つ)には触れない(Velopack 1.2.0 の IL で確かめた)。なのでトークンの無い Source で
+    /// あるかだけを見て、Source(トークンを持つ)には触れない(Velopack 1.2.161 のソース(UpdateManager.cs)で確かめた。1.2.0 の IL でも同じだった)。なのでトークンの無い Source で
     /// 作った UpdateManager でも、同じ判定になる。コンストラクタは Source を覚えるだけで、照会はしない。
     /// 調べられなかったら null(呼び出し側は、分からないものとして扱う)。
     /// </summary>
