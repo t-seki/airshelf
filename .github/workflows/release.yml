@@ -1,7 +1,8 @@
 name: release
 
 # タグ push で成果物をビルドし GitHub Release へ添付する(ADR-0005 / ADR-0007。#16)。
-# セキュリティ上・機能上ともタグ push のみをトリガにする(PR ビルドは self-hosted で走らせない)。
+# タグ push のみをトリガにする(contents: write で Release を作るため、PR や main への push では動かさない。
+# PR の検証は ci.yml が同じ runner で行う)。
 on:
   push:
     tags:

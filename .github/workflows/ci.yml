@@ -2,12 +2,14 @@ name: ci
 
 # PR と main への push でビルド + テストする(#104)。
 #
-# **なぜ ubuntu-latest か**: release.yml は「PR ビルドは self-hosted で走らせない」と決めている
-# (母艦 Windows PC の runner を PR のコードに晒さない)。その判断は維持したまま PR を検証するため、
-# GitHub-hosted の Linux runner を使う。`-windows` TFM のプロジェクト(Airshelf.Cli / Airshelf.Gui)も
-# 各 csproj の EnableWindowsTargeting により **Linux でコンパイルできる**
-# (Gui は WPF/WinForms のランタイムが無いので実行不可。Cli は Debug ビルドなら Linux でも起動する。
-# この CI は -c Release でビルドするだけで、Cli を起動はしない)。
+# **なぜ母艦の self-hosted runner か**: private repo の GitHub-hosted の無料枠(アカウント全体で月 2000 分)を
+# 使い切ったため、課金せずに回せるよう母艦 Windows PC の runner で動かす。以前の「PR ビルドは self-hosted で
+# 走らせない」はやめた(この repo は private で、Renovate が上げた依存が母艦で動くことは受け入れる)。
+# public にするなら GitHub-hosted に戻す(fork の PR が runs-on を書き換えて母艦で任意のコードを動かせるため)。
+# runner は release.yml と共有の永続 runner(C:\actions-runner\radirec-tool\)で、同時に動くのは 1 ジョブだけ。
+# `-windows` TFM のプロジェクト(Airshelf.Cli / Airshelf.Gui)は Windows でそのままビルドできる
+# (各 csproj の EnableWindowsTargeting は、WSL/Linux での開発でソリューション全体をビルドするための現役の設定。
+# CI が Windows になっても消さない。docs/development.md 参照)。
 #
 # 出荷物のビルドは release.yml(タグ駆動・self-hosted Windows)が引き続き担う。ここは
 # 「マージ前に壊れていないこと」を見るだけで、Velopack の pack/upload は行わない。
@@ -28,15 +30,20 @@ concurrency:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows, x64, homelab]
 
     steps:
       # release.yml と同じく commit SHA で pin する(可変メジャータグの repoint 対策。更新時は SHA を張り替える)。
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: true
 
       - name: Setup .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        env:
+          # runner は非管理者(runner-svc)で動くため、書けるジョブ一時領域へ入れる(release.yml と同じ)。
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}\dotnet
         with:
           dotnet-version: '10.0.x'
 
@@ -47,5 +54,5 @@ jobs:
         run: dotnet build Airshelf.slnx -c Release -warnaserror --nologo
 
       - name: Test
-        # MTP の dotnet test に --nologo を付けると Linux で「Zero tests ran」になる(#271)。付けない。
+        # MTP の dotnet test に --nologo を付けると Linux で「Zero tests ran」になった(#271)。Windows でも当てはまるかは未確認だが、付けない。
         run: dotnet test --solution Airshelf.slnx -c Release --no-build
