@@ -18,7 +18,7 @@ public sealed class ReloadCommand(IAnsiConsole console, IControlClient controlCl
     {
     }
 
-    protected override async Task<int> ExecuteAsync(
+    public override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         var call = await controlClient.SendAsync(ControlProtocol.ReloadCommand, cancellationToken);

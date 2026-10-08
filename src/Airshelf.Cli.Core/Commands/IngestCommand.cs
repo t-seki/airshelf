@@ -27,7 +27,7 @@ public sealed class IngestCommand(
         public bool DryRun { get; init; }
     }
 
-    protected override async Task<int> ExecuteAsync(
+    public override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         ScanRunReport report;

@@ -32,7 +32,7 @@ public sealed class ReapplyCommand(
         [Description("dry-run が出した予定 ID の予定を実行する(予定が変わっていれば実行せず、終了コード 3)")]
         public string? Apply { get; init; }
     }
-    protected override async Task<int> ExecuteAsync(
+    public override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         if (settings.DryRun && settings.Apply is not null)

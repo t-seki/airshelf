@@ -16,7 +16,7 @@ public sealed class RefreshCommand(IAnsiConsole console, ICliConfigSource config
     {
     }
 
-    protected override async Task<int> ExecuteAsync(
+    public override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         var config = CommandSupport.LoadConfig(configSource, console, Name, settings.Json);
