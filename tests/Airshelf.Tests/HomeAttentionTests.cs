@@ -498,6 +498,7 @@ public sealed class HomeAttentionTests : IDisposable
         // 確かめる読み込みは、編集を終えるまで止めておく(速さに依らず「確かめている間」を作る。#210)。
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var vm = CreateNow(readForCheck: CheckAfter(gate.Task));
+        await vm.Home.AttentionRefreshed; // 開いたときの要対応の計算(別スレッドで programs.json を読む)が終わってから、ファイルを書く
         await SaveOnlyToResult(vm);
         File.WriteAllText(ProgramsPath, Sample); // 結果を出している間に、ほかの経路で書かれた
         var locates = _locates;
@@ -523,6 +524,7 @@ public sealed class HomeAttentionTests : IDisposable
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var vm = CreateNow(readForCheck: CheckAfter(gate.Task));
+        await vm.Home.AttentionRefreshed; // 開いたときの要対応の計算(別スレッドで programs.json を読む)が終わってから、ファイルを書く
         await SaveOnlyToResult(vm);
         File.WriteAllText(ProgramsPath, Sample);
         var locates = _locates;
@@ -553,6 +555,7 @@ public sealed class HomeAttentionTests : IDisposable
                     await loadGate.Task;
                 return ProgramsFileWriter.Read(path);
             });
+        await vm.Home.AttentionRefreshed; // 開いたときの要対応の計算(別スレッドで programs.json を読む)が終わってから、ファイルを書く
         await SaveOnlyToResult(vm);
         File.WriteAllText(ProgramsPath, Sample); // 結果を出している間に、ほかの経路で書かれた
         var locates = _locates;
