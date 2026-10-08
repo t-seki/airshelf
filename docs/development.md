@@ -59,6 +59,9 @@ PR を検証するための構成です。**`-warnaserror` は CI のみ**で、
 - **minor/patch**: 1 つのグループ(`minor and patch updates`)にまとめ、**CI が通れば自動マージ**(`platformAutomerge`)。
 - **pin / pinDigest / digest**: 同じく CI が通れば自動マージ。
 - **major**: 自動マージせず、人がレビューする(破壊的変更を見落とさないため)。
+- **lockFileMaintenance**: 週次(同じ月曜 9 時前)で有効。自動マージの規則(minor/patch、pin 系)の
+  `matchUpdateTypes` に入っていないため、プリセットを読む限り自動マージの対象ではない。実際の扱いは未確認
+  (Dashboard の「Awaiting Schedule」に `renovate/lock-file-maintenance` が出ているが、まだ PR にはなっていない)。
 
 この repo の `renovate.json` が上乗せしているもの:
 
@@ -76,15 +79,39 @@ PR を検証するための構成です。**`-warnaserror` は CI のみ**で、
   > diff の SHA が一致するかを見ます。
 - NuGet は上乗せなし(プリセットのとおり)。
 
-未確認: Renovate の GitHub App がこの repo で実際に動いているか、`platformAutomerge` が効く前提(repo の
-auto-merge 設定、branch protection の必須チェック)が整っているかは、ここからは読めていません。
-実際の挙動は Dependency Dashboard と過去の Renovate PR で確かめてください。
+#### 自動マージの前提(確認したこと・未確認のこと)
 
-- **なぜ CI で落とさないか**: `-warnaserror` は MSBuild の全警告を落とすので、NuGetAudit の
-  脆弱性警告(NU1901-1904)もエラーになります。それだと**こちらのコードを変えていない PR が、
-  依存に新規 CVE が登録された日に落ちる**(直せるのは依存の更新待ち)。そこで
-  `Directory.Build.props` の `WarningsNotAsErrors` で NU19xx を除外し、代わりに脆弱性は
-  Renovate が PR として能動的に届けます。**ログに出して誰も読まない状態にしない**のが要点です。
+確認したこと(2026-10 時点):
+
+- Renovate の GitHub App はこの repo で動いている(#254 Configure Renovate と #255 Dependency Dashboard の作者が `app/renovate`)。
+- repo の `allow_auto_merge` は `false`(`gh api repos/t-seki/airshelf --jq .allow_auto_merge`)。
+  branch protection と rulesets の API は 403 を返す(private repo の無料プランでは使えない)。つまり
+  GitHub のプラットフォーム側の auto-merge は使えない前提。`platformAutomerge` の設定の説明
+  (https://docs.renovatebot.com/configuration-options/#platformautomerge )によれば、使えないときは
+  Renovate 自身が automerge する。
+- Renovate 自身の automerge は、必須のテストが通るのを待ってからマージする
+  (https://docs.renovatebot.com/key-concepts/automerge/ )。
+
+未確認のこと:
+
+- 必須チェックを設定できない(branch protection が無い)この repo で、Renovate が `build-and-test` の通過を
+  どう判定して待つか。
+- Renovate の更新 PR がマージされた実績はまだ無い。自動マージが実際に動くかは、最初の更新 PR で確かめる。
+- Actions の minor/patch が NuGet と同じグループ(`minor and patch updates`)に入ったとき、`renovate.json` の
+  `automerge: false` とグループの自動マージのどちらが効くか。#266 で確かめる。
+
+#### 脆弱性の通知
+
+`-warnaserror` は MSBuild の全警告を落とすので、NuGetAudit の脆弱性警告(NU1901-1904)もエラーになります。
+それだと**こちらのコードを変えていない PR が、依存に新規 CVE が登録された日に落ちる**(直せるのは依存の
+更新待ち)。そこで `Directory.Build.props` の `WarningsNotAsErrors` で NU19xx を除外しています。
+前提は「代わりに脆弱性の更新が PR として届く」ことでした。**ログに出して誰も読まない状態にしない**のが要点です。
+
+> ⚠ **この前提は今は満たされていません。** Renovate が脆弱性の PR を出すには Dependabot alerts を有効に
+> しておく必要がありますが(https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts )、
+> この repo では無効です(`gh api repos/t-seki/airshelf/vulnerability-alerts` が 404)。有効にする作業は
+> #265 で行います。それまでは、下の `dotnet list ... --vulnerable` を手で流して確かめてください。
+> NU19xx を `-warnaserror` に戻す変更はしていません。
 
 手元で今すぐ確認したいときは:
 
