@@ -46,27 +46,45 @@ CI は **GitHub-hosted の Linux runner** で動きます。`release.yml` が「
 PR を検証するための構成です。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
 警告で出荷が止まるのを避けるためです。
 
-### 依存の更新・脆弱性(Dependabot)
+### 依存の更新・脆弱性(Renovate)
 
-`.github/dependabot.yml` が **NuGet** と **GitHub Actions** を週次で見て、更新を PR として出します(#106)。
-上がってきた PR は上記 CI がそのままビルド + テストします。
+依存の更新は **Renovate** が PR として出します(#252 で Dependabot から移行。以前の `.github/dependabot.yml` は無い)。
+設定は `renovate.json` で、共通プリセット `t-seki/renovate-config` を継承します。上がってきた PR は上記 CI が
+そのままビルド + テストします。
 
-- **NuGet**: patch/minor は 1 PR にまとめ、major は個別(破壊的変更を見落とさないため)。
-- **GitHub Actions**: `release.yml` / `ci.yml` は action を **commit SHA で pin** していますが、
-  Dependabot は SHA とバージョンコメントをまとめて張り替えます(手作業だと更新が途切れるため)。
-  > ⚠ **`release.yml` に触れる更新 PR だけは、マージ前に SHA を手で確認してください。**
-  > Dependabot はワークフローファイル単位で対象を絞れないため、`ci.yml` と `release.yml` の pin を
-  > 同じ PR で書き換えます。ところが **`release.yml` はタグ push でしか起動しない**ので、
-  > PR の CI がグリーンでも release.yml 側は何も検証されていません。release.yml は
-  > **self-hosted runner + `contents: write`** で動く(= 最高権限)ため、ここだけは
-  > 「更新時に人が新 SHA を確かめる」という SHA pin 本来の前提を残します。
+プリセット(`default.json`。`gh api repos/t-seki/renovate-config/contents/default.json` で読める)の内容:
+
+- ベースは `config:best-practices`(GitHub Actions の digest pin を含む)。
+- 実行は週次(月曜 9 時前, Asia/Tokyo)。PR には `dependencies` ラベル、Dependency Dashboard も有効。
+- **minor/patch**: 1 つのグループ(`minor and patch updates`)にまとめ、**CI が通れば自動マージ**(`platformAutomerge`)。
+- **pin / pinDigest / digest**: 同じく CI が通れば自動マージ。
+- **major**: 自動マージせず、人がレビューする(破壊的変更を見落とさないため)。
+
+この repo の `renovate.json` が上乗せしているもの:
+
+- `pin.enabled: true`。
+- **GitHub Actions**(`matchManagers: github-actions`)は `automerge: false`、`pinDigests: true`。
+  プリセットの自動マージ(minor/patch、digest)を上書きして、**Actions の更新は全部人がマージ**します。
+  `release.yml` / `ci.yml` は action を **commit SHA で pin** していて、Renovate が SHA とバージョンコメントを
+  まとめて張り替えます(手作業だと更新が途切れるため)。
+  > ⚠ **`release.yml` に触れる Actions の更新 PR は、マージ前に SHA を手で確認してください。**
+  > `ci.yml` と `release.yml` の pin は同じ PR で書き換わりますが、**`release.yml` はタグ push でしか
+  > 起動しない**ので、PR の CI がグリーンでも release.yml 側は何も検証されていません。release.yml は
+  > **self-hosted runner + `contents: write`** で動く(= 最高権限)ため、自動マージを外して
+  > 「更新時に人が新 SHA を確かめる」という SHA pin 本来の前提を残しています。
   > 確認は `gh api repos/actions/checkout/git/ref/tags/v7.0.1` などで、コメントのタグが指す SHA と
   > diff の SHA が一致するかを見ます。
+- NuGet は上乗せなし(プリセットのとおり)。
+
+未確認: Renovate の GitHub App がこの repo で実際に動いているか、`platformAutomerge` が効く前提(repo の
+auto-merge 設定、branch protection の必須チェック)が整っているかは、ここからは読めていません。
+実際の挙動は Dependency Dashboard と過去の Renovate PR で確かめてください。
+
 - **なぜ CI で落とさないか**: `-warnaserror` は MSBuild の全警告を落とすので、NuGetAudit の
   脆弱性警告(NU1901-1904)もエラーになります。それだと**こちらのコードを変えていない PR が、
   依存に新規 CVE が登録された日に落ちる**(直せるのは依存の更新待ち)。そこで
   `Directory.Build.props` の `WarningsNotAsErrors` で NU19xx を除外し、代わりに脆弱性は
-  Dependabot が PR として能動的に届けます。**ログに出して誰も読まない状態にしない**のが要点です。
+  Renovate が PR として能動的に届けます。**ログに出して誰も読まない状態にしない**のが要点です。
 
 手元で今すぐ確認したいときは:
 
@@ -232,7 +250,7 @@ GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる
 - `.github/workflows/` — 中の 2 本はどちらも自動では入れられない:
   - `ci.yml` は自動マージの条件にしている CI そのもの。変えると検証が緩みうる
   - `release.yml` は母艦の self-hosted runner + `contents: write` で動き、PR の CI では検証されない
-    ([依存の更新・脆弱性](#依存の更新脆弱性dependabot)を参照)
+    ([依存の更新・脆弱性](#依存の更新脆弱性renovate)を参照)
 
 ### マージ後の確認(デプロイ)
 
