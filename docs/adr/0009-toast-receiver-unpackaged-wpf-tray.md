@@ -18,6 +18,13 @@ Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-p
 > - **要実機検証(Windows)**: 開いている・閉じている・最小化している管理画面、トレイ停止中のアクションセンターからのクリック、
 >   新規取込のトーストが反応しないこと、前面に出ること(フォーカスの奪取)。
 
+> **追記(#272、2026-10-08。同じく本文は決定当時の記録なので直さない)**: 本文の WindowsAppSDK を採らない理由のうち、
+> Singleton MSIX への依存は古くなった。今の `AppNotificationManager` は self-contained 配布と unpackaged アプリでも使える。
+> 採らない理由は今は別で、unpackaged + self-contained の組み合わせでクリックを受けるのに要る
+> `AppNotificationManager.Register()` が 0x8007007E で失敗する不具合(https://github.com/microsoft/WindowsAppSDK/issues/6774 )が
+> 直っていないこと。**決定(従来トースト)は変えない**。経緯と見直すきっかけは
+> `docs/development.md` の「非推奨・放置と出ているが使い続ける依存」に書いた。
+
 [ADR-0008](0008-ingest-notification-via-eventlog-signal.md) でサービスは取込要約シグナルを EventLog(EventID 1001)へ発行するようにした。その**受け手**(ユーザーセッションでネイティブトーストを出す常駐アプリ)を、#5(M5 デスクトップ編集アプリ・保留中)の**最初の tracer slice** として実装する。編集グリッド等の本体は保留のまま、まず「1001 を購読しトースト表示するだけ」の最小 GUI を作る。
 
 受け手をどの UI フレームワーク・どのトースト API で作るかは、[ADR-0005](0005-single-exe-cli-service-merge.md) の **単一自己完結 exe(外部ランタイム/ブートストラッパ無し)** 配布方針と衝突しうるため、ひっくり返しにくい。

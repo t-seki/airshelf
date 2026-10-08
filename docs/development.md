@@ -132,6 +132,38 @@ NU19xx を `-warnaserror` に戻す変更はしていません。
 dotnet list Airshelf.slnx package --vulnerable --include-transitive
 ```
 
+#### 非推奨・放置と出ているが使い続ける依存
+
+Dependency Dashboard(#255)が警告を出していても、次の 2 つは置き換えずに使い続けます(#272)。
+理由と、見直すきっかけを残します。Renovate の設定でこの警告を消すことはしません。
+
+**`CommunityToolkit.WinUI.Notifications`**(7.1.2)
+
+- Dashboard の表示: NuGet で非推奨(Legacy)。後継は `Microsoft.WindowsAppSDK` で、「通知のヘルパーは Windows App SDK に移った」とある
+  (NuGet の registration API で確認、2026-10-08)。
+- 使い続ける理由: 後継の `AppNotificationManager` は、今は self-contained 配布と unpackaged アプリでも使える
+  ([ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) が採らなかった理由の「Singleton MSIX への依存」は、
+  字句どおりには当てはまらなくなった)。ただし Airshelf の組み合わせ(unpackaged + self-contained、トーストのクリックで
+  管理画面のホームを開く #237 / #248)では、クリックを受けるのに要る `AppNotificationManager.Register()` が
+  0x8007007E(`Microsoft.WindowsAppRuntime.Insights.Resource.dll` を読めない)で失敗する不具合が、2.5.1 でも直っていない:
+  https://github.com/microsoft/WindowsAppSDK/issues/6774 (2026-09-18 起票、2026-10-08 時点で open)。
+  前の https://github.com/microsoft/WindowsAppSDK/issues/6071 は修正の PR で閉じられたが、2.3.1 / 2.4.0 / 2.5.1 で同じ症状が
+  報告されている。Windows App SDK のランタイムを別に入れれば回避できるが、Velopack の per-user の自己完結の配布
+  ([ADR-0013](adr/0013-velopack-per-user-updates.md))が崩れる。今のパッケージは非推奨でも動いている。
+- 見直すきっかけ: WindowsAppSDK#6774 が直ったとき(移す前提は「unpackaged + self-contained で `Register()` が通り、
+  クリックが届くこと」)。または Windows / .NET の更新で今のトーストが出なくなったとき。
+- 未確認: #6774 の報告にある「例外を握りつぶせば `Show()` でトーストは出るがクリックは届かない」は報告者の記述で、
+  この repo では確かめていない。https://github.com/microsoft/WindowsAppSDK/issues/6821 (unpackaged の公式サンプルで
+  `Register()` / `Show()` が成功しても通知が出ない、2026-09-29 起票、open)も同じく確かめていない。
+
+**`TagLibSharp`**(2.3.0)
+
+- Dashboard の表示: Renovate が「2022-07-30 から更新が無い」(abandoned)として出している。NuGet では非推奨になっていない。
+- 使い続ける理由: 非推奨ではなく、更新が止まっているだけ。[ADR-0015](adr/0015-output-collision-same-audio-check.md) の
+  「同じ内容かの判定」(`TagLibAudioContentComparer`)は、2.3.0 の不変区間(`InvariantStartPosition` / `InvariantEndPosition`)の
+  挙動に依っている。置き換えると、その判定を作り直すことになる。
+- 見直すきっかけ: 脆弱性が報告されたとき、または ADR-0015 の判定やタグの読み書きに響く不具合が見つかったとき。
+
 ## リリース(タグ → GitHub Release)
 
 配布はタグ駆動の CI(`.github/workflows/release.yml`)で行う([ADR-0005](adr/0005-single-exe-cli-service-merge.md) /
