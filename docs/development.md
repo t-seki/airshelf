@@ -45,9 +45,11 @@ dotnet build Airshelf.slnx -c Release -warnaserror
 dotnet test --solution Airshelf.slnx -c Release --no-build
 ```
 
-CI は **GitHub-hosted の Linux runner** で動きます。`release.yml` が「PR ビルドは self-hosted で
-走らせない」(母艦 Windows PC を PR のコードに晒さない)と決めているためで、その判断を維持したまま
-PR を検証するための構成です。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
+CI は **母艦 Windows PC の self-hosted runner**(`runs-on: [self-hosted, windows, x64, homelab]`、
+`release.yml` と共有の永続 runner で、同時に動くのは 1 ジョブ)で動きます。private repo の
+GitHub-hosted の無料枠を使い切ったためで、PR の CI を母艦で回すこと(Renovate が上げた依存が母艦で
+動くこと)は受け入れています。public にする場合は GitHub-hosted に戻します(fork の PR が `runs-on` を
+書き換えて母艦で任意のコードを動かせるため)。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
 警告で出荷が止まるのを避けるためです。
 
 ### 依存の更新・脆弱性(Renovate)
@@ -186,7 +188,7 @@ git tag v1.2.0 && git push origin v1.2.0   # → workflow が発火
 行う(利用手順は [usage.md §6](usage.md)、移行は [migration-to-airshelf.md](migration-to-airshelf.md)。旧 admin 配置からは [migration-to-velopack.md](migration-to-velopack.md))。
 
 **ランナー**: `runs-on: [self-hosted, windows, x64, homelab]`(母艦 Windows PC の self-hosted runner)。
-トリガはタグ push のみ(PR ビルドは self-hosted で走らせない)。ランナーの導入手順は **別リポジトリ
+トリガはタグ push のみ(`contents: write` で Release を作るため。PR の検証は `ci.yml` が同じ runner で行う)。ランナーの導入手順は **別リポジトリ
 `t-seki/homelab`** の runbook にある(このリポジトリには無い):
 <https://github.com/t-seki/homelab/blob/main/docs/runbooks/github-actions-runner.md>。
 要点は repo ごとに `C:\actions-runner\<repo>\` へ runner を展開し(この repo の runner は改名前に登録した
@@ -314,7 +316,7 @@ Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Ai
 
 ### マージ前の検証
 
-なし。CI(`.github/workflows/ci.yml`、GitHub-hosted Linux)が PR ごとに
+なし。CI(`.github/workflows/ci.yml`、母艦の self-hosted Windows runner)が PR ごとに
 `dotnet build Airshelf.slnx -c Release -warnaserror` と `dotnet test` を走らせ、手元で同じコマンドを
 打つのと同じ検証になる([ビルドとテスト](#ビルドとテスト))。`Airshelf.Gui` は WSL/Linux で起動できないので、
 GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる**。
