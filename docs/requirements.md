@@ -679,7 +679,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   管理画面から操作したときの結果は、バルーンではなく画面の中に出す。
 - **縮退時**(設定が読めない):管理画面は開けるが、設定を読めない理由と「ファイルを開く」「再読み込みして再起動」を出す。JSON のエディタは内蔵しない。
 - **技術**:WPF + XAML + MVVM(CommunityToolkit.Mvvm)。ViewModel と計算は `Airshelf.Gui.Core` / `Airshelf.Hosting` に置いて
-  WSL の CI でテストし、シェルは薄く保つ。見た目は HTML モックで詰めてから、RC タグを実機で確かめる。
+  Windows の CI(WSL でも可)でテストし、シェルは薄く保つ。見た目は HTML モックで詰めてから、RC タグを実機で確かめる。
 
 ## 11. 技術スタック・実行/開発環境
 
@@ -703,7 +703,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
     1 実行体に統合していた([ADR-0005])が、[ADR-0012] で常駐はトレイへ移り verb は廃止された。
     → `status` / `reload` は #179([ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))で、トレイへ頼む形で戻った(`service` と `rescan` は戻していない)。
   - `Airshelf.Cli.Core` — `Airshelf.Cli` のテスト可能な核(コマンド・`--json` の形・終了コード・`CommandApp` の設定。
-    `Spectre.Console.Cli`)。TFM は `net10.0` で、Linux の CI でテストできる(#178・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
+    `Spectre.Console.Cli`)。TFM は `net10.0` で、Linux / WSL でもテストできる(CI は Windows。#178・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
   - `Airshelf.Gui` — **本番の常駐本体**(独立 exe、WPF + WinForms、`net10.0-windows10.0.x`)。
     取り込みワーカー・取込通知・管理画面(取込履歴を含む。§10.3)・制御メニュー・自己更新を 1 プロセスで持つ([ADR-0012])。
     将来の配布フロントエンド(§14)は管理画面が担う形になった。編集 UI(M5)は作らないと決めた(#5)。`airshelf.exe` とは

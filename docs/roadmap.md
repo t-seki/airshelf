@@ -86,13 +86,13 @@ Airshelf.Gui ──> Airshelf.Gui.Core ──> Airshelf.Core
 Airshelf.Cli ──> Airshelf.Cli.Core ──> Airshelf.Hosting / Airshelf.Core
 ```
 
-- `Airshelf.Cli.Core` は #178 で足した。CLI のコマンド・終了コード・JSON の形を、Linux の CI でテストできる `net10.0` に
+- `Airshelf.Cli.Core` は #178 で足した。CLI のコマンド・終了コード・JSON の形を、Linux / WSL でもテストできる `net10.0` に
   置く(exe の `Airshelf.Cli` は Program.cs だけ)。`Gui` / `Gui.Core` と同じ分け方。
 
 - `Gui.Core → Hosting` は管理画面(#151)で足した辺。ViewModel が制御面(`IServiceControl` /
   `ServiceStatusSnapshot`)をそのまま受け取る。Gui.Core 側にインタフェースを切ると、`IServiceControl` の写しと
   アダプタができ、制御面を足すたびに両方を直すことになるので採らなかった。Hosting は `net10.0`(依存は Core だけ)
-  なので、Gui.Core は引き続き WSL の CI でビルド・テストできる。
+  なので、Gui.Core は引き続き Linux / WSL でもビルド・テストできる(CI は Windows)。
 
 - `Airshelf.Gui` 自体に `Airshelf.Core` への直接 ProjectReference は**無い**が、**Core の型は既に Gui の
   コンパイル面に乗っている**(`Gui/RadioMonitorWorker.cs` が `Airshelf.Core.Ingestion`、
