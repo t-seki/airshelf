@@ -47,4 +47,5 @@ jobs:
         run: dotnet build Airshelf.slnx -c Release -warnaserror --nologo
 
       - name: Test
-        run: dotnet test --solution Airshelf.slnx -c Release --no-build --no-ansi --no-progress 2>&1 | tail -12; echo ----; dotnet test --solution Airshelf.slnx -c Release --no-build --no-progress 2>&1 | tail -12;  echo ----; dotnet test --solution Airshelf.slnx -c Release --no-build  2>&1 | tail -12; exit 1
+        # MTP の dotnet test に --nologo を付けると Linux で「Zero tests ran」になる(#271)。付けない。
+        run: dotnet test --solution Airshelf.slnx -c Release --no-build

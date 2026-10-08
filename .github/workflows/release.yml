@@ -55,7 +55,7 @@ jobs:
 
       - name: Test
         shell: pwsh
-        run: dotnet test --solution Airshelf.slnx -c Release --nologo
+        run: dotnet test --solution Airshelf.slnx -c Release
 
       # トレイ(Airshelf.Gui.exe)と単発 CLI(airshelf.exe)を **1 フォルダ**へ publish する。
       # Velopack は「フォルダ一式」を配布物として扱うため、単一 exe ではなく self-contained の
