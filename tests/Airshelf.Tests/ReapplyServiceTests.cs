@@ -180,13 +180,13 @@ public sealed class ReapplyServiceTests : IDisposable
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         PlaceSource(Folder2, Dec23At1000, program: SubstituteName);
         var ledger = Ledger();
-        await Ingest(ledger, MergedWithBothDecided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, MergedWithBothDecided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(File.Exists(OutputOf(Album, "2024-12-23", 1)));
         Assert.True(File.Exists(OutputOf(Album, "2024-12-23", 2)));
 
         var decided = MergedWithBothDecided(FilenameProgramTreatment.OtherProgram, "試験の別番組");
-        var plan = await Reapply(ledger, decided).RunAsync(dryRun: true);
-        var applied = await Reapply(ledger, decided).RunAsync(dryRun: false);
+        var plan = await Reapply(ledger, decided).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var applied = await Reapply(ledger, decided).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(plan.HasSamePlanAs(applied));
         Assert.Equal(2, applied.Items.Count);
@@ -196,7 +196,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(OutputRoot, Station, Album)));
         Assert.Equal([1, 2], ledger.ListAll().Select(e => e.PartIndex).Order());
         Assert.All(ledger.ListAll(), e => Assert.Equal("試験の別番組", e.Program));
-        Assert.True((await Reapply(ledger, decided).RunAsync(dryRun: true)).IsAligned);
+        Assert.True((await Reapply(ledger, decided).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken)).IsAligned);
     }
 
     [Fact]
@@ -204,12 +204,12 @@ public sealed class ReapplyServiceTests : IDisposable
     {
         var source = PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         var imported = OutputOf(Folder1, "2024-12-23");
         Assert.True(File.Exists(imported));
         var refresher = new CountingRefresher();
 
-        var plan = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true);
+        var plan = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         var planned = Assert.Single(plan.Items);
         Assert.Equal(ReapplyAction.Remove, planned.Action);
         Assert.Equal(imported, planned.FromPath);
@@ -218,7 +218,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.True(File.Exists(imported)); // dry-run は何も変えない
         Assert.Single(ledger.ListAll());
 
-        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip), refresher: refresher).RunAsync(dryRun: false);
+        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip), refresher: refresher).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.Remove, Assert.Single(applied.Items).Action);
         Assert.False(File.Exists(imported));
@@ -228,7 +228,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(1, refresher.Calls); // ライブラリから消えるよう、通常スキャンを起動する
 
         // 2 回目は何もしない。
-        Assert.True((await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true)).IsAligned);
+        Assert.True((await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken)).IsAligned);
     }
 
     [Fact]
@@ -238,12 +238,12 @@ public sealed class ReapplyServiceTests : IDisposable
         // 記録どおりでないとされ、予約した番組のアルバムへ移動しようとしていた。
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         var imported = OutputOf("試験の別番組", "2024-12-23");
         Assert.True(File.Exists(imported));
 
-        var plan = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true);
-        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false);
+        var plan = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         foreach (var report in new[] { plan, applied })
         {
@@ -264,7 +264,7 @@ public sealed class ReapplyServiceTests : IDisposable
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         PlaceSource(Folder2, Dec23At1000);
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         var aPath = OutputOf(Folder1, "2024-12-23");
         Assert.True(File.Exists(aPath));
 
@@ -278,8 +278,8 @@ public sealed class ReapplyServiceTests : IDisposable
             },
         ];
 
-        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
-        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         foreach (var report in new[] { plan, applied })
         {
@@ -296,7 +296,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.True(File.Exists(OutputOf(Folder2, "2024-12-23")));
 
         // 次の再適用で B が動く。
-        var next = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
         Assert.True(File.Exists(aPath));
         Assert.Equal(Folder1, Assert.Single(ledger.ListAll()).Program);
@@ -319,7 +319,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var bSource = Path.Combine(RadioRoot, Station, earlierFolder, $"[{Station}]{earlierFolder}(TimeFree)_{Dec23At1000}.m4a");
         CopyWithDifferentAudio(bSource); // 内容の指紋で同じ回と見なされないよう、中身を変える(ADR-0014)
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, ledger.ListAll().Count);
         var aPath = OutputOf(Folder1, "2024-12-23");
         var bPath = OutputOf(earlierFolder, "2024-12-23");
@@ -336,8 +336,8 @@ public sealed class ReapplyServiceTests : IDisposable
             },
         ];
 
-        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
-        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         foreach (var report in new[] { plan, applied })
         {
@@ -358,7 +358,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(bPath, bEntry.OutputPath);
 
         // 次の再適用でも素通りされず、ファイルが無い回として見える。
-        var next = await Reapply(ledger, settings).RunAsync(dryRun: true);
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         var nextB = Assert.Single(next.Items);
         Assert.Equal(ReapplyAction.Excluded, nextB.Action);
         Assert.Equal("出力ファイルが見つかりません", nextB.Reason);
@@ -375,7 +375,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var bSource = Path.Combine(RadioRoot, Station, earlierFolder, $"[{Station}]{earlierFolder}(TimeFree)_{Dec23At0830}.m4a");
         CopyWithDifferentAudio(bSource); // 内容の指紋で同じ回と見なされないよう、中身を変える(ADR-0014)
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, ledger.ListAll().Count);
         var aPath = OutputOf(Folder1, "2024-12-23");
         var bPath = OutputOf(earlierFolder, "2024-12-23");
@@ -396,8 +396,8 @@ public sealed class ReapplyServiceTests : IDisposable
             },
         ];
 
-        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
-        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         foreach (var report in new[] { plan, applied })
         {
@@ -414,7 +414,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.True(File.Exists(bPath)); // B はまだ動いていない
 
         // 次の再適用で B が動き、A のキーで台帳に記録される。
-        var next = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
         Assert.True(File.Exists(aPath));
         var moved = Assert.Single(ledger.ListAll());
@@ -432,7 +432,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var bSource = Path.Combine(RadioRoot, Station, Folder2, $"[{Station}]{Folder2}(TimeFree)_{Dec23At0830}.m4a");
         CopyWithDifferentAudio(bSource); // 内容の指紋で同じ回と見なされないよう、中身を変える(ADR-0014)
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, ledger.ListAll().Count);
         var aPath = OutputOf(Folder1, "2024-12-23");
 
@@ -452,8 +452,8 @@ public sealed class ReapplyServiceTests : IDisposable
             },
         ];
 
-        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true);
-        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        var plan = await Reapply(ledger, settings).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var applied = await Reapply(ledger, settings).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var aEntryKey = plan.Items.Single(i => i.FromAlbum == Folder1);
         foreach (var report in new[] { plan, applied })
@@ -471,7 +471,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.False(File.Exists(aPath)); // B はまだ動いていない
 
         // 次の再適用で B が動き、A のキーで台帳に記録される。
-        var next = await Reapply(ledger, settings).RunAsync(dryRun: false);
+        var next = await Reapply(ledger, settings).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ReapplyAction.Move, Assert.Single(next.Items).Action);
         Assert.True(File.Exists(aPath));
         var moved = Assert.Single(ledger.ListAll());
@@ -484,10 +484,10 @@ public sealed class ReapplyServiceTests : IDisposable
     {
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         File.Delete(OutputOf(Folder1, "2024-12-23"));
 
-        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false);
+        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(applied.Items);
         Assert.Equal(ReapplyAction.Remove, item.Action);
@@ -502,11 +502,11 @@ public sealed class ReapplyServiceTests : IDisposable
         // 実行側(CLI の --apply・常駐)は、この予定 ID / HasSamePlanAs の不一致で止める。
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var confirmed = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true);
-        var nowSame = await Reapply(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunAsync(dryRun: true);
-        var nowOther = await Reapply(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunAsync(dryRun: true);
+        var confirmed = await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var nowSame = await Reapply(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var nowOther = await Reapply(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(nowSame.Items);
         Assert.Equal(ReapplyAction.Move, Assert.Single(nowOther.Items).Action);
@@ -522,18 +522,18 @@ public sealed class ReapplyServiceTests : IDisposable
     {
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         var imported = OutputOf(Folder1, "2024-12-23");
-        await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false);
+        await Reapply(ledger, Decided(FilenameProgramTreatment.Skip)).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.False(File.Exists(imported));
 
         // 「取り込まない」のままなら取り込まない。
-        var skipped = await Ingest(ledger, Decided(FilenameProgramTreatment.Skip)).RunOnceAsync(dryRun: false);
+        var skipped = await Ingest(ledger, Decided(FilenameProgramTreatment.Skip)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(IngestOutcome.SkippedByDecision, Assert.Single(skipped.Items).Outcome);
         Assert.False(File.Exists(imported));
 
         // 判断を戻すと、台帳に無い回として取り込み直される。
-        var reingested = await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        var reingested = await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(IngestOutcome.Imported, Assert.Single(reingested.Items).Outcome);
         Assert.True(File.Exists(imported));
         Assert.Single(ledger.ListAll());
@@ -548,12 +548,12 @@ public sealed class ReapplyServiceTests : IDisposable
         var ledger = Ledger();
         var same = Decided(FilenameProgramTreatment.SameProgram);
         same.FilenamePrograms[0].Match.Mode = FilenameProgramMatchMode.Prefix;
-        await Ingest(ledger, same).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, same).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, ledger.ListAll().Count);
 
         var other = Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組");
         other.FilenamePrograms[0].Match.Mode = FilenameProgramMatchMode.Prefix;
-        var applied = await Reapply(ledger, other).RunAsync(dryRun: false);
+        var applied = await Reapply(ledger, other).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, applied.Items.Count);
         Assert.All(applied.Items, i => Assert.Equal(ReapplyAction.Move, i.Action));
@@ -567,9 +567,9 @@ public sealed class ReapplyServiceTests : IDisposable
     {
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunAsync(dryRun: false);
+        var applied = await Reapply(ledger, Decided(FilenameProgramTreatment.OtherProgram, "試験の別番組")).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.Move, Assert.Single(applied.Items).Action);
         var moved = OutputOf("試験の別番組", "2024-12-23");
@@ -586,7 +586,7 @@ public sealed class ReapplyServiceTests : IDisposable
         // 「出力先から消す予定」(局が変わる回も含む)と同じ回を扱う。
         PlaceSource(Folder1, Dec23At0830, program: SubstituteName);
         var ledger = Ledger();
-        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Decided(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         var stations = new StationMasterConfig
         {
             Stations = [new StationAlias { Canonical = "TBS", Aliases = [Station] }],
@@ -594,7 +594,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var decided = Decided(FilenameProgramTreatment.Skip);
         decided.FilenamePrograms[0].Match.Station = "TBS";
 
-        var applied = await Reapply(ledger, decided, stations).RunAsync(dryRun: false);
+        var applied = await Reapply(ledger, decided, stations).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.Remove, Assert.Single(applied.Items).Action);
         Assert.Empty(ledger.ListAll());
@@ -646,10 +646,10 @@ public sealed class ReapplyServiceTests : IDisposable
         // (対象外を除く)と、要対応が数える回が一致すること。揃えた後にパートの順だけを入れ替えると、アルバムは同じで
         // パートだけが食い違う。
         var ledger = await IngestSplitAsync();
-        await Reapply(ledger, Merged()).RunAsync(dryRun: false); // いったん揃える
+        await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken); // いったん揃える
         var reordered = Merged(folders: [Folder2, Folder1]);    // パートの順だけを入れ替える
 
-        var plan = await Reapply(ledger, reordered).RunAsync(dryRun: true);
+        var plan = await Reapply(ledger, reordered).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         var resolver = new LedgerEpisodeResolver(
             new FileSystem().Path, new RajirekoImporter(),
             new StationResolver(new StationMasterConfig()), new ProgramResolver(reordered));
@@ -673,7 +673,7 @@ public sealed class ReapplyServiceTests : IDisposable
         };
         var programs = Merged(station: "TBS");
 
-        var plan = await Reapply(ledger, programs, stations).RunAsync(dryRun: true);
+        var plan = await Reapply(ledger, programs, stations).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         var resolver = new LedgerEpisodeResolver(
             new FileSystem().Path, new RajirekoImporter(), new StationResolver(stations), new ProgramResolver(programs));
         var attention = Airshelf.Core.Attention.AttentionCalculator.Compute(
@@ -693,8 +693,8 @@ public sealed class ReapplyServiceTests : IDisposable
         var ledger = await IngestSplitAsync();
         var programs = Merged();
 
-        var confirmed = await Reapply(ledger, programs).RunAsync(dryRun: true);
-        var replanned = await Reapply(ledger, programs).RunAsync(dryRun: true);
+        var confirmed = await Reapply(ledger, programs).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var replanned = await Reapply(ledger, programs).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(replanned.HasSamePlanAs(confirmed));
     }
@@ -705,8 +705,8 @@ public sealed class ReapplyServiceTests : IDisposable
         // 確認ダイアログを開いている間に programs.json の統合先が書き換わった場合。
         var ledger = await IngestSplitAsync();
 
-        var confirmed = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
-        var replanned = await Reapply(ledger, Merged(album: "別の統合先")).RunAsync(dryRun: true);
+        var confirmed = await Reapply(ledger, Merged()).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        var replanned = await Reapply(ledger, Merged(album: "別の統合先")).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(replanned.HasSamePlanAs(confirmed));
     }
@@ -718,9 +718,9 @@ public sealed class ReapplyServiceTests : IDisposable
         var ledger = await IngestSplitAsync();
         var programs = Merged();
 
-        var confirmed = await Reapply(ledger, programs).RunAsync(dryRun: true);
+        var confirmed = await Reapply(ledger, programs).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         CopyWithDifferentAudio(OutputOf(Album, "2024-12-23", part: 1));
-        var replanned = await Reapply(ledger, programs).RunAsync(dryRun: true);
+        var replanned = await Reapply(ledger, programs).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(replanned.HasSamePlanAs(confirmed));
     }
@@ -732,7 +732,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var filesBefore = FilesUnder(OutputRoot);
         var ledgerBefore = ledger.ListAll();
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(report.DryRun);
         Assert.All(report.Items, i => Assert.Equal(ReapplyAction.Move, i.Action));
@@ -761,14 +761,14 @@ public sealed class ReapplyServiceTests : IDisposable
             file.Save();
         }
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(3, report.Count(ReapplyAction.Move));
         Assert.Equal(3, report.Items.Count);
 
         // 同じソースを統合設定ありで新しく取り込んだ結果と、ファイル名・フォルダ・album / title / track が同じ。
         var freshRoot = Path.Combine(_work, "fresh");
-        await Ingest(Ledger("fresh"), Merged(), freshRoot).RunOnceAsync(dryRun: false);
+        await Ingest(Ledger("fresh"), Merged(), freshRoot).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(FilesUnder(freshRoot), FilesUnder(OutputRoot));
         Assert.Equal(
             [
@@ -802,7 +802,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var ledger = await IngestSplitAsync();
         var dec23 = new DateOnly(2024, 12, 23);
 
-        await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var rows = ledger.ListAll().OrderBy(e => e.BroadcastDate).ThenBy(e => e.BroadcastTime).ToList();
         Assert.All(rows, r => Assert.Equal(Album, r.Program));
@@ -819,12 +819,12 @@ public sealed class ReapplyServiceTests : IDisposable
 
         // 統合設定のまま再スキャンしても取り込み直さない。
         var files = FilesUnder(OutputRoot);
-        var rescan = await Ingest(ledger, Merged()).RunOnceAsync(dryRun: false);
+        var rescan = await Ingest(ledger, Merged()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.All(rescan.Items, i => Assert.Equal(IngestOutcome.SkippedAlreadyImported, i.Outcome));
         Assert.Equal(files, FilesUnder(OutputRoot));
 
         // 2 回目の再適用は何もしない(冪等)。
-        var second = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var second = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Empty(second.Items);
         Assert.False(second.HasChanges);
         Assert.True(second.IsAligned);
@@ -838,9 +838,9 @@ public sealed class ReapplyServiceTests : IDisposable
         PlaceSource(Folder1, Dec23At0830);
         PlaceSource(Folder2, Dec23At1000);
         var ledger = Ledger();
-        await Ingest(ledger, Merged()).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Merged()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var report = await Reapply(ledger, NoPrograms()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, NoPrograms()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, report.Count(ReapplyAction.Move));
         Assert.Equal(
@@ -859,15 +859,15 @@ public sealed class ReapplyServiceTests : IDisposable
         // 手作業で統合済みの回(記録の場所に無く、今の設定の場所にあり、タグも揃っている)。
         PlaceSource(Folder1, Dec23At0830);
         var ledger = Ledger();
-        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         var original = OutputOf(Folder1, "2024-12-23");
         var target = OutputOf(Album, "2024-12-23", part: 1);
-        await NewTarget().RelocateAsync(original, target, TagsFor(Album, 1));
+        await NewTarget().RelocateAsync(original, target, TagsFor(Album, 1), TestContext.Current.CancellationToken);
         File.Delete(original);
         var bytes = File.ReadAllBytes(target);
         var refresher = new CountingRefresher();
 
-        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(ReapplyAction.LedgerOnly, item.Action);
@@ -892,7 +892,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal((Folder1, "2024-12-23", 1223u), (before.Album, before.Title, before.Track));
         var refresher = new CountingRefresher();
 
-        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(ReapplyAction.LedgerAndTags, item.Action);
@@ -914,7 +914,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(LibraryRefreshStatus.Started, report.LibraryRefresh);
 
         // 2 回目は揃っている。
-        var second = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var second = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Empty(second.Items);
         Assert.True(second.IsAligned);
     }
@@ -926,7 +926,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var bytes = File.ReadAllBytes(target);
         var ledgerBefore = ledger.ListAll();
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.LedgerAndTags, Assert.Single(report.Items).Action);
         Assert.Equal([new ReapplyAlbumSummary(Station, Folder1, Album, 0, LedgerAndTags: 1, 0, 0, 0, 0)], report.Albums);
@@ -945,7 +945,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var ledgerBefore = ledger.ListAll();
 
         // .partial にタグを書いている途中で止まった(書き込みに失敗した)。
-        var report = await Reapply(ledger, Merged(), tagWriter: new FailingPlacementWriter()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(), tagWriter: new FailingPlacementWriter()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(ReapplyAction.Failed, item.Action);
@@ -953,7 +953,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal([Path.Combine(Station, Album, $"{Album} 2024-12-23-1.m4a")], FilesUnder(OutputRoot)); // .partial も残らない
         Assert.Equal(ledgerBefore, ledger.ListAll()); // 台帳もそのまま
 
-        var rerun = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var rerun = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ReapplyAction.LedgerAndTags, Assert.Single(rerun.Items).Action);
         Assert.Equal(Album, TagsOf(target).Album);
     }
@@ -966,7 +966,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var partial = Path.Combine(OutputRoot, Station, Album, $"{Album} 2024-12-23-1.partial.m4a");
         File.WriteAllBytes(partial, [1, 2, 3]);
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.LedgerAndTags, Assert.Single(report.Items).Action);
         Assert.False(File.Exists(partial));
@@ -978,15 +978,15 @@ public sealed class ReapplyServiceTests : IDisposable
     {
         // タグの確定の後・台帳を書き換える前に止まった状態:タグは揃っていて、台帳は古いまま。
         var (ledger, target) = await IngestOneAndRenameByHandAsync();
-        await NewTarget().RewritePlacementAsync(target, TagsFor(Album, 1));
+        await NewTarget().RewritePlacementAsync(target, TagsFor(Album, 1), TestContext.Current.CancellationToken);
         var bytes = File.ReadAllBytes(target);
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.LedgerOnly, Assert.Single(report.Items).Action);
         Assert.Equal(bytes, File.ReadAllBytes(target));
         Assert.Contains(ledger.ListAll(), e => e.OutputPath == target && e.Program == Album);
-        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items);
+        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken)).Items);
     }
 
     [Fact]
@@ -995,9 +995,9 @@ public sealed class ReapplyServiceTests : IDisposable
         // 確認の後に、別の手段でタグが揃えられた(台帳とタグを直す → 台帳だけ直す に変わる)。
         var (ledger, target) = await IngestOneAndRenameByHandAsync();
 
-        var confirmed = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
-        await NewTarget().RewritePlacementAsync(target, TagsFor(Album, 1));
-        var replanned = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        var confirmed = await Reapply(ledger, Merged()).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
+        await NewTarget().RewritePlacementAsync(target, TagsFor(Album, 1), TestContext.Current.CancellationToken);
+        var replanned = await Reapply(ledger, Merged()).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.LedgerAndTags, Assert.Single(confirmed.Items).Action);
         Assert.Equal(ReapplyAction.LedgerOnly, Assert.Single(replanned.Items).Action);
@@ -1011,7 +1011,7 @@ public sealed class ReapplyServiceTests : IDisposable
         // 以後は記録どおりとして直らないので、移動先のタグも揃える(#141)。
         PlaceSource(Folder1, Dec23At0830);
         var ledger = Ledger();
-        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         var original = OutputOf(Folder1, "2024-12-23");
         var target = OutputOf(Album, "2024-12-23", part: 1);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
@@ -1021,7 +1021,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var otherBefore = TagsOf(target);
         var refresher = new CountingRefresher();
 
-        var dryRun = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        var dryRun = await Reapply(ledger, Merged()).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         var planned = Assert.Single(dryRun.Items);
         Assert.Equal(ReapplyAction.DuplicateLeft, planned.Action);
         Assert.True(planned.RewritesTags);
@@ -1029,7 +1029,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(1, dryRun.DuplicatesRewritingTags);
         Assert.Equal(targetBytes, File.ReadAllBytes(target)); // dry-run は書き換えない
 
-        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(ReapplyAction.DuplicateLeft, item.Action);
@@ -1044,7 +1044,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Assert.Equal(1, refresher.Calls); // タグを書き換えたので Jellyfin を更新する
         Assert.Empty(Directory.GetFiles(OutputRoot, "*.partial.*", SearchOption.AllDirectories));
 
-        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items);
+        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken)).Items);
     }
 
     [Fact]
@@ -1054,7 +1054,7 @@ public sealed class ReapplyServiceTests : IDisposable
         File.WriteAllBytes(target, [1, 2, 3]); // 壊れていてタグを読めない
         var ledgerBefore = ledger.ListAll();
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(ReapplyAction.Excluded, item.Action);
@@ -1072,7 +1072,7 @@ public sealed class ReapplyServiceTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.Copy(original, target);
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items, i => i.ToPath == target);
         Assert.Equal(ReapplyAction.DuplicateLeft, item.Action);
@@ -1093,7 +1093,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var originalBytes = File.ReadAllBytes(original);
         var targetBytes = File.ReadAllBytes(target);
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items, i => i.ToPath == target);
         Assert.Equal(ReapplyAction.Excluded, item.Action);
@@ -1115,7 +1115,7 @@ public sealed class ReapplyServiceTests : IDisposable
             Stations = [new StationAlias { Canonical = "TBS", Aliases = [Station] }],
         };
 
-        var report = await Reapply(ledger, Merged(station: "TBS"), stations).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(station: "TBS"), stations).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(3, report.Items.Count);
         Assert.All(report.Items, i =>
@@ -1146,7 +1146,7 @@ public sealed class ReapplyServiceTests : IDisposable
         ledger.Record(radikool);
 
         // 番組名の解決はフォルダ(LFR)ではなくファイル名由来なので、らじれこの規則で解決し直すと食い違う。それでも触らない。
-        var report = await Reapply(ledger, NoPrograms()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, NoPrograms()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(report.Items);
         Assert.Equal(radikool, Assert.Single(ledger.ListAll()));
@@ -1174,7 +1174,7 @@ public sealed class ReapplyServiceTests : IDisposable
         });
         var original = OutputOf(Folder1, "2024-12-23");
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items, i => i.FromPath == original);
         Assert.Equal(ReapplyAction.Excluded, item.Action);
@@ -1191,16 +1191,16 @@ public sealed class ReapplyServiceTests : IDisposable
         var original = OutputOf(Folder1, "2024-12-23");
         var target = OutputOf(Album, "2024-12-23", part: 1);
         var originalBytes = File.ReadAllBytes(original);
-        await NewTarget().RelocateAsync(original, target, TagsFor(Album, 1));
+        await NewTarget().RelocateAsync(original, target, TagsFor(Album, 1), TestContext.Current.CancellationToken);
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items, i => i.ToPath == target);
         Assert.Equal(ReapplyAction.DuplicateLeft, item.Action);
         Assert.False(item.RewritesTags); // 移動先のタグは確定の前に書いてあるので揃っている
         Assert.Equal(originalBytes, File.ReadAllBytes(original)); // 元は壊れない
         Assert.Contains(ledger.ListAll(), e => e.OutputPath == target);
-        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items); // 揃った
+        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken)).Items); // 揃った
     }
 
     [Fact]
@@ -1210,14 +1210,14 @@ public sealed class ReapplyServiceTests : IDisposable
         var ledger = await IngestSplitAsync();
         var original = OutputOf(Folder1, "2024-12-23");
         var target = OutputOf(Album, "2024-12-23", part: 1);
-        await NewTarget().RelocateAsync(original, target, TagsFor(Album, 1));
+        await NewTarget().RelocateAsync(original, target, TagsFor(Album, 1), TestContext.Current.CancellationToken);
         File.Delete(original);
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.LedgerOnly, Assert.Single(report.Items, i => i.ToPath == target).Action);
         Assert.Contains(ledger.ListAll(), e => e.OutputPath == target);
-        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false)).Items);
+        Assert.Empty((await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken)).Items);
     }
 
     [Fact]
@@ -1232,7 +1232,7 @@ public sealed class ReapplyServiceTests : IDisposable
         File.WriteAllBytes(partial, [1, 2, 3]);
         Assert.Equal(originalBytes, File.ReadAllBytes(original));
 
-        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged()).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(3, report.Count(ReapplyAction.Move));
         Assert.False(File.Exists(partial));
@@ -1249,9 +1249,9 @@ public sealed class ReapplyServiceTests : IDisposable
         PlaceSource(main, Dec23At0830, station, main);
         PlaceSource(part2, Dec23At1000, station, part2);
         var ledger = Ledger();
-        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var report = await Reapply(ledger, Merged(station, main, main, part2)).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(station, main, main, part2)).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, report.Count(ReapplyAction.Move));
         Assert.Equal(
@@ -1271,9 +1271,9 @@ public sealed class ReapplyServiceTests : IDisposable
         const string album = "LOGISTEED RADIONOMICS";
         PlaceSource(folder, Dec23At0830, station, album);
         var ledger = Ledger();
-        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, NoPrograms()).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var report = await Reapply(ledger, Merged(station, album, folder)).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(station, album, folder)).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(ReapplyAction.Move, Assert.Single(report.Items).Action);
         var row = Assert.Single(ledger.ListAll());
@@ -1292,11 +1292,11 @@ public sealed class ReapplyServiceTests : IDisposable
         const string folder = "LOGISTEEDRADIONOMICS";
         PlaceSource(folder, Dec23At0830, station, "Logisteed Radionomics");
         var ledger = Ledger();
-        await Ingest(ledger, Merged(station, "Logisteed Radionomics", folder)).RunOnceAsync(dryRun: false);
+        await Ingest(ledger, Merged(station, "Logisteed Radionomics", folder)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         var before = Assert.Single(ledger.ListAll());
         var bytes = File.ReadAllBytes(before.OutputPath);
 
-        var report = await Reapply(ledger, Merged(station, "LOGISTEED RADIONOMICS", folder)).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(station, "LOGISTEED RADIONOMICS", folder)).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = Assert.Single(report.Items);
         Assert.Equal(ReapplyAction.Excluded, item.Action);
@@ -1313,14 +1313,14 @@ public sealed class ReapplyServiceTests : IDisposable
     {
         var ledger = await IngestSplitAsync();
 
-        var before = await Reapply(ledger, NoPrograms()).RunAsync(dryRun: true);
+        var before = await Reapply(ledger, NoPrograms()).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         var sibling = Assert.Single(before.UnintegratedSiblings);
         Assert.Equal(Station, sibling.Group.Station);
         Assert.Equal([Folder1, Folder2], sibling.Group.Folders);
         Assert.Equal([Folder1, Folder2], sibling.FoldersWithoutSetting);
         Assert.Empty(before.Items); // 設定を変えていないので動かす回は無い
 
-        var after = await Reapply(ledger, Merged()).RunAsync(dryRun: true);
+        var after = await Reapply(ledger, Merged()).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Empty(after.UnintegratedSiblings);
     }
 
@@ -1335,7 +1335,7 @@ public sealed class ReapplyServiceTests : IDisposable
             Match = new ProgramMatch { Station = Station, Folders = [Folder1, Folder2] },
         });
 
-        var report = await Reapply(ledger, programs).RunAsync(dryRun: true);
+        var report = await Reapply(ledger, programs).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(report.UnintegratedSiblings);
         Assert.Empty(report.Items);
@@ -1347,11 +1347,11 @@ public sealed class ReapplyServiceTests : IDisposable
         var ledger = await IngestSplitAsync();
         var refresher = new CountingRefresher();
 
-        var dryRun = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: true);
+        var dryRun = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(0, refresher.Calls);
         Assert.Equal(LibraryRefreshStatus.NotNeeded, dryRun.LibraryRefresh);
 
-        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false);
+        var report = await Reapply(ledger, Merged(), refresher: refresher).RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(1, refresher.Calls);
         Assert.Equal(LibraryRefreshStatus.Started, report.LibraryRefresh);
     }
@@ -1363,7 +1363,7 @@ public sealed class ReapplyServiceTests : IDisposable
         var ledger = await IngestSplitAsync();
 
         var report = await Reapply(ledger, Merged(), refresher: new MisconfiguredLibraryRefresher("形式が不正"))
-            .RunAsync(dryRun: false);
+            .RunAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(LibraryRefreshStatus.Misconfigured, report.LibraryRefresh);
         Assert.Equal("形式が不正", report.RefreshError);

@@ -138,7 +138,7 @@ public sealed class SubstituteBroadcastIngestTests
         var regular = Rec($"{Folder} ゲスト回", "20250106000000");
         var substitute = Rec(Substitute, "20250113000000");
 
-        var report = await Build([regular, substitute]).RunOnceAsync(dryRun: false);
+        var report = await Build([regular, substitute]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(IngestOutcome.Imported, report.Items[0].Outcome);
         Assert.Equal(IngestOutcome.Held, report.Items[1].Outcome);
@@ -164,7 +164,7 @@ public sealed class SubstituteBroadcastIngestTests
         var second = Rec(album + " 11時～12時", "20250106110000", folder: album + "2");
         var substitute = Rec(Substitute, "20250113100000", folder: album + "1");
 
-        var report = await Build([first, second, substitute], programs).RunOnceAsync(dryRun: false);
+        var report = await Build([first, second, substitute], programs).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(
             [IngestOutcome.Imported, IngestOutcome.Imported, IngestOutcome.Held],
@@ -202,7 +202,7 @@ public sealed class SubstituteBroadcastIngestTests
         var skipFile = Rec(skipped, "20250106100000", folder: album + "1");
         var otherFile = Rec(other, "20250113100000", folder: album + "1");
 
-        var report = await Build([skipFile, otherFile], programs).RunOnceAsync(dryRun: false);
+        var report = await Build([skipFile, otherFile], programs).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal([IngestOutcome.SkippedByDecision, IngestOutcome.Imported], report.Items.Select(i => i.Outcome));
         Assert.Equal("駅伝", _ledger.Entries.Single().Program);
@@ -215,7 +215,7 @@ public sealed class SubstituteBroadcastIngestTests
         // 全角英数・空白の違い(ANN0 のゲスト名入りの回と同じく、フォルダ名を含めば取り込む)。
         var file = Rec("ＩＭＰのオールナイトニッポン０（ＺＥＲＯ）", "20251221000000", folder: "オールナイトニッポン0(ZERO)");
 
-        var report = await Build([file]).RunOnceAsync(dryRun: false);
+        var report = await Build([file]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(IngestOutcome.Imported, report.Items.Single().Outcome);
     }
@@ -225,8 +225,8 @@ public sealed class SubstituteBroadcastIngestTests
     {
         var first = Rec(Substitute, "20250113000000");
 
-        var report1 = await Build([first]).RunOnceAsync(dryRun: false);
-        var report2 = await Build([first]).RunOnceAsync(dryRun: false);
+        var report1 = await Build([first]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
+        var report2 = await Build([first]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(report1.HeldNotificationPublished);
         Assert.False(report2.HeldNotificationPublished);
@@ -243,10 +243,10 @@ public sealed class SubstituteBroadcastIngestTests
     public async Task 新しく保留した回があれば_前からの保留とは別にもう一度出す()
     {
         var first = Rec(Substitute, "20250113000000");
-        await Build([first]).RunOnceAsync(dryRun: false);
+        await Build([first]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var second = Rec(Substitute, "20250120000000");
-        await Build([first, second]).RunOnceAsync(dryRun: false);
+        await Build([first, second]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, _heldPublisher.Signals.Count);
         Assert.Equal(1, _heldPublisher.Signals[1].HeldCount); // 新しい 1 件だけ
@@ -258,7 +258,7 @@ public sealed class SubstituteBroadcastIngestTests
     {
         _heldPublisher.Throws = new InvalidOperationException("トースト失敗");
 
-        var report = await Build([Rec(Substitute, "20250113000000")]).RunOnceAsync(dryRun: false);
+        var report = await Build([Rec(Substitute, "20250113000000")]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(report.HeldNotificationPublished);
         Assert.Equal("トースト失敗", report.HeldNotificationError);
@@ -268,7 +268,7 @@ public sealed class SubstituteBroadcastIngestTests
     [Fact]
     public async Task dry_run_は保留を報告するが_ストアもシグナルも触らない()
     {
-        var report = await Build([Rec(Substitute, "20250113000000")]).RunOnceAsync(dryRun: true);
+        var report = await Build([Rec(Substitute, "20250113000000")]).RunOnceAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(IngestOutcome.Held, report.Items.Single().Outcome);
         Assert.Empty(_held.Rows);
@@ -279,9 +279,9 @@ public sealed class SubstituteBroadcastIngestTests
     public async Task この番組の回と判断すればフォルダの番組として取り込み_保留を消す()
     {
         var file = Rec(Substitute, "20250113000000");
-        await Build([file]).RunOnceAsync(dryRun: false);
+        await Build([file]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var report = await Build([file], Decide(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        var report = await Build([file], Decide(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(IngestOutcome.Imported, report.Items.Single().Outcome);
         Assert.Equal(Folder, _ledger.Entries.Single().Program);
@@ -292,9 +292,9 @@ public sealed class SubstituteBroadcastIngestTests
     public async Task 取り込まないと判断すれば取り込まず_保留を消す()
     {
         var file = Rec(Substitute, "20250113000000");
-        await Build([file]).RunOnceAsync(dryRun: false);
+        await Build([file]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var report = await Build([file], Decide(FilenameProgramTreatment.Skip)).RunOnceAsync(dryRun: false);
+        var report = await Build([file], Decide(FilenameProgramTreatment.Skip)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(IngestOutcome.SkippedByDecision, report.Items.Single().Outcome);
         Assert.Empty(_target.Written);
@@ -307,7 +307,7 @@ public sealed class SubstituteBroadcastIngestTests
     {
         var file = Rec(Substitute, "20250113000000");
 
-        var report = await Build([file], Decide(FilenameProgramTreatment.OtherProgram, "辛坊治郎 ズーム")).RunOnceAsync(dryRun: false);
+        var report = await Build([file], Decide(FilenameProgramTreatment.OtherProgram, "辛坊治郎 ズーム")).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         var item = report.Items.Single();
         Assert.Equal(IngestOutcome.Imported, item.Outcome);
@@ -342,7 +342,7 @@ public sealed class SubstituteBroadcastIngestTests
         var first = Rec(Substitute, "20250113000000");
         var second = Rec(Substitute, "20250113010000", folder: folder2);
 
-        var report = await Build([first, second], programs).RunOnceAsync(dryRun: false);
+        var report = await Build([first, second], programs).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.All(report.Items, i => Assert.Equal(IngestOutcome.Imported, i.Outcome));
         Assert.Equal([1, 2], report.Items.Select(i => i.Episode!.PartIndex!.Value).Order());
@@ -356,7 +356,7 @@ public sealed class SubstituteBroadcastIngestTests
         // 同じフォルダでも、ファイル名の番組名が違えば別の組(判断は組ごと)。
         var other = Rec("timeleszのオールナイトニッポンPremium", "20250203000000");
 
-        var report = await Build([other], Decide(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        var report = await Build([other], Decide(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(IngestOutcome.Held, report.Items.Single().Outcome);
     }
@@ -370,7 +370,7 @@ public sealed class SubstituteBroadcastIngestTests
         var programs = Decide(FilenameProgramTreatment.OtherProgram, "野村萬斎のラジオで福袋", "野村萬斎のラジオで福袋",
             FilenameProgramMatchMode.Prefix);
 
-        var report = await Build([a, b], programs).RunOnceAsync(dryRun: false);
+        var report = await Build([a, b], programs).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.All(report.Items, i => Assert.Equal(IngestOutcome.Imported, i.Outcome));
         Assert.All(_ledger.Entries, e => Assert.Equal("野村萬斎のラジオで福袋", e.Program));
@@ -384,7 +384,7 @@ public sealed class SubstituteBroadcastIngestTests
         var b = Rec("ブレインスリープ presents 川島明のねごと", "20250120000000");
         var programs = Decide(FilenameProgramTreatment.SameProgram, name: "川島明のねごと", mode: FilenameProgramMatchMode.Contains);
 
-        var report = await Build([a, b], programs).RunOnceAsync(dryRun: false);
+        var report = await Build([a, b], programs).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.All(report.Items, i => Assert.Equal(IngestOutcome.Imported, i.Outcome));
         Assert.All(_ledger.Entries, e => Assert.Equal(Folder, e.Program));
@@ -394,12 +394,12 @@ public sealed class SubstituteBroadcastIngestTests
     public async Task 取込元から消えた保留は消え_列挙が0件の走査では消さない()
     {
         var file = Rec(Substitute, "20250113000000");
-        await Build([file]).RunOnceAsync(dryRun: false);
+        await Build([file]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        await Build([]).RunOnceAsync(dryRun: false);
+        await Build([]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Single(_held.Rows); // 取込元が一時的に見えないだけかもしれない
 
-        await Build([Rec($"{Folder} ゲスト回", "20250106000000")]).RunOnceAsync(dryRun: false);
+        await Build([Rec($"{Folder} ゲスト回", "20250106000000")]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Empty(_held.Rows);
     }
 
@@ -407,10 +407,10 @@ public sealed class SubstituteBroadcastIngestTests
     public async Task まだ安定していない走査では保留を消さない()
     {
         var file = Rec(Substitute, "20250113000000");
-        await Build([file]).RunOnceAsync(dryRun: false);
+        await Build([file]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // 書き直されて mtime が新しくなった(安定待ち)。判断は変わっていないので保留のまま。
-        await Build([file with { LastWriteTimeUtc = Now }]).RunOnceAsync(dryRun: false);
+        await Build([file with { LastWriteTimeUtc = Now }]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Single(_held.Rows);
         Assert.Single(_heldPublisher.Signals); // 次に安定しても、もう一度は出さない
@@ -421,9 +421,9 @@ public sealed class SubstituteBroadcastIngestTests
     {
         // 判断待ちの取り込み済みの回は「済」(要対応が台帳から見つける)。導入した直後に過去の回がまとめて保留にならない。
         var file = Rec(Substitute, "20250113000000");
-        await Build([file], Decide(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false);
+        await Build([file], Decide(FilenameProgramTreatment.SameProgram)).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
-        var report = await Build([file]).RunOnceAsync(dryRun: false);
+        var report = await Build([file]).RunOnceAsync(dryRun: false, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(IngestOutcome.SkippedAlreadyImported, report.Items.Single().Outcome);
         Assert.Empty(_heldPublisher.Signals);

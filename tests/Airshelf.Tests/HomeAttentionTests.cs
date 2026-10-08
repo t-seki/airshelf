@@ -313,6 +313,7 @@ public sealed class HomeAttentionTests : IDisposable
     public async Task Computes_off_the_calling_thread_without_reentry()
     {
         var gate = new ManualResetEventSlim();
+        var started = new ManualResetEventSlim();
         var running = 0;
         var maxRunning = 0;
         var callerThread = Environment.CurrentManagedThreadId;
@@ -322,12 +323,16 @@ public sealed class HomeAttentionTests : IDisposable
             lock (computeThreads)
                 computeThreads.Add(Environment.CurrentManagedThreadId);
             maxRunning = Math.Max(maxRunning, Interlocked.Increment(ref running));
+            started.Set();
             gate.Wait(TimeSpan.FromSeconds(5));
             Interlocked.Decrement(ref running);
             return Compute();
         }
 
         var vm = CreateNow(compute: Blocking);
+        // 計算が始まるのを待つ。待っている間は呼び出し元のスレッドが塞がるので、計算は別のスレッドで走る
+        // (xunit v3 ではテストがプールのスレッドで動き、待たずに await で抜けると同じスレッドで計算が走りうる)。
+        Assert.True(started.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken), "計算が始まらなかった");
         Assert.Null(vm.Home.AttentionState); // 計算し終えるまでは「要対応はありません」を出さない
         Assert.False(vm.Home.IsAttentionEmpty);
 

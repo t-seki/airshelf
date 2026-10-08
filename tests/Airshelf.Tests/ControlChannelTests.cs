@@ -175,12 +175,12 @@ public sealed class ControlChannelTests
         // CLI と同じ作り方にする(素の CurrentUserOnly だと、昇格した Windows のプロセスで走らせたとき所有者の比べ方が違い拒まれる。#214)。
         await using (var rude = ControlPipeSecurity.CreateClient(server.PipeName))
         {
-            await rude.ConnectAsync(5000);
+            await rude.ConnectAsync(5000, TestContext.Current.CancellationToken);
             var bytes = ControlProtocol.LineEncoding.GetBytes("""{"protocolVersion":1,"command":"status"}""" + "\n");
-            await rude.WriteAsync(bytes);
+            await rude.WriteAsync(bytes, TestContext.Current.CancellationToken);
         }
 
-        var result = await Client(server).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        var result = await Client(server).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.Equal(ControlCallOutcome.Answered, result.Outcome);
     }
 
@@ -210,7 +210,7 @@ public sealed class ControlChannelTests
             await reader.ReadLineAsync();
             await using var writer = new StreamWriter(pipe, ControlProtocol.LineEncoding, leaveOpen: true) { AutoFlush = true };
             await writer.WriteLineAsync("""{"protocolVersion":99,"trayVersion":"9.0.0","somethingNew":true}""");
-        });
+        }, TestContext.Current.CancellationToken);
 
         var result = await new ControlPipeClient(name, TimeSpan.FromSeconds(2)).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None);
         await fake;
@@ -245,10 +245,10 @@ public sealed class ControlChannelTests
         await using var server = StartServer(control, degradedReason: null);
 
         var slow = Client(server).SendAsync(ControlProtocol.ReloadCommand, CancellationToken.None);
-        await control.ReloadEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await control.ReloadEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         var status = await Client(server).SendAsync(ControlProtocol.StatusCommand, CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(10));
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.Equal(ControlCallOutcome.Answered, status.Outcome);
         Assert.False(slow.IsCompleted);
 
@@ -375,11 +375,11 @@ public sealed class ControlChannelTests
         var client = new ControlPipeClient(server.PipeName, TimeSpan.FromSeconds(5), responseTimeout: TimeSpan.FromMilliseconds(200));
 
         var call = client.SendAsync(ControlProtocol.ScanCommand, CancellationToken.None);
-        await Task.Delay(600);
+        await Task.Delay(600, TestContext.Current.CancellationToken);
         Assert.False(call.IsCompleted);
 
         control.BlockScan.SetResult();
-        var result = await call.WaitAsync(TimeSpan.FromSeconds(10));
+        var result = await call.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         Assert.Equal(ControlCallOutcome.Answered, result.Outcome);
         var report = result.Response!.ScanRun!.Report!;

@@ -40,7 +40,7 @@ public sealed class BackgroundServiceStartTests
         using var host = builder.Build();
 
         // .NET 9 までは、ここで UnauthorizedAccessException が投げられていた(#207 の ContinueWith の前提)。
-        await host.StartAsync();
+        await host.StartAsync(TestContext.Current.CancellationToken);
 
         // 例外はホストの起動ではなく、ワーカーの実行のタスクに残る。
         var executeTask = worker.ExecuteTask!;
@@ -50,6 +50,6 @@ public sealed class BackgroundServiceStartTests
         Assert.False(worker.Loop.Running);
         Assert.IsType<UnauthorizedAccessException>(worker.Loop.StartFailure);
 
-        await host.StopAsync();
+        await host.StopAsync(TestContext.Current.CancellationToken);
     }
 }

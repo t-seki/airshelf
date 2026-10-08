@@ -25,6 +25,7 @@ public sealed class SiblingProgramProposalsTests
         var proposals = SiblingProgramProposals.Build(groups, Resolver());
 
         Assert.Equal(
+            Flatten(
             [
                 ("TBSラジオ", "パンサー向井のふらっと", new[] { "パンサー向井のふらっと(1)", "パンサー向井のふらっと(2)" }),
                 ("TBSラジオ", "土曜ワイドラジオTOKYOナイツのちゃきちゃき大放送", ["土曜ワイドラジオTOKYOナイツのちゃきちゃき大放送(1)", "土曜ワイドラジオTOKYOナイツのちゃきちゃき大放送(2)"]),
@@ -36,14 +37,17 @@ public sealed class SiblingProgramProposalsTests
                 ("文化放送", "おとなりさん", ["おとなりさん 8時9時", "おとなりさん 9時10時", "おとなりさん 10時11時"]),
                 ("文化放送", "てるのりのワルノリ", ["てるのりのワルノリ (1)", "てるのりのワルノリ (2)"]),
                 ("文化放送", "ますだおかだ岡田圭右とアンタッチャブル柴田英嗣のおかしば", ["ますだおかだ岡田圭右とアンタッチャブル柴田英嗣のおかしば10時1", "ますだおかだ岡田圭右とアンタッチャブル柴田英嗣のおかしば11時1", "ますだおかだ岡田圭右とアンタッチャブル柴田英嗣のおかしば12時1"]),
-            ],
-            proposals
+            ]),
+            Flatten(proposals
                 .Select(p => (p.Station, p.Album, p.Folders.ToArray()))
                 .OrderBy(p => p.Station, StringComparer.Ordinal)
-                .ThenBy(p => p.Item3[0], StringComparer.Ordinal)
-                .ToArray());
+                .ThenBy(p => p.Item3[0], StringComparer.Ordinal)));
         Assert.All(proposals, p => Assert.False(p.JoinsExisting));
     }
+
+    // xunit v3 の Assert.Equal は ValueTuple の IEquatable を先に使い、中の配列を参照で比べる。文字列にして比べる(順序は保つ)。
+    private static string[] Flatten(IEnumerable<(string Station, string Album, string[] Folders)> proposals) =>
+        [.. proposals.Select(p => p.Station + "|" + p.Album + "|" + string.Join(";", p.Folders))];
 
     [Theory]
     [InlineData("番組（１）", "番組")]            // 全角の括弧・数字も除く

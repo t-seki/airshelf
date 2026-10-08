@@ -41,7 +41,7 @@ public sealed class CompositionRootReapplyTests : IDisposable
         var (service, disposable) = CompositionRoot.BuildReapply(config, dryRun: true, settings);
         using (disposable)
         {
-            var report = await service.RunAsync(dryRun: true);
+            var report = await service.RunAsync(dryRun: true, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Empty(report.Items);
         }
     }

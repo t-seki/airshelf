@@ -30,7 +30,7 @@ public sealed class JellyfinLibraryRefresherTests
         var handler = new StubHandler(HttpStatusCode.NoContent);
         var sut = new JellyfinLibraryRefresher(Client(handler), "KEY123");
 
-        await sut.RefreshAsync();
+        await sut.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpMethod.Post, handler.Method);
         Assert.Equal("https://jelly.example.net/Library/Refresh", handler.Uri!.ToString());
@@ -45,6 +45,6 @@ public sealed class JellyfinLibraryRefresherTests
     {
         var sut = new JellyfinLibraryRefresher(Client(new StubHandler(status)), "KEY");
 
-        await Assert.ThrowsAsync<JellyfinException>(() => sut.RefreshAsync());
+        await Assert.ThrowsAsync<JellyfinException>(() => sut.RefreshAsync(TestContext.Current.CancellationToken));
     }
 }

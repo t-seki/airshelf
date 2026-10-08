@@ -156,7 +156,7 @@ public sealed class LocalFolderTargetTests
         });
         var tagWriter = new RewritingTagWriter(fs);
 
-        await Target(fs, tagWriter).RewritePlacementAsync(InPlacePath, Tags());
+        await Target(fs, tagWriter).RewritePlacementAsync(InPlacePath, Tags(), TestContext.Current.CancellationToken);
 
         Assert.Equal([fs.Path.GetFullPath(InPlacePartial)], tagWriter.Written.Select(fs.Path.GetFullPath)); // タグは .partial に書く
         Assert.Equal("tagged", fs.File.ReadAllText(InPlacePath)); // 同じ名前へ置き換わる
@@ -173,7 +173,7 @@ public sealed class LocalFolderTargetTests
         });
 
         await Assert.ThrowsAsync<IOException>(
-            () => Target(fs, new RewritingTagWriter(fs, fails: true)).RewritePlacementAsync(InPlacePath, Tags()));
+            () => Target(fs, new RewritingTagWriter(fs, fails: true)).RewritePlacementAsync(InPlacePath, Tags(), TestContext.Current.CancellationToken));
 
         Assert.Equal("original", fs.File.ReadAllText(InPlacePath));
         Assert.False(fs.File.Exists(InPlacePartial));
@@ -214,7 +214,7 @@ public sealed class LocalFolderTargetTests
         var plan = sut.Plan(Source(), Episode(), Tags());
         fs.AddFile(plan.Path, new MockFileData("appeared"));
 
-        await Assert.ThrowsAnyAsync<IOException>(() => sut.WriteAsync(Source(), plan, Tags()));
+        await Assert.ThrowsAnyAsync<IOException>(() => sut.WriteAsync(Source(), plan, Tags(), TestContext.Current.CancellationToken));
 
         Assert.Equal("appeared", fs.File.ReadAllText(plan.Path));
         Assert.Equal([fs.Path.GetFullPath(plan.Path)], fs.Directory.GetFiles(OutDir(fs)).Select(fs.Path.GetFullPath));
@@ -252,7 +252,7 @@ public sealed class LocalFolderTargetTests
 
         var first = await WriteAsync(sut, Episode(new TimeOnly(22, 30)));
         var plan = sut.Plan(Source("/in/other.m4a"), Episode(new TimeOnly(1, 5)), Tags());
-        var second = await sut.WriteAsync(Source("/in/other.m4a"), plan, Tags());
+        var second = await sut.WriteAsync(Source("/in/other.m4a"), plan, Tags(), TestContext.Current.CancellationToken);
 
         Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12.m4a", first);
         Assert.EndsWith("LOGISTEED RADIONOMICS 2026-06-12 0105.m4a", second);
@@ -275,7 +275,7 @@ public sealed class LocalFolderTargetTests
         Assert.True(plan.AlreadyPresent);
         Assert.Equal(existing, plan.Path);
         Assert.Single(fs.Directory.GetFiles(OutDir(fs))); // ` 0830` を作らない
-        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.WriteAsync(Source(), plan, Tags()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.WriteAsync(Source(), plan, Tags(), TestContext.Current.CancellationToken));
     }
 
     [Fact]
