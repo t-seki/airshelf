@@ -817,7 +817,7 @@ public sealed class ProgramsPageViewModelTests : IDisposable
     public async Task Write_failure_W277_keeps_file_and_draft()
     {
         // フォルダを読み取り専用にして、バックアップ(一時ファイル)を作れなくする。Unix のアクセス権で作るので
-        // Windows では確かめない(CI は Linux)。
+        // Windows では確かめない(CI は Windows なので CI では素通りする。WSL / Linux で走る)。
         if (OperatingSystem.IsWindows())
             return;
 

@@ -10,7 +10,7 @@ namespace Airshelf.Gui.Core.Management;
 public sealed record SettingsFileOpenResult(bool Ok, string? Message);
 
 /// <summary>
-/// 設定ページがシェル(Windows)に頼むこと。WPF / シェル実行 / 再起動を ViewModel から切り離し、WSL の CI でテストできるようにする。
+/// 設定ページがシェル(Windows)に頼むこと。WPF / シェル実行 / 再起動を ViewModel から切り離し、WSL でもテストできるようにする。
 /// </summary>
 public interface ISettingsPageActions
 {

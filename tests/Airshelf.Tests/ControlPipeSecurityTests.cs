@@ -57,7 +57,7 @@ public sealed class ControlPipeSecurityTests
     [Fact]
     public void ForUser_ユーザーのSIDを所有者にし_読み書きとインスタンスの作成だけをユーザーに許す()
     {
-        // SecurityIdentifier は Windows 以外で作れない(PlatformNotSupportedException)。CI(Linux)では走らない。
+        // SecurityIdentifier は Windows 以外で作れない(PlatformNotSupportedException)。WSL / Linux では走らない(Windows の CI では走る)。
         if (!OperatingSystem.IsWindows())
             return;
 

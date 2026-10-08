@@ -2,7 +2,7 @@ namespace Airshelf.Hosting.Control;
 
 /// <summary>
 /// 再適用の確認(dry-run)を、直近の設定リロードの失敗で止めるかどうか(ADR-0016 / #154)。常駐の worker から切り出した
-/// 純粋な判定(worker は Windows 専用で WSL の CI では動かないため、ここでテストする)。
+/// 純粋な判定(worker は Windows 専用で WSL では動かないため、ここでテストする)。
 /// </summary>
 public static class ReapplyPlanGate
 {
