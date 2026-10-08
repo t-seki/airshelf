@@ -679,7 +679,7 @@ Jellyfin/NAS 同期・radikool 移行は**疎結合な拡張**として隔離し
   管理画面から操作したときの結果は、バルーンではなく画面の中に出す。
 - **縮退時**(設定が読めない):管理画面は開けるが、設定を読めない理由と「ファイルを開く」「再読み込みして再起動」を出す。JSON のエディタは内蔵しない。
 - **技術**:WPF + XAML + MVVM(CommunityToolkit.Mvvm)。ViewModel と計算は `Airshelf.Gui.Core` / `Airshelf.Hosting` に置いて
-  Windows の CI(WSL でも可)でテストし、シェルは薄く保つ。見た目は HTML モックで詰めてから、RC タグを実機で確かめる。
+  CI(Windows)でテストでき、Linux / WSL でもテストできるようにし、シェルは薄く保つ。見た目は HTML モックで詰めてから、RC タグを実機で確かめる。
 
 ## 11. 技術スタック・実行/開発環境
 
