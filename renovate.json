@@ -6,7 +6,7 @@
   },
   "packageRules": [
     {
-      "description": "GitHub Actions は自動マージ対象外。release.yml は self-hosted runner + contents:write で動き、タグ push でしかトリガーされないため PR の CI では検証されない。SHA pin の妥当性は人が確認する(README/dependabot.yml時代の運用を踏襲)。groupName で別グループにするのは、NuGet の minor/patch のグループに混ざると、そのグループの自動マージが止まるため。",
+      "description": "GitHub Actions は自動マージ対象外。release.yml は self-hosted runner + contents:write で動き、タグ push でしかトリガーされないため PR の CI では検証されない。SHA pin の妥当性は人が確認する(README/dependabot.yml時代の運用を踏襲)。groupName で別グループにするのは、Renovate のソースでは、NuGet の minor/patch のグループに混ざるとそのグループの自動マージが止まると読めるため。",
       "matchManagers": ["github-actions"],
       "automerge": false,
       "groupName": "github-actions",
