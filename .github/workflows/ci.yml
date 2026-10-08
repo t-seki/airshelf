@@ -47,4 +47,4 @@ jobs:
         run: dotnet build Airshelf.slnx -c Release -warnaserror --nologo
 
       - name: Test
-        run: ls -la tests/Airshelf.Tests/bin/Release/net10.0/ | head -20; tests/Airshelf.Tests/bin/Release/net10.0/Airshelf.Tests 2>&1 | tail -5; dotnet test --project tests/Airshelf.Tests/Airshelf.Tests.csproj -c Release --no-build --nologo --output Detailed --diagnostic --diagnostic-verbosity Trace --diagnostic-output-directory /tmp/d 2>&1 | tail -5; ls /tmp/d; cat /tmp/d/* | cut -c1-250 | tail -40; exit 1
+        run: dotnet --version; dotnet --list-sdks; dotnet --list-runtimes; exit 1
