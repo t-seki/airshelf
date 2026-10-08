@@ -14,31 +14,31 @@
   により **WSL/Linux でコンパイルできます**。つまり**ソリューション全体のビルドとテストは WSL で完結**します。
   実行については両者で違います — **`Gui` は WPF/WinForms のランタイムが無いので Linux では起動しません**が、
   **`Cli` は Debug ビルドなら Linux でも起動します**
-  (`dotnet src/Radirec.Cli/bin/Debug/net10.0-windows/radirec.dll --help` 等)。**Release ビルドは起動しません** —
-  `Radirec.Cli.csproj` が Release のときだけ `RuntimeIdentifier=win-x64` / `SelfContained=true` にするので、
+  (`dotnet src/Airshelf.Cli/bin/Debug/net10.0-windows/radirec.dll --help` 等)。**Release ビルドは起動しません** —
+  `Airshelf.Cli.csproj` が Release のときだけ `RuntimeIdentifier=win-x64` / `SelfContained=true` にするので、
   `bin/Release/net10.0-windows/win-x64/radirec.dll` を `dotnet` で起動すると `libhostpolicy.so` が見つからずに終了します。
   WSL で CLI を動かして確かめるときは Debug ビルドを使ってください。ただし本番の実行環境は Windows 前提で、
   出荷物は win-x64 self-contained、config が指すパス(`I:`, UNC)も Windows のものです。
-- テストフィクスチャ(`tests/Radirec.Tests/Fixtures/silent.m4a`)は著作権フリーの無音 M4A で、
+- テストフィクスチャ(`tests/Airshelf.Tests/Fixtures/silent.m4a`)は著作権フリーの無音 M4A で、
   リポジトリに含まれています(再生成には ffmpeg が必要ですが通常は不要)。
 
 ## ビルドとテスト
 
 ```bash
-dotnet build Radirec.slnx        # ソリューション全体(Windows 専用プロジェクト含む)
-dotnet test  Radirec.slnx        # 全テスト(xUnit)
-dotnet test  Radirec.slnx --filter "FullyQualifiedName~RajirekoImporter"  # 絞り込み
+dotnet build Airshelf.slnx        # ソリューション全体(Windows 専用プロジェクト含む)
+dotnet test  Airshelf.slnx        # 全テスト(xUnit)
+dotnet test  Airshelf.slnx --filter "FullyQualifiedName~RajirekoImporter"  # 絞り込み
 ```
 
-> ソリューションは新形式 `Radirec.slnx`(.NET 10 既定)です。NuGet は Central Package Management
+> ソリューションは新形式 `Airshelf.slnx`(.NET 10 既定)です。NuGet は Central Package Management
 > (`Directory.Packages.props`)で版を一元管理、共通ビルド設定は `Directory.Build.props`。
 
 **CI(`.github/workflows/ci.yml`)は PR と main への push で次を走らせます** — 手元で同じコマンドを
 打てば CI と同じ検証になります(フラグは不要):
 
 ```bash
-dotnet build Radirec.slnx -c Release -warnaserror
-dotnet test  Radirec.slnx -c Release --no-build
+dotnet build Airshelf.slnx -c Release -warnaserror
+dotnet test  Airshelf.slnx -c Release --no-build
 ```
 
 CI は **GitHub-hosted の Linux runner** で動きます。`release.yml` が「PR ビルドは self-hosted で
@@ -71,7 +71,7 @@ PR を検証するための構成です。**`-warnaserror` は CI のみ**で、
 手元で今すぐ確認したいときは:
 
 ```bash
-dotnet list Radirec.slnx package --vulnerable --include-transitive
+dotnet list Airshelf.slnx package --vulnerable --include-transitive
 ```
 
 ## リリース(タグ → GitHub Release)
@@ -100,13 +100,13 @@ Git for Windows を PATH に置く、こと。
 ## プロジェクト構成
 
 ```
-src/Radirec.Core/     ドメインロジック(OS 非依存・テスト可能)
-src/Radirec.Hosting/  合成ルート + 環境設定・パス解決 + 制御(Control/)。Cli と Gui が共有する
-src/Radirec.Cli/      単一 exe radirec.exe。普段の運用とエージェントの窓口(ingest / reapply / refresh / history / attention / status / reload)。Program.cs だけの薄い入口
-src/Radirec.Cli.Core/ Cli のテスト可能な核(コマンド・--json の形・終了コード・CommandApp の設定。net10.0)
-src/Radirec.Gui/      本番の常駐本体 Radirec.Gui.exe。取り込みワーカー + トレイ + 通知 + 管理画面(XAML)+ 自己更新
-src/Radirec.Gui.Core/ Gui のテスト可能な提示ロジックと管理画面の ViewModel(WinRT/WPF/WinForms シェルから隔離)
-tests/Radirec.Tests/  xUnit
+src/Airshelf.Core/     ドメインロジック(OS 非依存・テスト可能)
+src/Airshelf.Hosting/  合成ルート + 環境設定・パス解決 + 制御(Control/)。Cli と Gui が共有する
+src/Airshelf.Cli/      単一 exe radirec.exe。普段の運用とエージェントの窓口(ingest / reapply / refresh / history / attention / status / reload)。Program.cs だけの薄い入口
+src/Airshelf.Cli.Core/ Cli のテスト可能な核(コマンド・--json の形・終了コード・CommandApp の設定。net10.0)
+src/Airshelf.Gui/      本番の常駐本体 Radirec.Gui.exe。取り込みワーカー + トレイ + 通知 + 管理画面(XAML)+ 自己更新
+src/Airshelf.Gui.Core/ Gui のテスト可能な提示ロジックと管理画面の ViewModel(WinRT/WPF/WinForms シェルから隔離)
+tests/Airshelf.Tests/  xUnit
 ```
 
 **本番の常駐は `Radirec.Gui`(トレイ)**で([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md)。`service` verb は廃止)、
@@ -218,7 +218,7 @@ Radirec.Tests ──> Radirec.Core / Radirec.Hosting / Radirec.Gui.Core / Radire
 ### マージ前の検証
 
 なし。CI(`.github/workflows/ci.yml`、GitHub-hosted Linux)が PR ごとに
-`dotnet build Radirec.slnx -c Release -warnaserror` と `dotnet test` を走らせ、手元で同じコマンドを
+`dotnet build Airshelf.slnx -c Release -warnaserror` と `dotnet test` を走らせ、手元で同じコマンドを
 打つのと同じ検証になる([ビルドとテスト](#ビルドとテスト))。`Radirec.Gui` は WSL/Linux で起動できないので、
 GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる**。
 
@@ -226,8 +226,8 @@ GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる
 
 自動。ただし**次のパスを触る PR は承認制**:
 
-- `src/Radirec.Gui/` — WSL で起動できず、CI では画面を確かめられない。実機で見てから入れる
-- `src/Radirec.Core/Ledger/` — 台帳スキーマとマイグレーション。壊れると既存の台帳に影響する
+- `src/Airshelf.Gui/` — WSL で起動できず、CI では画面を確かめられない。実機で見てから入れる
+- `src/Airshelf.Core/Ledger/` — 台帳スキーマとマイグレーション。壊れると既存の台帳に影響する
 - `.github/workflows/` — 中の 2 本はどちらも自動では入れられない:
   - `ci.yml` は自動マージの条件にしている CI そのもの。変えると検証が緩みうる
   - `release.yml` は母艦の self-hosted runner + `contents: write` で動き、PR の CI では検証されない
@@ -285,7 +285,7 @@ ADR や requirements の「決定当時の記録」に、後から見て事実�
 
 前提: `e2e-tray-toast.ps1` の隔離設定(本番資産に触れない)。**EventLog への注入は不要** — 実ファイルを
 置いてスキャンを起こすだけで再現できます。壊れた録音は「非閏年 2/29」等のパース不能な名前で作れます
-(`tests/Radirec.Tests/IngestServiceTests.cs` の `BadFile()` 参照)。
+(`tests/Airshelf.Tests/IngestServiceTests.cs` の `BadFile()` 参照)。
 
 **不在中サマリ**(1 走査 = 最大 1 要約。[CONTEXT.md](../CONTEXT.md) が語彙の権威):
 - [ ] **起動時集約**: トレイを終了 → 有効な録音を **2 件**(別番組/同一番組を混ぜる)置く → トレイ起動 →

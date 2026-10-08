@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 常駐トレイ(Airshelf.Gui)のクロスプラットフォームな核 = テスト可能な提示ロジック
+       (トースト文面の組み立て・取込履歴行の整形・版表示・状態の文言)と、管理画面の ViewModel(#151)。
+       WPF/WinForms/WinRT シェルはこれを薄く包むだけ。Windows 依存を持たず単体テスト可能
+       (TFM は Directory.Build.props の net10.0 を継承)。ADR-0012 / requirements §10.3。 -->
+  <ItemGroup>
+    <!-- 履歴行の整形が Core の LedgerEntry を受けるため参照する(ドメイン型のみ・Windows 非依存)。 -->
+    <ProjectReference Include="..\Airshelf.Core\Airshelf.Core.csproj" />
+    <!-- 管理画面の ViewModel が制御面(IServiceControl / ServiceStatusSnapshot。Hosting/Control/)をそのまま受け取る
+         (#151 の設計の決定 1)。Gui.Core 側にインタフェースを切ると IServiceControl の写しとアダプタができ、
+         制御面を足すたびに両方を直すことになるため。Hosting も net10.0(依存は Core だけ)なので WSL の CI で
+         ビルド・テストできる。 -->
+    <ProjectReference Include="..\Airshelf.Hosting\Airshelf.Hosting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+</Project>

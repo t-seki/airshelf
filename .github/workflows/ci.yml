@@ -4,7 +4,7 @@ name: ci
 #
 # **なぜ ubuntu-latest か**: release.yml は「PR ビルドは self-hosted で走らせない」と決めている
 # (母艦 Windows PC の runner を PR のコードに晒さない)。その判断は維持したまま PR を検証するため、
-# GitHub-hosted の Linux runner を使う。`-windows` TFM のプロジェクト(Radirec.Cli / Radirec.Gui)も
+# GitHub-hosted の Linux runner を使う。`-windows` TFM のプロジェクト(Airshelf.Cli / Airshelf.Gui)も
 # 各 csproj の EnableWindowsTargeting により **Linux でコンパイルできる**
 # (Gui は WPF/WinForms のランタイムが無いので実行不可。Cli は Debug ビルドなら Linux でも起動する。
 # この CI は -c Release でビルドするだけで、Cli を起動はしない)。
@@ -40,11 +40,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # Radirec.slnx の全プロジェクト(Windows 専用の Cli / Gui を含む)をビルドする。
+      # Airshelf.slnx の全プロジェクト(Windows 専用の Cli / Gui を含む)をビルドする。
       # 警告は現状 0 なので -warnaserror で 0 を維持する。SDK 更新で新アナライザが増えて落ちた場合は
       # その指摘を潰すか、必要なら個別に抑制する(release.yml には入れない — リリースを警告で止めないため)。
       - name: Build
-        run: dotnet build Radirec.slnx -c Release -warnaserror --nologo
+        run: dotnet build Airshelf.slnx -c Release -warnaserror --nologo
 
       - name: Test
-        run: dotnet test Radirec.slnx -c Release --no-build --nologo
+        run: dotnet test Airshelf.slnx -c Release --no-build --nologo

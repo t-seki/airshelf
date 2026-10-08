@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- CLI(radirec.exe)のクロスプラットフォームな核 = コマンド・JSON の形・終了コード・CommandApp の設定(#178)。
+       exe(Airshelf.Cli)は net10.0-windows で、Release では win-x64 の自己完結 exe になるため、Linux の CI から
+       テストで参照できない。Airshelf.Gui / Airshelf.Gui.Core と同じく、テストできる部分をここへ分け、exe は Program.cs だけの
+       薄い入口にする(TFM は Directory.Build.props の net10.0 を継承)。Spectre は Hosting(トレイと共有する合成層)に
+       入れず、ここだけが参照する。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\Airshelf.Core\Airshelf.Core.csproj" />
+    <ProjectReference Include="..\Airshelf.Hosting\Airshelf.Hosting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console.Cli" />
+  </ItemGroup>
+</Project>

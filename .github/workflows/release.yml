@@ -55,7 +55,7 @@ jobs:
 
       - name: Test
         shell: pwsh
-        run: dotnet test Radirec.slnx -c Release --nologo
+        run: dotnet test Airshelf.slnx -c Release --nologo
 
       # トレイ(Radirec.Gui.exe)と単発 CLI(radirec.exe)を **1 フォルダ**へ publish する。
       # Velopack は「フォルダ一式」を配布物として扱うため、単一 exe ではなく self-contained の
@@ -66,9 +66,9 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           $pub = "publish"
-          dotnet publish src/Radirec.Gui -c Release -r win-x64 --self-contained `
+          dotnet publish src/Airshelf.Gui -c Release -r win-x64 --self-contained `
             -p:PublishSingleFile=false -p:Version=$env:VERSION -o $pub
-          dotnet publish src/Radirec.Cli -c Release -r win-x64 --self-contained `
+          dotnet publish src/Airshelf.Cli -c Release -r win-x64 --self-contained `
             -p:PublishSingleFile=false -p:Version=$env:VERSION -o $pub
 
       # Velopack CLI(vpk)を導入し PATH へ通す。self-hosted runner は永続でツールが残るため、
@@ -104,5 +104,5 @@ jobs:
         run: |
           $repo = "${{ github.server_url }}/${{ github.repository }}"
           vpk pack -u Radirec -v $env:VERSION -p publish -e Radirec.Gui.exe `
-            --packTitle "Radirec" --icon src/Radirec.Gui/Assets/radirec.ico
+            --packTitle "Radirec" --icon src/Airshelf.Gui/Assets/radirec.ico
           vpk upload github --repoUrl $repo --tag $env:TAG --releaseName "Radirec $env:VERSION"

@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Airshelf.Cli/Airshelf.Cli.csproj" />
+    <Project Path="src/Airshelf.Cli.Core/Airshelf.Cli.Core.csproj" />
+    <Project Path="src/Airshelf.Core/Airshelf.Core.csproj" />
+    <Project Path="src/Airshelf.Gui/Airshelf.Gui.csproj" />
+    <Project Path="src/Airshelf.Gui.Core/Airshelf.Gui.Core.csproj" />
+    <Project Path="src/Airshelf.Hosting/Airshelf.Hosting.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Airshelf.Tests/Airshelf.Tests.csproj" />
+  </Folder>
+</Solution>

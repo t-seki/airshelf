@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 本番の常駐本体(取り込みワーカー + トレイ)。非パッケージ WPF + 従来 WinRT トースト(ADR-0009 / 0012)。
+       WinRT トースト API のため Windows SDK バージョン付き TFM が必要。NotifyIcon(トレイ)のため
+       WinForms も併用。ビルド/実行は Windows のみ(WSL では検証不可)。 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>Airshelf.Gui</RootNamespace>
+    <AssemblyName>Radirec.Gui</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- WPF/WinForms を含む Windows ターゲットを非 Windows(WSL/Linux CI)でもビルド可能にする。
+         Windows 実機ビルドでは無害。実行/トースト表示は Windows のみ。 -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- exe の Win32 アイコン(Explorer / タスクバー / Alt-Tab)。トレイ表示は同じ ico を
+         EmbeddedResource からロードする(Program.cs。PublishSingleFile では loose file が使えない)。 -->
+    <ApplicationIcon>Assets/radirec.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- 配布は Cli と同じく単一自己完結 exe(ADR-0005 / 0009)。Release 時のみ重い publish 設定。 -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Airshelf.Gui.Core\Airshelf.Gui.Core.csproj" />
+    <!-- トレイ常駐移行(ADR-0012): 取り込みワーカーをトレイプロセスでホストするため
+         合成層(Hosting)を直接参照する(Gui→Hosting→Core)。 -->
+    <ProjectReference Include="..\Airshelf.Hosting\Airshelf.Hosting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- トレイアイコン(NotifyIcon)用。LogicalName を明示して Program.cs のロード名と固定で一致させる。 -->
+    <EmbeddedResource Include="Assets/radirec.ico" LogicalName="Airshelf.Gui.Assets.radirec.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 初回起動時の設定 seeding 用 sample(ADR-0013 / S5)。install.ps1 が配布していた sample を
+         アプリに埋め込み、初回にデータルート(%LOCALAPPDATA%\RadirecData\)へ生成する(既存は温存)。 -->
+    <EmbeddedResource Include="..\..\config\radirec.sample.json" LogicalName="Airshelf.Gui.Samples.radirec.sample.json" />
+    <EmbeddedResource Include="..\..\config\stations.sample.json" LogicalName="Airshelf.Gui.Samples.stations.sample.json" />
+    <EmbeddedResource Include="..\..\config\programs.sample.json" LogicalName="Airshelf.Gui.Samples.programs.sample.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.WinUI.Notifications" />
+    <!-- 取り込みワーカーのホスティング(BackgroundService / Host)と電源イベント購読(ADR-0003/0012)。 -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" />
+    <!-- per-user 自己更新(ADR-0013 / S5・S6)。 -->
+    <PackageReference Include="Velopack" />
+  </ItemGroup>
+
+</Project>
