@@ -139,17 +139,19 @@ Dependency Dashboard(#255)が警告を出していても、次の 2 つは置き
 
 **`CommunityToolkit.WinUI.Notifications`**(7.1.2)
 
-- Dashboard の表示: NuGet で非推奨(Legacy)。後継は `Microsoft.WindowsAppSDK` で、「通知のヘルパーは Windows App SDK に移った」とある
-  (NuGet の registration API で確認、2026-10-08)。
+- Dashboard の表示: NuGet で非推奨(Legacy)。
+- NuGet の非推奨情報の中身(Dashboard の表示ではない): 後継は `Microsoft.WindowsAppSDK`、「通知のヘルパーは Windows App SDK に移った」という説明。
+  2026-10-08 に registration API で確認した
+  (https://api.nuget.org/v3/registration5-gz-semver2/communitytoolkit.winui.notifications/index.json )。
 - 使い続ける理由: 後継の `AppNotificationManager` は、今は self-contained 配布と unpackaged アプリでも使える
   ([ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) が採らなかった理由の「Singleton MSIX への依存」は、
   字句どおりには当てはまらなくなった)。ただし Airshelf の組み合わせ(unpackaged + self-contained、トーストのクリックで
   管理画面のホームを開く #237 / #248)では、クリックを受けるのに要る `AppNotificationManager.Register()` が
-  0x8007007E(`Microsoft.WindowsAppRuntime.Insights.Resource.dll` を読めない)で失敗する不具合が、2.5.1 でも直っていない:
-  https://github.com/microsoft/WindowsAppSDK/issues/6774 (2026-09-18 起票、2026-10-08 時点で open)。
+  0x8007007E(`Microsoft.WindowsAppRuntime.Insights.Resource.dll` を読めない)で失敗する不具合が、2.5.1 でも直っていないと報告されている:
+  https://github.com/microsoft/WindowsAppSDK/issues/6774 (2026-09-18 起票、2026-10-08 時点で open。再現はこの repo では確かめていない)。
   前の https://github.com/microsoft/WindowsAppSDK/issues/6071 は修正の PR で閉じられたが、2.3.1 / 2.4.0 / 2.5.1 で同じ症状が
-  報告されている。Windows App SDK のランタイムを別に入れれば回避できるが、Velopack の per-user の自己完結の配布
-  ([ADR-0013](adr/0013-velopack-per-user-updates.md))が崩れる。今のパッケージは非推奨でも動いている。
+  報告されている。報告では Windows App SDK のランタイムを別に入れれば回避できるとあるが(未確認)、そうすると
+  Velopack の per-user の自己完結の配布([ADR-0013](adr/0013-velopack-per-user-updates.md))が崩れる。今のパッケージは非推奨でも動いている。
 - 見直すきっかけ: WindowsAppSDK#6774 が直ったとき(移す前提は「unpackaged + self-contained で `Register()` が通り、
   クリックが届くこと」)。または Windows / .NET の更新で今のトーストが出なくなったとき。
 - 未確認: #6774 の報告にある「例外を握りつぶせば `Show()` でトーストは出るがクリックは届かない」は報告者の記述で、

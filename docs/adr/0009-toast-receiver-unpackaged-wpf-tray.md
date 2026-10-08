@@ -1,6 +1,13 @@
 # 取込通知の受け手は非パッケージ WPF トレイアプリ + 従来 WinRT トーストにする
 
-Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#19 の受け手 GUI / #5 の tracer slice。#36・#37 でマージ済み)。**ADR-0012 でトレイは「受け手(subscriber)」から「取り込みワーカーを内包する常駐本体」へ**。WPF トレイ + WinRT トースト選定は維持。不在中サマリの機構は変質(EventLog bookmark → 起動時 catch-up スキャン結果の集約)、bookmark / RecordId 単調ガード / catch-up 参加は削除。**#237(2026-09-28)で保留・取込失敗のトーストはクリックを受け取るようになった — 下の追記を参照**
+Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-per-user.md)(#19 の受け手 GUI / #5 の tracer slice。#36・#37 でマージ済み)。**ADR-0012 でトレイは「受け手(subscriber)」から「取り込みワーカーを内包する常駐本体」へ**。WPF トレイ + WinRT トースト選定は維持。不在中サマリの機構は変質(EventLog bookmark → 起動時 catch-up スキャン結果の集約)、bookmark / RecordId 単調ガード / catch-up 参加は削除。**#237(2026-09-28)で保留・取込失敗のトーストはクリックを受け取るようになった — 下の追記を参照**。**#272(2026-10-08)で、WindowsAppSDK を採らない理由の Singleton MSIX は古くなり、今の理由は別の不具合になった(決定は変えない) — 下の追記を参照**
+
+> **追記(#272、2026-10-08。本文は決定当時の記録なので直さない)**: 本文の WindowsAppSDK を採らない理由のうち、
+> Singleton MSIX への依存は古くなった。今の `AppNotificationManager` は self-contained 配布と unpackaged アプリでも使える。
+> 採らない理由は今は別で、unpackaged + self-contained の組み合わせでクリックを受けるのに要る
+> `AppNotificationManager.Register()` が 0x8007007E で失敗する不具合(https://github.com/microsoft/WindowsAppSDK/issues/6774 )が
+> 2.5.1 でも直っていないと報告されていること(この repo では再現を確かめていない)。**決定(従来トースト)は変えない**。経緯と見直すきっかけは
+> `docs/development.md` の「非推奨・放置と出ているが使い続ける依存」に書いた。
 
 > **追記(#237、2026-09-28。本文は決定当時の記録なので直さない)**:「表示専用に割り切る」を、保留と取込失敗のトーストについて外した。
 > どちらも管理画面の要対応に載る事柄の知らせで、トーストから判断へすぐ行けると、判断まで(保留なら Jellyfin に回が来るまで)が短くなるため。
@@ -17,13 +24,6 @@ Status: accepted / amended by [ADR-0012](0012-retire-service-for-tray-resident-p
 >   トレイが起動するだけ。
 > - **要実機検証(Windows)**: 開いている・閉じている・最小化している管理画面、トレイ停止中のアクションセンターからのクリック、
 >   新規取込のトーストが反応しないこと、前面に出ること(フォーカスの奪取)。
-
-> **追記(#272、2026-10-08。同じく本文は決定当時の記録なので直さない)**: 本文の WindowsAppSDK を採らない理由のうち、
-> Singleton MSIX への依存は古くなった。今の `AppNotificationManager` は self-contained 配布と unpackaged アプリでも使える。
-> 採らない理由は今は別で、unpackaged + self-contained の組み合わせでクリックを受けるのに要る
-> `AppNotificationManager.Register()` が 0x8007007E で失敗する不具合(https://github.com/microsoft/WindowsAppSDK/issues/6774 )が
-> 直っていないこと。**決定(従来トースト)は変えない**。経緯と見直すきっかけは
-> `docs/development.md` の「非推奨・放置と出ているが使い続ける依存」に書いた。
 
 [ADR-0008](0008-ingest-notification-via-eventlog-signal.md) でサービスは取込要約シグナルを EventLog(EventID 1001)へ発行するようにした。その**受け手**(ユーザーセッションでネイティブトーストを出す常駐アプリ)を、#5(M5 デスクトップ編集アプリ・保留中)の**最初の tracer slice** として実装する。編集グリッド等の本体は保留のまま、まず「1001 を購読しトースト表示するだけ」の最小 GUI を作る。
 
