@@ -31,7 +31,7 @@ jobs:
 
       # NuGet のグローバルキャッシュ(既定は ~/.nuget/packages)を、ジョブごとの一時領域へ向ける。
       # 永続 runner の同じ OS ユーザーで動く PR の CI が書いたキャッシュを、release が restore で使わないようにする
-      # (ADR-0023)。以降の全ステップに効く(GITHUB_ENV)。runner コンテキストは run の中では使えないので RUNNER_TEMP で組む。
+      # (ADR-0023)。以降の全ステップに効く(GITHUB_ENV)。run に式を展開せず、環境変数 RUNNER_TEMP(GitHub の docs では runner.temp と同じ場所)で組む。
       - name: Isolate NuGet cache
         shell: pwsh
         run: '"NUGET_PACKAGES=$env:RUNNER_TEMP\nuget-packages" | Out-File -FilePath $env:GITHUB_ENV -Append'
@@ -84,8 +84,8 @@ jobs:
       # self-hosted runner は永続で、PR の CI(ci.yml)と同じ OS ユーザーで動く。グローバルのツール置き場
       # (%USERPROFILE%\.dotnet\tools)に入れると、CI が書き換えたものを release が使いうるので、
       # `-g` ではなく --tool-path でジョブごとの場所に入れる(ADR-0023)。runner.temp はジョブの初めと終わりに
-      # 空になる(GitHub の docs の runner コンテキストの説明。この runner での実測ではない)ので、
-      # 毎回新しく入る(update の冪等さに頼らない)。ただし同じ OS ユーザーなので、悪意のあるコードまでは防げない。
+      # 空になる(GitHub の docs の runner コンテキストの説明。この runner での実測ではない)ので
+      # 普通は毎回新しく入る。空でなくても動くよう install ではなく update にする(冪等)。ただし同じ OS ユーザーなので、悪意のあるコードまでは防げない。
       # 版は Directory.Packages.props の Velopack の版を読んで渡す(vpk はパッケージと版が一致している必要がある。
       # 出どころを 1 つにして、Renovate が Velopack を上げても食い違わない)。
       # 読めなければ(行が無い・版が空)throw してリリースを止める。
@@ -96,7 +96,7 @@ jobs:
           $velopack = $node.Node.Version
           if (-not $velopack) { throw "Directory.Packages.props から Velopack の版を読めなかった" }
           $toolPath = Join-Path $env:RUNNER_TEMP "vpk"
-          dotnet tool install vpk --tool-path $toolPath --version $velopack
+          dotnet tool update vpk --tool-path $toolPath --version $velopack
           $toolPath | Out-File -FilePath $env:GITHUB_PATH -Append
 
       # 直近リリースを取得して delta の差分基準にする。初回(Velopack リリースがまだ無い)は

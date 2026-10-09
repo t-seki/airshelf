@@ -15,9 +15,10 @@ PR の CI は、restore した NuGet パッケージの MSBuild ターゲット�
 
 ## 決定
 
-- **`release.yml` の NuGet キャッシュと vpk を、ジョブごとの一時領域(`runner.temp`)の下に置く**。
-  - `NUGET_PACKAGES` を `runner.temp` の下に向ける(`GITHUB_ENV` 経由で以降の全ステップに効かせる)。
-  - vpk は `dotnet tool update -g` をやめ、`dotnet tool install --tool-path <runner.temp の下>` で入れて `GITHUB_PATH` に足す。
+- **`release.yml` の NuGet のグローバルパッケージフォルダと vpk を、ジョブごとの一時領域(`runner.temp`)の下に置く**。
+  - `NUGET_PACKAGES` を `runner.temp` の下に向ける(`GITHUB_ENV` 経由で以降の全ステップに効かせる)。分けるのはこのフォルダだけ。
+  - vpk は `dotnet tool update -g` をやめ、`dotnet tool update vpk --tool-path <runner.temp の下>` で入れて `GITHUB_PATH` に足す
+    (置き場が空なら新しく入り、残っていても冪等)。
     版は `Directory.Packages.props` の Velopack の版を読んで渡す(#281 の決定のまま)。
   - `runner.temp` はジョブの初めと終わりに空になる、というのは GitHub の docs(runner コンテキストの `runner.temp` の説明)の記述で、
     この runner での実測ではない。
@@ -39,7 +40,8 @@ PR の CI は、restore した NuGet パッケージの MSBuild ターゲット�
 
 ## 結果
 
-- release は毎回、空の NuGet キャッシュで restore し、vpk を入れ直す。そのぶんタグ push のビルドは少し遅くなりうる(未計測)。
+- `runner.temp` が毎回空になるなら(GitHub の docs の記述で、この runner での実測ではない)、release は空の NuGet のグローバルパッケージフォルダで
+  restore し、vpk を入れ直す。そのぶんタグ push のビルドは少し遅くなりうる(未計測)。
 - 防げるのは事故の汚れだけで、同じ OS ユーザーである限り、悪意のある CI のコードは release の信頼境界に届きうる。
 - `release.yml` は PR の CI では確かめられない。次のタグ push で、vpk が `runner.temp` の下から動いたことと、
   restore が新しいキャッシュに入ったことを見る。
