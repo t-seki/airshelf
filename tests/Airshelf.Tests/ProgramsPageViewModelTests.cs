@@ -813,27 +813,47 @@ public sealed class ProgramsPageViewModelTests : IDisposable
         Assert.False(vm.HasChanges);
     }
 
+    // Windows 用。現在のユーザーへの CreateFiles の Deny ACE を付ける / 外す(テストの一時フォルダだけを書き換える)。
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void SetCreateFilesDeny(string path, bool deny)
+    {
+        var info = new DirectoryInfo(path);
+        var rule = new System.Security.AccessControl.FileSystemAccessRule(
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            System.Security.AccessControl.FileSystemRights.CreateFiles,
+            System.Security.AccessControl.AccessControlType.Deny);
+        var acl = info.GetAccessControl();
+        if (deny)
+            acl.AddAccessRule(rule);
+        else
+            acl.RemoveAccessRule(rule);
+        info.SetAccessControl(acl);
+    }
+
     [Fact]
     public async Task Write_failure_W277_keeps_file_and_draft()
     {
-        // フォルダを読み取り専用にして、バックアップ(一時ファイル)を作れなくする。Unix のアクセス権で作るので
-        // Windows では確かめない(CI は Windows なので CI では素通りする。WSL / Linux で走る)。
-        if (OperatingSystem.IsWindows())
-            return;
-
+        // フォルダにファイルを作れなくして、バックアップ(一時ファイル)を作れなくする。Windows では現在のユーザーへの
+        // CreateFiles の Deny ACE、Unix ではアクセス権(読み取り専用)で作る。
         var control = new FakeControl();
         var vm = await CreateLoaded(control);
         AddAnzu(vm);
         await vm.ConfirmCommand.ExecuteAsync(null);
-        var mode = File.GetUnixFileMode(_dir);
-        File.SetUnixFileMode(_dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        var mode = OperatingSystem.IsWindows() ? default : File.GetUnixFileMode(_dir);
+        if (OperatingSystem.IsWindows())
+            SetCreateFilesDeny(_dir, deny: true);
+        else
+            File.SetUnixFileMode(_dir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
         try
         {
             await vm.SaveAndApplyCommand.ExecuteAsync(null);
         }
         finally
         {
-            File.SetUnixFileMode(_dir, mode);
+            if (OperatingSystem.IsWindows())
+                SetCreateFilesDeny(_dir, deny: false);
+            else
+                File.SetUnixFileMode(_dir, mode);
         }
 
         Assert.StartsWith("書き込みに失敗しました: ", vm.ResultHeading);
