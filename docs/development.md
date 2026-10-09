@@ -49,7 +49,14 @@ CI は **母艦 Windows PC の self-hosted runner**(`runs-on: [self-hosted, wind
 `release.yml` と共有の永続 runner で、同時に動くのは 1 ジョブ)で動きます。private repo の
 GitHub-hosted の無料枠を使い切ったためで、PR の CI を母艦で回すこと(Renovate が上げた依存が母艦で
 動くこと)は受け入れています。public にする場合は GitHub-hosted に戻します(fork の PR が `runs-on` を
-書き換えて母艦で任意のコードを動かせるため)。**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
+書き換えて母艦で任意のコードを動かせるため)。
+
+release は NuGet のグローバルパッケージフォルダ(`NUGET_PACKAGES`)と vpk をジョブごとの一時領域
+(`runner.temp`)に置き、CI が書いたものを使いません。ただし同じ OS ユーザーで動くので、悪意のあるコードまでは
+防げません(防げるのは事故の汚れだけ)。repo が private で、PR を出すのが owner と Renovate だけであることを
+理由に受け入れています([ADR-0023](adr/0023-accept-shared-runner-user-between-ci-and-release.md))。
+
+**`-warnaserror` は CI のみ**で、リリース(`release.yml`)には入れません —
 警告で出荷が止まるのを避けるためです。
 
 ### 依存の更新・脆弱性(Renovate)
