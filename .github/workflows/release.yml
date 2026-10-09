@@ -29,6 +29,13 @@ jobs:
         with:
           clean: true
 
+      # NuGet のグローバルキャッシュ(既定は ~/.nuget/packages)を、ジョブごとの一時領域へ向ける。
+      # 永続 runner の同じ OS ユーザーで動く PR の CI が書いたキャッシュを、release が restore で使わないようにする
+      # (ADR-0023)。以降の全ステップに効く(GITHUB_ENV)。runner コンテキストは run の中では使えないので RUNNER_TEMP で組む。
+      - name: Isolate NuGet cache
+        shell: pwsh
+        run: '"NUGET_PACKAGES=$env:RUNNER_TEMP\nuget-packages" | Out-File -FilePath $env:GITHUB_ENV -Append'
+
       - name: Setup .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         env:
@@ -73,18 +80,24 @@ jobs:
           dotnet publish src/Airshelf.Cli -c Release -r win-x64 --self-contained `
             -p:PublishSingleFile=false -p:Version=$env:VERSION -o $pub
 
-      # Velopack CLI(vpk)を導入し PATH へ通す。self-hosted runner は永続でツールが残るため、
-      # install(既存だと非ゼロ終了)ではなく **update で冪等**にする。版は Directory.Packages.props の
-      # Velopack の版を読んで渡す(vpk はパッケージと版が一致している必要がある。出どころを 1 つにして、
-      # Renovate が Velopack を上げても食い違わない)。読めなければ(行が無い・版が空)throw してリリースを止める。
+      # Velopack CLI(vpk)を、ジョブごとの一時領域(runner.temp)へ導入して PATH へ通す。
+      # self-hosted runner は永続で、PR の CI(ci.yml)と同じ OS ユーザーで動く。グローバルのツール置き場
+      # (%USERPROFILE%\.dotnet\tools)に入れると、CI が書き換えたものを release が使いうるので、
+      # `-g` ではなく --tool-path でジョブごとの場所に入れる(ADR-0023)。runner.temp はジョブの初めと終わりに
+      # 空になる(GitHub の docs の runner コンテキストの説明。この runner での実測ではない)ので、
+      # 毎回新しく入る(update の冪等さに頼らない)。ただし同じ OS ユーザーなので、悪意のあるコードまでは防げない。
+      # 版は Directory.Packages.props の Velopack の版を読んで渡す(vpk はパッケージと版が一致している必要がある。
+      # 出どころを 1 つにして、Renovate が Velopack を上げても食い違わない)。
+      # 読めなければ(行が無い・版が空)throw してリリースを止める。
       - name: Install vpk
         shell: pwsh
         run: |
           $node = Select-Xml -Path Directory.Packages.props -XPath "//PackageVersion[@Include='Velopack']"
           $velopack = $node.Node.Version
           if (-not $velopack) { throw "Directory.Packages.props から Velopack の版を読めなかった" }
-          dotnet tool update -g vpk --version $velopack
-          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+          $toolPath = Join-Path $env:RUNNER_TEMP "vpk"
+          dotnet tool install vpk --tool-path $toolPath --version $velopack
+          $toolPath | Out-File -FilePath $env:GITHUB_PATH -Append
 
       # 直近リリースを取得して delta の差分基準にする。初回(Velopack リリースがまだ無い)は
       # 取得対象が無く失敗しうるので握りつぶす(delta は最適化・full package は常に出る)。
