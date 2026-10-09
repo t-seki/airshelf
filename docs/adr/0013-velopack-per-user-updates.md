@@ -1,6 +1,8 @@
 # 更新機構は Velopack(GitHub Releases フィード)による per-user 自己更新にする
 
-Status: accepted([ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の per-user 化で解錠された更新機構の選定。**実装済み — #75 per-user 化 / #76 トレイからのアプリ内自己更新**)。**[ADR-0022](0022-rename-product-to-airshelf.md)(2026-10-08)で製品名を Airshelf に改め、Velopack の packId は `Radirec` → `Airshelf`(インストール先 `%LOCALAPPDATA%\Airshelf`)、データのフォルダは `%LOCALAPPDATA%\AirshelfData`、設定ファイルは `airshelf.json` になった(本文の名前は当時のもの。packId とデータのフォルダを別の名前にする決定は維持)**。
+Status: accepted([ADR-0012](0012-retire-service-for-tray-resident-per-user.md) の per-user 化で解錠された更新機構の選定。**実装済み — #75 per-user 化 / #76 トレイからのアプリ内自己更新**)。**[ADR-0022](0022-rename-product-to-airshelf.md)(2026-10-08)で製品名を Airshelf に改め、Velopack の packId は `Radirec` → `Airshelf`(インストール先 `%LOCALAPPDATA%\Airshelf`)、データのフォルダは `%LOCALAPPDATA%\AirshelfData`、設定ファイルは `airshelf.json` になった(本文の名前は当時のもの。packId とデータのフォルダを別の名前にする決定は維持)**。**#281(2026-10-09)で vpk の版の決め方を改めた — 下の追記を参照**
+
+> **追記(#281、2026-10-09。本文は決定当時の記録なので直さない)**: 下の `release.yml` の記述にある `--version 1.2.0` のような版の固定をやめた。決定そのもの(vpk をパッケージ Velopack と版一致させる)は変わらない。`release.yml` の Install vpk ステップが `Directory.Packages.props` の Velopack の版を読んで `dotnet tool update -g vpk --version <その版>` に渡すので、Renovate が Velopack を上げても vpk の版が食い違わない。Velopack の行が無い、または版が空のときは `throw` してリリースを止める。
 
 トレイ常駐 per-user モデル([ADR-0012](0012-retire-service-for-tray-resident-per-user.md))への移行で install が非 admin になり、デスクトップ自己更新技術が使えるようになった。更新機構に **Velopack**(旧 Squirrel / Clowd.Squirrel の後継)を採用し、**既存の GitHub Releases をフィード源**として使う。トレイが起動時・定期にフィードを照会し、新版があれば delta を取得して**稼働中 exe を差し替え → 再起動**する。
 
