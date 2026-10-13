@@ -339,10 +339,22 @@ GUI を触る PR は、**実機で見てほしい点を PR 本文に書かせる
   - `release.yml` は母艦の self-hosted runner + `contents: write` で動き、PR の CI では検証されない
     ([依存の更新・脆弱性](#依存の更新脆弱性renovate)を参照)
 
+```auto-merge
+src/Airshelf.Gui/
+src/Airshelf.Core/Ledger/
+.github/workflows/
+```
+
 ### マージ後の確認(デプロイ)
 
 なし。配布はタグ駆動(`release.yml`、[リリース](#リリースタグ--github-release))で、main へのマージだけでは
 本番(トレイ常駐の Windows 環境)に入らない。**リリースのタグ付けは Supervisor の手順に含めず、人が判断する**。
+
+### 大きさの基準
+
+`442 行・35924 バイト（a0440ab）`
+
+この development.md の大きさの基準(測り方と値の形は [REPO-SECTION.md の「大きさの基準」](https://github.com/t-seki/dotfiles/blob/main/claude/.claude/skills/supervise/REPO-SECTION.md#大きさの基準))。
 
 ## ドキュメント保守 — 当時の記録に事実誤りが見つかったとき(#113 で確立)
 
