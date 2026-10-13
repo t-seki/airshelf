@@ -32,7 +32,7 @@ dotnet test --solution Airshelf.slnx --filter-class "*RajirekoImporter*"  # 絞�
 
 > repo の `global.json` で、`dotnet test` は Microsoft.Testing.Platform(MTP)の方式で動きます。
 > solution は `--solution` で渡します(旧形式の `dotnet test Airshelf.slnx` は使えません)。
-> `dotnet test` には `--nologo` を付けません(付けると Linux の CI で「Zero tests ran」になることを確かめた。Windows では確かめていない)。
+> `dotnet test` には `--nologo` を付けません(#271 のとき、当時 Linux だった CI で、付けると「Zero tests ran」になることを確かめた。今の Windows の CI では確かめていない)。
 
 > ソリューションは新形式 `Airshelf.slnx`(.NET 10 既定)です。NuGet は Central Package Management
 > (`Directory.Packages.props`)で版を一元管理、共通ビルド設定は `Directory.Build.props`。
@@ -61,20 +61,9 @@ release は NuGet のグローバルパッケージフォルダ(`NUGET_PACKAGES`
 
 ### 依存の更新・脆弱性(Renovate)
 
-依存の更新は **Renovate** が PR として出します(#252 で Dependabot から移行。以前の `.github/dependabot.yml` は無い)。
-設定は `renovate.json` で、共通プリセット `t-seki/renovate-config` を継承します。上がってきた PR は上記 CI が
-そのままビルド + テストします。
-
-プリセット(`default.json`。`gh api repos/t-seki/renovate-config/contents/default.json` で読める)の内容:
-
-- ベースは `config:best-practices`(GitHub Actions の digest pin を含む)。
-- 実行は週次(月曜 9 時前, Asia/Tokyo)。PR には `dependencies` ラベル、Dependency Dashboard も有効。
-- **minor/patch**: 1 つのグループ(`minor and patch updates`)にまとめ、**CI が通れば自動マージ**(`platformAutomerge`)。
-- **pin / pinDigest / digest**: 同じく CI が通れば自動マージ。
-- **major**: 自動マージせず、人がレビューする(破壊的変更を見落とさないため)。
-- **lockFileMaintenance**: 週次(同じ月曜 9 時前)で有効。自動マージの規則(minor/patch、pin 系)の
-  `matchUpdateTypes` に入っていないため、プリセットを読む限り自動マージの対象ではない。実際の扱いは未確認
-  (Dashboard の「Awaiting Schedule」に `renovate/lock-file-maintenance` が出ているが、まだ PR にはなっていない)。
+依存の更新は **Renovate** が PR として出します(#252)。設定は `renovate.json` で、共通プリセット
+[`t-seki/renovate-config` の `default.json`](https://github.com/t-seki/renovate-config/blob/main/default.json)
+(どの更新を自動マージするかなど)を継承します。上がってきた PR は上記 CI がそのままビルド + テストします。
 
 この repo の `renovate.json` が上乗せしているもの:
 
@@ -82,11 +71,8 @@ release は NuGet のグローバルパッケージフォルダ(`NUGET_PACKAGES`
 - **GitHub Actions**(`matchManagers: github-actions`)は `automerge: false`、`pinDigests: true`。
   プリセットの自動マージ(minor/patch、digest)を上書きして、**Actions の更新は全部人がマージ**します。
   あわせて `groupName: "github-actions"` で、NuGet の `minor and patch updates` とは別のグループ(別 PR)に
-  分けています。Renovate のソースでは、グループ(ブランチ)の自動マージは中の更新が全部 `automerge: true` の
-  ときだけ有効になる(`config.automerge = config.upgrades.every((upgrade) => upgrade.automerge)`、
-  https://github.com/renovatebot/renovate/blob/ddc717d3a9783443691e7848a2f24ef970a6ac23/lib/workers/repository/updates/generate.ts#L466 )。
-  この読みからは、Actions(`false`)が NuGet のグループに混ざるとそのグループの自動マージが止まることになるので、
-  分けています(実際の動きは未確認。下記)。
+  分けています。Renovate のソースを読む限り、自動マージしない Actions が NuGet のグループに混ざると
+  そのグループの自動マージが止まるためです(実際の動きは未確認。下記。#266)。
   `release.yml` / `ci.yml` は action を **commit SHA で pin** していて、Renovate が SHA とバージョンコメントを
   まとめて張り替えます(手作業だと更新が途切れるため)。
   > ⚠ **`release.yml` に触れる Actions の更新 PR は、マージ前に SHA を手で確認してください。**
@@ -98,26 +84,13 @@ release は NuGet のグローバルパッケージフォルダ(`NUGET_PACKAGES`
   > diff の SHA が一致するかを見ます。
 - NuGet は上乗せなし(プリセットのとおり)。
 
-#### 自動マージの前提(確認したこと・未確認のこと)
+#### 自動マージの未確認のこと
 
-確認したこと(2026-10 時点):
-
-- Renovate の GitHub App はこの repo で動いている(#254 Configure Renovate と #255 Dependency Dashboard の作者が `app/renovate`)。
-- repo の `allow_auto_merge` は `false`(`gh api repos/t-seki/airshelf --jq .allow_auto_merge`)。
-  branch protection と rulesets の API は 403 を返す(private repo の無料プランでは使えない)。つまり
-  GitHub のプラットフォーム側の auto-merge は使えない前提。`platformAutomerge` の設定の説明
-  (https://docs.renovatebot.com/configuration-options/#platformautomerge )によれば、使えないときは
-  Renovate 自身が automerge する。
-- Renovate 自身の automerge は、必須のテストが通るのを待ってからマージする
-  (https://docs.renovatebot.com/key-concepts/automerge/ )。
-
-未確認のこと:
+最初の更新 PR で確かめる(#263・#266):
 
 - 必須チェックを設定できない(branch protection が無い)この repo で、Renovate が `build-and-test` の通過を
-  どう判定して待つか。
-- Renovate の更新 PR がマージされた実績はまだ無い。自動マージが実際に動くかは、最初の更新 PR で確かめる。
+  待ってから自動マージすること。
 - Actions の更新が `github-actions` の別 PR になり、NuGet の minor/patch の自動マージが止まらないこと。
-  最初の Actions の更新 PR で確かめる。
 
 #### 脆弱性の通知
 
@@ -128,16 +101,9 @@ release は NuGet のグローバルパッケージフォルダ(`NUGET_PACKAGES`
 
 Renovate が脆弱性の PR を出すには Dependency graph と Dependabot alerts が有効で、Renovate App に
 Dependabot alerts の read 権限が要ります(https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts )。
-2026-10-08 に次のとおり有効にしました(#265)。
+これらは有効にしてあります(#265)。
 
-- Dependabot alerts: `gh api repos/t-seki/airshelf/vulnerability-alerts` が 204(有効なら 204、無効なら 404)。
-- Dependency graph: `gh api repos/t-seki/airshelf/dependency-graph/sbom` がパッケージを返す。
-- 上の 2 つは、アカウントの Settings → Code security で全 repo に有効化し、新しい repo でも自動で有効になる設定にした
-  (人の設定。API では repo 単位の結果だけ確かめている)。
-- Renovate App の Dependabot alerts の read 権限は、人が確かめた(API では未確認)。
-
-未確認: Renovate が脆弱性の PR を実際に出すこと。最初の脆弱性の PR で確かめる。
-NU19xx を `-warnaserror` に戻す変更はしていません。
+未確認: Renovate が脆弱性の PR を実際に出すこと。最初の脆弱性の PR で確かめる(#265)。
 
 手元で今すぐ確認したいときは:
 
@@ -147,37 +113,16 @@ dotnet list Airshelf.slnx package --vulnerable --include-transitive
 
 #### 非推奨・放置と出ているが使い続ける依存
 
-Dependency Dashboard(#255)が警告を出していても、次の 2 つは置き換えずに使い続けます(#272)。
-理由と、見直すきっかけを残します。Renovate の設定でこの警告を消すことはしません。
+Dependency Dashboard(#255)が警告を出していても、次の 2 つは置き換えずに使い続けます。
+Renovate の設定でこの警告を消すことはしません。理由の詳しい経緯は #272。
 
-**`CommunityToolkit.WinUI.Notifications`**(7.1.2)
-
-- Dashboard の表示: NuGet で非推奨(Legacy)。
-- NuGet の非推奨情報の中身(Dashboard の表示ではない): 後継は `Microsoft.WindowsAppSDK`、「通知のヘルパーは Windows App SDK に移った」という説明。
-  2026-10-08 に registration API で確認した
-  (https://api.nuget.org/v3/registration5-gz-semver2/communitytoolkit.winui.notifications/index.json )。
-- 使い続ける理由: 後継の `AppNotificationManager` は、今は self-contained 配布と unpackaged アプリでも使える
-  ([ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) が採らなかった理由の「Singleton MSIX への依存」は、
-  字句どおりには当てはまらなくなった)。ただし Airshelf の組み合わせ(unpackaged + self-contained、トーストのクリックで
-  管理画面のホームを開く #237 / #248)では、クリックを受けるのに要る `AppNotificationManager.Register()` が
-  0x8007007E(`Microsoft.WindowsAppRuntime.Insights.Resource.dll` を読めない)で失敗する不具合が、2.5.1 でも直っていないと報告されている:
-  https://github.com/microsoft/WindowsAppSDK/issues/6774 (2026-09-18 起票、2026-10-08 時点で open。再現はこの repo では確かめていない)。
-  前の https://github.com/microsoft/WindowsAppSDK/issues/6071 は修正の PR で閉じられたが、2.3.1 / 2.4.0 / 2.5.1 で同じ症状が
-  報告されている。報告では Windows App SDK のランタイムを別に入れれば回避できるとあるが(未確認)、そうすると
-  Velopack の per-user の自己完結の配布([ADR-0013](adr/0013-velopack-per-user-updates.md))が崩れる。今のパッケージは非推奨でも動いている。
-- 見直すきっかけ: WindowsAppSDK#6774 が直ったとき(移す前提は「unpackaged + self-contained で `Register()` が通り、
-  クリックが届くこと」)。または Windows / .NET の更新で今のトーストが出なくなったとき。
-- 未確認: #6774 の報告にある「例外を握りつぶせば `Show()` でトーストは出るがクリックは届かない」は報告者の記述で、
-  この repo では確かめていない。https://github.com/microsoft/WindowsAppSDK/issues/6821 (unpackaged の公式サンプルで
-  `Register()` / `Show()` が成功しても通知が出ない、2026-09-29 起票、open)も同じく確かめていない。
-
-**`TagLibSharp`**(2.3.0)
-
-- Dashboard の表示: Renovate が「2022-07-30 から更新が無い」(abandoned)として出している。NuGet では非推奨になっていない。
-- 使い続ける理由: 非推奨ではなく、更新が止まっているだけ。[ADR-0015](adr/0015-output-collision-same-audio-check.md) の
-  「同じ内容かの判定」(`TagLibAudioContentComparer`)は、2.3.0 の不変区間(`InvariantStartPosition` / `InvariantEndPosition`)の
-  挙動に依っている。置き換えると、その判定を作り直すことになる。
-- 見直すきっかけ: 脆弱性が報告されたとき、または ADR-0015 の判定やタグの読み書きに響く不具合が見つかったとき。
+- **`CommunityToolkit.WinUI.Notifications`**(NuGet で非推奨): 後継の `AppNotificationManager` は、unpackaged +
+  self-contained の組み合わせでトーストのクリックを受ける `Register()` が失敗すると報告されていて、回避すると
+  Velopack の per-user の配布([ADR-0013](adr/0013-velopack-per-user-updates.md))が崩れるため。
+  見直すきっかけ: WindowsAppSDK#6774 が直ったとき、または今のトーストが出なくなったとき。
+- **`TagLibSharp`**(更新が止まっている): [ADR-0015](adr/0015-output-collision-same-audio-check.md) の
+  「同じ内容かの判定」が 2.3.0 の挙動に依っていて、置き換えると作り直すことになるため。
+  見直すきっかけ: 脆弱性が報告されたとき、または ADR-0015 の判定やタグの読み書きに響く不具合が見つかったとき。
 
 ## リリース(タグ → GitHub Release)
 
@@ -198,10 +143,8 @@ git tag v1.2.0 && git push origin v1.2.0   # → workflow が発火
 トリガはタグ push のみ(`contents: write` で Release を作るため。PR の検証は `ci.yml` が同じ runner で行う)。ランナーの導入手順は **別リポジトリ
 `t-seki/homelab`** の runbook にある(このリポジトリには無い):
 <https://github.com/t-seki/homelab/blob/main/docs/runbooks/github-actions-runner.md>。
-要点は repo ごとに `C:\actions-runner\<repo>\` へ runner を展開し(この repo の runner は改名前に登録した
-`C:\actions-runner\radirec-tool\` のまま。repo-level の登録なので、`t-seki/airshelf` への改名後もそのまま動く。#256)
-`--labels "self-hosted,windows,x64,homelab" --runasservice` で登録、`actions/checkout` のため
-Git for Windows を PATH に置く、こと。
+この repo の runner は改名前に登録した `C:\actions-runner\radirec-tool\` のまま(repo-level の登録なので、
+`t-seki/airshelf` への改名後もそのまま動く。#256)。
 
 ## プロジェクト構成
 
@@ -241,14 +184,14 @@ Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Ai
   `ServiceStatusSnapshot`)をそのまま受け取るための辺(#151)。Gui.Core 側にインタフェースを切らないのは、
   写しとアダプタを制御面の変更のたびに二重に直すことになるため。
 - 管理画面は WPF + XAML + MVVM(`CommunityToolkit.Mvvm`)。ViewModel は `Gui.Core/Management/` に置いて
-  CI(Windows)でテストでき、Linux / WSL でもテストできるようにし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする。
-  XAML(`ManagementWindow.xaml`)も `EnableWindowsTargeting` により Linux でコンパイルされる(起動はしない)。
+  テストできるようにし、`Gui` の XAML とコードビハインドはバインドとマウス・キー操作・タイマーだけの薄いシェルにする
+  (`Gui` を WSL/Linux でコンパイルはできても起動できないことは[前提](#前提))。
 - `Airshelf.Hosting` は **CLI と常駐トレイの 2 フロントエンドが共有する合成層**。だから Cli に畳まず
   独立を保つ。制御(rescan/reload/status)の型も `Hosting/Control/` にあり、トレイが in-process で叩く。CLI の
   `status` / `reload` は、同じ `Hosting/Control/` の制御チャネル(named pipe。`ControlPipeServer` / `ControlPipeClient`)で
   トレイへ頼む(#179・[ADR-0020](adr/0020-cli-as-agent-front-via-control-channel.md))。
-- `Airshelf.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`(Linux / WSL でもビルド/テスト可能。CI は Windows)、
-  `Cli` は `net10.0-windows`、`Gui` は `net10.0-windows10.0.x`。ワーカーが Windows 専用 API
+- `Airshelf.Core` / `Hosting` / `Gui.Core` / `Tests` は `net10.0`、`Cli` は `net10.0-windows`、
+  `Gui` は `net10.0-windows10.0.x`(どこでビルド・テスト・起動できるかは[前提](#前提))。ワーカーが Windows 専用 API
   (`SystemEvents.PowerModeChanged`)に依存するため、ワーカーは Hosting ではなく Gui に置いてある。
 - 編集 UI(M5)は作らないと決めた(#5、2026-09-28。§[roadmap](roadmap.md) 軸C)。
 
@@ -301,10 +244,11 @@ Airshelf.Tests ──> Airshelf.Core / Airshelf.Hosting / Airshelf.Gui.Core / Ai
 
 ## 拡張ポイント
 
-- **新しい録音ソース**(例 radikool, M4): `ISourceImporter` を実装し、`(放送局, 番組, 放送日)` を
-  抽出できるようにする。出力・台帳・正規化はそのまま再利用できる。
-- **新しい出力先**(例 Jellyfin リフレッシュ付き, M2): `IOutputTarget` を実装(`LocalFolderTarget` を
-  ラップしてスキャン起動を足す形)。
+- **新しい録音ソース**: `ISourceImporter` を実装し、`(放送局, 番組, 放送日)` を抽出できるようにして、
+  合成ルート(`Hosting/CompositionRoot.cs`)の `SourceRouter` に足す(今あるのは `RajirekoImporter` /
+  `RadikoolImporter`)。出力・台帳・正規化はそのまま再利用できる。
+- **新しい出力先**: `IOutputTarget` を実装する(今あるのは `LocalFolderTarget`)。Jellyfin のリフレッシュは
+  出力先ではなく、全ファイルの後に `ILibraryRefresher`(`Core/Jellyfin/`)が行う(上の制御フロー)。
 
 ## コーディング/コミット規約
 
@@ -352,7 +296,7 @@ src/Airshelf.Core/Ledger/
 
 ### 大きさの基準
 
-`442 行・35924 バイト（a0440ab）`
+`374 行・29062 バイト（fb9dfd5）`
 
 この development.md の大きさの基準(測り方と値の形は [REPO-SECTION.md の「大きさの基準」](https://github.com/t-seki/dotfiles/blob/main/claude/.claude/skills/supervise/REPO-SECTION.md#大きさの基準))。
 
@@ -379,8 +323,7 @@ ADR や requirements の「決定当時の記録」に、後から見て事実�
 
 ### ADR に追記を足すときの書き方
 
-上の表の「冒頭に警告ブロックを置く」は、ADR-0009 / 0011 / 0016 / 0017 / 0018 / 0019 / 0021 で次の形に揃っている
-(新しく決めたものではなく、今の形の書き起こし)。
+上の表の「冒頭に警告ブロックを置く」は、次の形で書く(既存の ADR の形の書き起こし。#275)。
 
 - **見出し**: ブロック引用の先頭に `> **追記(#N、日付。本文は決定当時の記録なので直さない)**:` と書く。
   日付は `YYYY-MM-DD`、#N は変更を入れた issue。別の ADR が決め手のときは `追記(ADR-0021・#233、…` のように ADR 番号を添える(ADR-0018)。
@@ -388,15 +331,11 @@ ADR や requirements の「決定当時の記録」に、後から見て事実�
 - **置き場所**: Status 行の直後。複数あるときは**新しいものを上**に置く(古い追記を後ろへ押し下げる)。
 - **Status 行への案内**: 追記のたびに、Status 行の末尾へ `**#N(日付)で<何が変わったか> — 下の追記を参照**` を足す。
   案内は時系列で後ろへ足していくので、追記の並び(新しいものが上)とは逆順になる。
-- **例**: [ADR-0018](adr/0018-attention-items-derived-from-state.md) は、Status 行に #172、ADR-0021・#233 の順で案内があり、
-  その下の追記は ADR-0021・#233、#172 の順。[ADR-0021](adr/0021-substitute-broadcast-held-by-filename-program-name.md) は追記が #241、#240、#239 の順。
-  ただし ADR-0021 の Status 行の案内は、#239 / #240 / #241 の 3 本の追記を 1 つの `**…**` にまとめてある(追記ごとに足した形ではない)。
 
 別の ADR が決定を覆したときの注記(ADR-0017 の ADR-0020 の注記)は、見出しが `> **[ADR-0020](…) で一部を改めた**:` で、追記より上に置く。
 Status 行の案内は「下の注記を参照」(「追記」ではない)。
 
-ADR-0012 と ADR-0020 には `追記(#N…)` ではない別の形のブロックがある(ADR-0012 は `> **⚠ 本文に、実装と食い違う記述が…**`(#113)と `> **[ADR-0020](…) で改めた(日付)**:`、
-ADR-0020 は `> **#214 で改めた(日付)**:` など)。この小節は扱わない。
+追記でも注記でもない別の形のブロック(ADR-0012・ADR-0020 にある)は、この小節では扱わない。
 
 ## E2E 手動確認(参考)
 
@@ -408,13 +347,6 @@ ADR-0020 は `> **#214 で改めた(日付)**:` など)。この小節は扱わ�
 **トレイ常駐(現行)の E2E**: 合成無音 M4A を隔離設定で流してトースト経路を検証する
 `deploy/e2e-tray-toast.ps1`(本番資産に触れない)。旧環境からの移行検証は
 [migration-to-velopack.md](migration-to-velopack.md)。
-
-> **EventLog 依存の検証手順は削除しました**([ADR-0012](adr/0012-retire-service-for-tray-resident-per-user.md))。
-> かつてここには EventLog bookmark / `subscription.json` / RecordId 単調ガードの確認と、
-> EventID 1002 を `Write-EventLog` で注入する手順がありましたが、**その機構はコードに存在しません**(#72 で撤去)。
-> 判断の記録は [ADR-0009](adr/0009-toast-receiver-unpackaged-wpf-tray.md) /
-> [ADR-0011](adr/0011-ingest-failure-as-separate-eventlog-signal.md) / ADR-0012 が持ちます。
-> **ただし検証したかった振る舞いのうち、下記は移行後も生きている**ので現行機構向けに書き直しました。
 
 ### 通知の実機検証(トレイ常駐・現行)
 
