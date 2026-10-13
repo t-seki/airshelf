@@ -71,7 +71,9 @@ release は NuGet のグローバルパッケージフォルダ(`NUGET_PACKAGES`
 - **GitHub Actions**(`matchManagers: github-actions`)は `automerge: false`、`pinDigests: true`。
   プリセットの自動マージ(minor/patch、digest)を上書きして、**Actions の更新は全部人がマージ**します。
   あわせて `groupName: "github-actions"` で、NuGet の `minor and patch updates` とは別のグループ(別 PR)に
-  分けています。Renovate のソースを読む限り、自動マージしない Actions が NuGet のグループに混ざると
+  分けています。Renovate のソース
+  (https://github.com/renovatebot/renovate/blob/ddc717d3a9783443691e7848a2f24ef970a6ac23/lib/workers/repository/updates/generate.ts#L466 )
+  を読む限り、自動マージしない Actions が NuGet のグループに混ざると
   そのグループの自動マージが止まるためです(実際の動きは未確認。下記。#266)。
   `release.yml` / `ci.yml` は action を **commit SHA で pin** していて、Renovate が SHA とバージョンコメントを
   まとめて張り替えます(手作業だと更新が途切れるため)。
@@ -101,7 +103,8 @@ release は NuGet のグローバルパッケージフォルダ(`NUGET_PACKAGES`
 
 Renovate が脆弱性の PR を出すには Dependency graph と Dependabot alerts が有効で、Renovate App に
 Dependabot alerts の read 権限が要ります(https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts )。
-これらは有効にしてあります(#265)。
+Dependency graph と Dependabot alerts は有効にしてあり、API で確かめた。Renovate App の Dependabot alerts の
+read 権限は人が確かめた(API では確かめていない)。確かめ方は #265。
 
 未確認: Renovate が脆弱性の PR を実際に出すこと。最初の脆弱性の PR で確かめる(#265)。
 
@@ -117,9 +120,10 @@ Dependency Dashboard(#255)が警告を出していても、次の 2 つは置き
 Renovate の設定でこの警告を消すことはしません。理由の詳しい経緯は #272。
 
 - **`CommunityToolkit.WinUI.Notifications`**(NuGet で非推奨): 後継の `AppNotificationManager` は、unpackaged +
-  self-contained の組み合わせでトーストのクリックを受ける `Register()` が失敗すると報告されていて、回避すると
-  Velopack の per-user の配布([ADR-0013](adr/0013-velopack-per-user-updates.md))が崩れるため。
-  見直すきっかけ: WindowsAppSDK#6774 が直ったとき、または今のトーストが出なくなったとき。
+  self-contained の組み合わせでトーストのクリックを受ける `Register()` が失敗すると報告されているため
+  (この repo では再現を確かめていない)。報告では Windows App SDK のランタイムを別に入れれば回避できるとあるが(未確認)、
+  そうすると Velopack の per-user の配布([ADR-0013](adr/0013-velopack-per-user-updates.md))が崩れる。
+  見直すきっかけ: https://github.com/microsoft/WindowsAppSDK/issues/6774 が直ったとき、または今のトーストが出なくなったとき。
 - **`TagLibSharp`**(更新が止まっている): [ADR-0015](adr/0015-output-collision-same-audio-check.md) の
   「同じ内容かの判定」が 2.3.0 の挙動に依っていて、置き換えると作り直すことになるため。
   見直すきっかけ: 脆弱性が報告されたとき、または ADR-0015 の判定やタグの読み書きに響く不具合が見つかったとき。
@@ -296,7 +300,7 @@ src/Airshelf.Core/Ledger/
 
 ### 大きさの基準
 
-`374 行・29062 バイト（fb9dfd5）`
+`378 行・29573 バイト（fb9dfd5）`
 
 この development.md の大きさの基準(測り方と値の形は [REPO-SECTION.md の「大きさの基準」](https://github.com/t-seki/dotfiles/blob/main/claude/.claude/skills/supervise/REPO-SECTION.md#大きさの基準))。
 
