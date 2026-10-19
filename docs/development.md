@@ -1,5 +1,7 @@
 # 開発ガイド
 
+このファイルの全体で、経緯と実例（「PR #… で起きた」の列挙、決まりの根拠にした実測の値など）は issue に置き、本文には決まりの 1 文と `（#N）` だけを書く（#298）。
+
 ## 一次資料
 
 - [`docs/requirements.md`](requirements.md) — 要件定義・設計判断(トポロジー、import-once、案A タグ、
@@ -300,7 +302,7 @@ src/Airshelf.Core/Ledger/
 
 ### 大きさの基準
 
-`378 行・29573 バイト（fb9dfd5）`
+`380 行・29807 バイト（fb9dfd5）`
 
 この development.md の大きさの基準(測り方と値の形は [REPO-SECTION.md の「大きさの基準」](https://github.com/t-seki/dotfiles/blob/main/claude/.claude/skills/supervise/REPO-SECTION.md#大きさの基準))。
 
