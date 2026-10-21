@@ -1,5 +1,9 @@
 # Airshelf
 
+> **このプロジェクトは 2026-10-21 に退役しました。** らじれこと Airshelf の運用を止めています。
+> 後継は [rajikura](https://github.com/t-seki/rajikura)(radiko タイムフリーの自動取得サービス)です。
+> この repo は archive した時点の状態のまま残し、更新しません。
+
 「らじれこ」で録音したラジオ番組(M4A)を整理し、Jellyfin 音楽ライブラリ(NAS)へ
 統合・配信する運用支援ツール。旧録音アプリ **radikool**(MP3)の過去分も取り込み、
 単一ライブラリに束ねる。
