@@ -1,6 +1,6 @@
 # Airshelf
 
-> **このプロジェクトは 2026-10-21 に退役しました。** らじれこと Airshelf の運用を止めています。
+> **このプロジェクトは 2026-10-21 に開発を終了しました。** らじれこと Airshelf の運用を止めています。
 > 後継は [rajikura](https://github.com/t-seki/rajikura)(radiko タイムフリーの自動取得サービス)です。
 > この repo は archive した時点の状態のまま残し、更新しません。
 
